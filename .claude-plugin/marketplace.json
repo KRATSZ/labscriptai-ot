@@ -3,7 +3,8 @@
   "name": "labscriptai-ot-marketplace",
   "description": "LabscriptAI OT plugin marketplace entry.",
   "owner": {
-    "name": "gaoyuan"
+    "name": "gaoyuan",
+    "email": "gaoyuanbio@qq.com"
   },
   "plugins": [
     {
@@ -11,7 +12,8 @@
       "description": "Opentrons simulation-first authoring and safe MCP runtime.",
       "version": "0.1.0",
       "author": {
-        "name": "gaoyuan"
+        "name": "gaoyuan",
+        "email": "gaoyuanbio@qq.com"
       },
       "source": ".",
       "category": "development",

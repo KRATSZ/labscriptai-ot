@@ -5,7 +5,8 @@
   "version": "0.1.0",
   "description": "Single-package LabscriptAI Opentrons plugin with MCP, skills, safety policy, and curated protocols.",
   "author": {
-    "name": "gaoyuan"
+    "name": "gaoyuan",
+    "email": "gaoyuanbio@qq.com"
   },
   "homepage": "https://github.com/KRATSZ/labscriptai-ot",
   "repository": "https://github.com/KRATSZ/labscriptai-ot",

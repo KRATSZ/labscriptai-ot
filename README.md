@@ -4,6 +4,8 @@ Single plugin bundle for Cursor, Claude Code, and Codex-style agents.
 
 Author: `gaoyuan`
 
+Contact: `gaoyuanbio@qq.com`
+
 Repository: `https://github.com/KRATSZ/labscriptai-ot`
 
 ## What It Does
@@ -17,6 +19,30 @@ LabscriptAI OT helps AI coding agents write, verify, and safely operate Opentron
 - `.cursor-plugin/`, `.claude-plugin/`, `.codex-plugin/` — platform manifests.
 
 Live robot actions are opt-in. Simulation is the gate before unattended live use. Vision is optional and observation-only.
+
+## Contact
+
+For questions, collaboration, bug reports, or research use, contact:
+
+```text
+gaoyuanbio@qq.com
+```
+
+## Citation
+
+If you use this plugin, the LabscriptAI workflow, or the bundled agent design in research, please cite the LabscriptAI bioRxiv preprint:
+
+```bibtex
+@article{gao2025labscriptai,
+  title = {Autonomous Liquid-handling Robotics Scripting for Accessible and Responsible Protein Engineering},
+  author = {Gao, Yuan and Luo, Yizhou and Li, Wenzhuo and Lan, Yunquan and Jiang, Han and Chen, Yongcan and Yi, Xiao and Li, Boyang and Alinejad-Rokny, Hamid and Wang, Teng and Fu, Lihao and Yang, Min and Si, Tong},
+  year = {2025},
+  doi = {10.1101/2025.09.30.679666},
+  publisher = {bioRxiv}
+}
+```
+
+Paper link: https://doi.org/10.1101/2025.09.30.679666
 
 ## Install
 

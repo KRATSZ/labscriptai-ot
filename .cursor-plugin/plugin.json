@@ -4,7 +4,8 @@
   "version": "0.1.0",
   "description": "Opentrons MCP server, safety rules, skills, and a curated protocol library in one plugin.",
   "author": {
-    "name": "gaoyuan"
+    "name": "gaoyuan",
+    "email": "gaoyuanbio@qq.com"
   },
   "publisher": "gaoyuan",
   "homepage": "https://github.com/KRATSZ/labscriptai-ot",
