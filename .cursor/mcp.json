@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "opentrons-lab": {
+      "command": "node",
+      "args": ["${workspaceFolder}/plugins/labscriptai-ot/servers/opentrons-mcp/index.js"],
+      "env": {
+        "OPENTRONS_PLUGIN_ROOT": "${workspaceFolder}/plugins/labscriptai-ot",
+        "OPENTRONS_PROTOCOL_LIBRARY_PATH": "${workspaceFolder}/plugins/labscriptai-ot/bundled-library",
+        "PLUGIN_DATA": "${workspaceFolder}/.labscriptai-ot-data"
+      }
+    }
+  }
+}

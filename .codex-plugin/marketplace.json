@@ -1,0 +1,21 @@
+{
+  "name": "kratsz-labscriptai",
+  "interface": {
+    "displayName": "gaoyuan LabscriptAI"
+  },
+  "plugins": [
+    {
+      "name": "labscriptai-ot",
+      "source": {
+        "source": "local",
+        "path": "."
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "NONE",
+        "products": ["CODEX"]
+      },
+      "category": "Coding"
+    }
+  ]
+}

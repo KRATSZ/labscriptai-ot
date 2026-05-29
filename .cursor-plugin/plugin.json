@@ -1,0 +1,27 @@
+{
+  "name": "labscriptai-ot",
+  "displayName": "LabscriptAI OT",
+  "version": "0.1.0",
+  "description": "Opentrons MCP server, safety rules, skills, and a curated protocol library in one plugin.",
+  "author": {
+    "name": "gaoyuan"
+  },
+  "publisher": "gaoyuan",
+  "homepage": "https://github.com/KRATSZ/labscriptai-ot",
+  "repository": "https://github.com/KRATSZ/labscriptai-ot",
+  "license": "MIT",
+  "keywords": ["opentrons", "labscriptai", "mcp", "cursor", "protocol-authoring"],
+  "mcp": "../mcp.json",
+  "skills": "../skills",
+  "rules": "../rules",
+  "activation": {
+    "commands": ["labscriptai-ot"]
+  },
+  "interface": {
+    "displayName": "LabscriptAI OT",
+    "shortDescription": "Opentrons simulation-first authoring and safe MCP runtime",
+    "developerName": "gaoyuan",
+    "category": "Coding",
+    "capabilities": ["Read", "Write", "Interactive"]
+  }
+}

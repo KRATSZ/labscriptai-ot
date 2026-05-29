@@ -1,0 +1,2328 @@
+{
+  "generated_by": "scripts/build_curated_library.py",
+  "source": "/Users/gaoyuan/.codex/worktrees/2284/Opentrons-Lab-Agent/reference-protocols/Protocols-develop",
+  "total_protocols": 44,
+  "l0_templates": [
+    {
+      "slug": "l0-flex-template-cell-culture-passaging",
+      "title": "Flex Template Cell Culture Passaging",
+      "description": "LabscriptAI Flex starter template bundled for blank protocol authoring.",
+      "path": "l0-flex-templates/flex_template_cell_culture_passaging.py",
+      "tier": "L0"
+    },
+    {
+      "slug": "l0-flex-template-pcr-setup",
+      "title": "Flex Template Pcr Setup",
+      "description": "LabscriptAI Flex starter template bundled for blank protocol authoring.",
+      "path": "l0-flex-templates/flex_template_pcr_setup.py",
+      "tier": "L0"
+    },
+    {
+      "slug": "l0-flex-template-serial-dilution",
+      "title": "Flex Template Serial Dilution",
+      "description": "LabscriptAI Flex starter template bundled for blank protocol authoring.",
+      "path": "l0-flex-templates/flex_template_serial_dilution.py",
+      "tier": "L0"
+    },
+    {
+      "slug": "l0-flex-protocol-template",
+      "title": "Flex Protocol Template",
+      "description": "LabscriptAI Flex starter template bundled for blank protocol authoring.",
+      "path": "l0-flex-templates/flex_protocol_template.py",
+      "tier": "L0"
+    }
+  ],
+  "protocols": [
+    {
+      "slug": "0944e4",
+      "title": "NGS Library Cleanup with Ampure XP Beads",
+      "description": "This protocol performs a custom NGS library cleanup using Ampure XP beads in a variable ratio with samples. The samples are mounted on an Opentrons magnetic module, and the final elute is transferred to a fresh PCR plate.",
+      "categories": {
+        "NGS Library Prep": [],
+        "Ampure XP": []
+      },
+      "method_tags": [
+        "ampure xp",
+        "ngs library prep"
+      ],
+      "pipettes": [],
+      "labware": [],
+      "modules": [],
+      "robot": [
+        "OT-2"
+      ],
+      "reagents": [],
+      "parameters": [
+        {
+          "name": "p20_multi_mount",
+          "label": "P20 multi-channel GEN2 pipette mount",
+          "type": "dropDown"
+        },
+        {
+          "name": "p300_multi_mount",
+          "label": "P300 multi-channel GEN2 pipette mount",
+          "type": "dropDown"
+        },
+        {
+          "name": "number_of_samples",
+          "label": "number of samples (1-96)",
+          "type": "int"
+        },
+        {
+          "name": "volume_of_beads",
+          "label": "volume of beads (µl)",
+          "type": "float"
+        },
+        {
+          "name": "bead_incubation_time_in_minutes",
+          "label": "bead incubation time (minutes)",
+          "type": "float"
+        },
+        {
+          "name": "bead_settling_time_on_magnet_in_minutes",
+          "label": "bead settling time on magnet (minutes)",
+          "type": "float"
+        },
+        {
+          "name": "drying_time_in_minutes",
+          "label": "bead drying time (minutes)",
+          "type": "float"
+        },
+        {
+          "name": "volume_EB_in_ul",
+          "label": "volume of EB (µl)",
+          "type": "float"
+        },
+        {
+          "name": "volume_final_elution_in_ul",
+          "label": "volume of final elution (µl)",
+          "type": "float"
+        }
+      ],
+      "python_file": "ngs_cleanup.ot2.apiv2.py",
+      "custom_labware_count": 1,
+      "hidden": false,
+      "internal_code": "0944e4",
+      "tier": "L1"
+    },
+    {
+      "slug": "70567f",
+      "title": "NGS Library Cleanup with Ampure XP Beads",
+      "description": "This protocol performs a custom NGS library prep cleanup using Ampure XP beads in a variable ratio with samples. The samples are mounted on an Opentrons magnetic module, and the final elute is transferred to a fresh PCR plate.",
+      "categories": {
+        "NGS Library Prep": [],
+        "Ampure XP": []
+      },
+      "method_tags": [
+        "ampure xp",
+        "ngs library prep"
+      ],
+      "pipettes": [],
+      "labware": [],
+      "modules": [],
+      "robot": [
+        "OT-2"
+      ],
+      "reagents": [],
+      "parameters": [
+        {
+          "name": "p300_multi_mount",
+          "label": "P300 multi-channel GEN2 pipette mount",
+          "type": "dropDown"
+        },
+        {
+          "name": "number_of_samples",
+          "label": "number of samples (1-96)",
+          "type": "int"
+        },
+        {
+          "name": "volume_of_beads",
+          "label": "volume of beads (µl)",
+          "type": "float"
+        },
+        {
+          "name": "bead_incubation_time_in_minutes",
+          "label": "bead incubation time (minutes)",
+          "type": "float"
+        },
+        {
+          "name": "etoh_inc",
+          "label": "initial/EtOH wash bead settling time on magnet (minutes)",
+          "type": "float"
+        },
+        {
+          "name": "drying_time_in_minutes",
+          "label": "bead drying time (minutes)",
+          "type": "float"
+        },
+        {
+          "name": "vol_etoh",
+          "label": "volume of ethanol (µl)",
+          "type": "float"
+        },
+        {
+          "name": "mix_etoh",
+          "label": "mix after ethanol addition",
+          "type": "dropDown"
+        },
+        {
+          "name": "volume_EB_in_ul",
+          "label": "volume of EB (µl)",
+          "type": "float"
+        },
+        {
+          "name": "elution_inc",
+          "label": "elution bead settling time on magnet (minutes)",
+          "type": "float"
+        },
+        {
+          "name": "volume_final_elution_in_ul",
+          "label": "volume of final elution (µl)",
+          "type": "float"
+        },
+        {
+          "name": "park_tips",
+          "label": "park tips",
+          "type": "dropDown"
+        },
+        {
+          "name": "tip_track",
+          "label": "track tips across protocol runs",
+          "type": "dropDown"
+        },
+        {
+          "name": "drop_threshold",
+          "label": "maximum tips allowed in trash",
+          "type": "int"
+        }
+      ],
+      "python_file": "ngs_cleanup.ot2.apiv2.py",
+      "custom_labware_count": 0,
+      "hidden": false,
+      "internal_code": "70567f",
+      "tier": "L1"
+    },
+    {
+      "slug": "0849c2",
+      "title": "Nucleic Acid Purification",
+      "description": "This protocol performs a custom nucleic acid purification on up to 96 samples using the Opentrons Magnetic Module GEN2 and [Beckman Coulter Ampure XP Reagent for PCR Purification](https://www.beckman.com/reagents/genomic/cleanup-and-size-selection/pcr). The user is prompted to refill tipracks when necessary.",
+      "categories": {
+        "Nucleic Acid Extraction & Purification": [],
+        "Nucleic Acid Extraction": []
+      },
+      "method_tags": [
+        "nucleic acid extraction",
+        "nucleic acid extraction & purification"
+      ],
+      "pipettes": [
+        "Opentrons P300 8 Channel Electronic Pipette (GEN2)"
+      ],
+      "labware": [
+        "Bio-Rad 96 Well Plate 350 µL #HSS9601",
+        "Opentrons 96 Filter Tip Rack 200 µL",
+        "NEST 12 Well Reservoir 15 mL #360102"
+      ],
+      "modules": [
+        "Opentrons Magnetic Module (GEN2)"
+      ],
+      "robot": [],
+      "reagents": [],
+      "parameters": [
+        {
+          "name": "num_samples",
+          "label": "number of samples (1-96)",
+          "type": "int"
+        },
+        {
+          "name": "vol_water",
+          "label": "initial volume of water",
+          "type": "float"
+        },
+        {
+          "name": "vol_ampure_beads",
+          "label": "initial volume of ampure beads",
+          "type": "float"
+        },
+        {
+          "name": "mount_m300",
+          "label": "P300 8-channel GEN2 pipette mount",
+          "type": "dropDown"
+        }
+      ],
+      "python_file": "extraction.ot2.apiv2.py",
+      "custom_labware_count": 2,
+      "hidden": false,
+      "internal_code": "0849c2",
+      "tier": "L1"
+    },
+    {
+      "slug": "53fec2",
+      "title": "Beckman Coulter AMPure XP PCR Cleanup and Size Selection",
+      "description": "This is a flexible protocol accommodating Beckman Coulter AMPure XP PCR Cleanup and Size Selection. It consists of the following major sections: * binding beads pre-addition * sample pooling and mixing with binding beads * 2x ethanol wash * final elution in H2O",
+      "categories": {
+        "PCR": [],
+        "Cleanup": []
+      },
+      "method_tags": [
+        "cleanup",
+        "pcr"
+      ],
+      "pipettes": [
+        "P300 Multi-Channel GEN2 Electrnoic Pipette"
+      ],
+      "labware": [
+        "Eppendorf 96-deepwell plate 500µl",
+        "Eppendorf 96-well PCR plate 200µl, skirted",
+        "Eppendorf 1-channel automation reservoirs 30ml/100ml",
+        "Opentrons 96 Filter Tip Rack 200 µL"
+      ],
+      "modules": [
+        "Magnetic Module (GEN2)"
+      ],
+      "robot": [],
+      "reagents": [
+        "Beckman Coulter AMPure XP for PCR Purification"
+      ],
+      "parameters": [
+        {
+          "name": "num_samples",
+          "label": "number of samples + controls (1-96)",
+          "type": "int"
+        },
+        {
+          "name": "mag_height",
+          "label": "magnetic engage height (in mm)",
+          "type": "float"
+        },
+        {
+          "name": "sample_vol",
+          "label": "sample volume",
+          "type": "float"
+        },
+        {
+          "name": "beads_vol",
+          "label": "binding beads volume (in ul)",
+          "type": "float"
+        },
+        {
+          "name": "wash1_vol",
+          "label": "wash 1 volume (in ul, up to 500ul)",
+          "type": "float"
+        },
+        {
+          "name": "wash2_vol",
+          "label": "wash 2 volume (in ul, up to 500ul)",
+          "type": "float"
+        },
+        {
+          "name": "elution_vol",
+          "label": "final elution volume (in ul)",
+          "type": "float"
+        },
+        {
+          "name": "park_tips",
+          "label": "park tips",
+          "type": "dropDown"
+        },
+        {
+          "name": "tip_track",
+          "label": "track tips across protocol runs",
+          "type": "dropDown"
+        }
+      ],
+      "python_file": "omega_pcr_cleanup.ot2.apiv2.py",
+      "custom_labware_count": 4,
+      "hidden": false,
+      "internal_code": "53fec2",
+      "tier": "L1"
+    },
+    {
+      "slug": "5b8174",
+      "title": "Custom Multi-CSV Transfer for PCR Prep",
+      "description": "This protocol performs transfers of positive controls and patient samples to a 384 well plate loaded onto a temperature module. All labware and transfers can be controlled through the CSV files that are used as input for this protocol.",
+      "categories": {
+        "Sample Prep": [],
+        "Cherrypicking": []
+      },
+      "method_tags": [
+        "cherrypicking",
+        "sample prep"
+      ],
+      "pipettes": [
+        "Opentrons P20 Single Channel GEN2 Pipette"
+      ],
+      "labware": [
+        "Opentrons 20 uL Tips"
+      ],
+      "modules": [
+        "Temperature Module (GEN2)"
+      ],
+      "robot": [],
+      "reagents": [],
+      "parameters": [
+        {
+          "name": "p20_mount",
+          "label": "P20 Single Channel Pipette Mount Position",
+          "type": "dropDown"
+        },
+        {
+          "name": "ctrl_csv",
+          "label": "Control CSV File",
+          "type": "textFile"
+        },
+        {
+          "name": "assembly_csv",
+          "label": "Assembly CSV File",
+          "type": "textFile"
+        },
+        {
+          "name": "ctrl_transfer_vol",
+          "label": "Positive Control Transfer Volume (uL)",
+          "type": "float"
+        },
+        {
+          "name": "assembly_transfer_vol",
+          "label": "Patient DNA Transfer Volume (uL)",
+          "type": "float"
+        },
+        {
+          "name": "asp_height",
+          "label": "96 Well Plates Aspiration Height (mm)",
+          "type": "float"
+        },
+        {
+          "name": "pipette_homing",
+          "label": "Pipette Home After Drop Tip",
+          "type": "dropDown"
+        }
+      ],
+      "python_file": "5b8174.ot2.apiv2.py",
+      "custom_labware_count": 3,
+      "hidden": false,
+      "internal_code": "5b8174",
+      "tier": "L1"
+    },
+    {
+      "slug": "04318b",
+      "title": "DMSO and Compound Stock Solution Addition - Part 1",
+      "description": "This protocol serially diluted compound stock with DMSO. There is an optional predilution step in this protocol. For detailed protocol steps, please see below. Slots 6, 7, 8, 9 are nest deep well plates, and slots 2, 4, 5, 10, 11 are NEST PCR plates.",
+      "categories": {
+        "Sample Prep": [],
+        "Serial Dilution": []
+      },
+      "method_tags": [
+        "sample prep",
+        "serial dilution"
+      ],
+      "pipettes": [
+        "Opentrons P20 8 Channel Electronic Pipette (GEN2)"
+      ],
+      "labware": [
+        "NEST 12 Well Reservoir 15 mL #360102",
+        "NEST 96 Deepwell Plate 2mL #503001",
+        "Opentrons 96 Filter Tip Rack 20 µL"
+      ],
+      "modules": [],
+      "robot": [],
+      "reagents": [],
+      "parameters": [
+        {
+          "name": "dmso_dil_factor",
+          "label": "DMSO Dilution Factor",
+          "type": "float"
+        },
+        {
+          "name": "pre_dilution",
+          "label": "Add pre-dilution step?",
+          "type": "dropDown"
+        },
+        {
+          "name": "pre_dil_factor",
+          "label": "If prepdilution step, pre-dilution factor",
+          "type": "float"
+        },
+        {
+          "name": "m20_mount",
+          "label": "P20 Multi-Channel Mount",
+          "type": "dropDown"
+        }
+      ],
+      "python_file": "04318b.ot2.apiv2.py",
+      "custom_labware_count": 0,
+      "hidden": false,
+      "internal_code": "04318b",
+      "tier": "L1"
+    },
+    {
+      "slug": "04f310",
+      "title": "Custom Normalization from a CSV File",
+      "description": "This protocol uses single-channel P20 and P300 pipettes to normalize DNA concentrations of up to 96 input samples based on user input (input DNA sample concentration, target concentration, target volume) provided by csv file upload (see example file below). Intermediate dilutions are prepared as needed. A downloadable output file is generated to record calculated fold dilution, volume of sample and water transferred, if a sample was processed (or skipped due to insufficient input DNA concentrati",
+      "categories": {
+        "Sample Prep": [],
+        "Normalization": []
+      },
+      "method_tags": [
+        "normalization",
+        "sample prep"
+      ],
+      "pipettes": [
+        "Opentrons single-channel P20 and single-channel P300 Gen2 Pipettes (https://shop.opentrons.com/pipettes/)"
+      ],
+      "labware": [
+        "[Opentrons Filter Tips for the P20 and P300] (https://shop.opentrons.com)",
+        "[Opentrons 10-Tube Rack] (https://shop.opentrons.com/4-in-1-tube-rack-set/)",
+        "[BioRad 200 uL PCR Plate] (https://labware.opentrons.com/biorad_96_wellplate_200ul_pcr?category=wellPlate)",
+        "[NEST 96 Deep Well Plate 2 mL] (https://labware.opentrons.com/nest_96_wellplate_2ml_deep?category=wellPlate)",
+        "[Agilent 290 mL Reservoir] (https://labware.opentrons.com/agilent_1_reservoir_290ml?category=reservoir)"
+      ],
+      "modules": [],
+      "robot": [],
+      "reagents": [],
+      "parameters": [
+        {
+          "name": "uploaded_csv",
+          "label": "Upload CSV Input File (Upload CSV-formatted Excel File-with formatting of data values and file identical to example)",
+          "type": "textFile"
+        }
+      ],
+      "python_file": "04f310.ot2.apiv2.py",
+      "custom_labware_count": 1,
+      "hidden": false,
+      "internal_code": "04f310",
+      "tier": "L1"
+    },
+    {
+      "slug": "056f47",
+      "title": "DMSO and Compound Stock Solution Addition - Part 2",
+      "description": "This protocol serially diluted compound stock with DMSO. For detailed protocol steps, please see below. Note: if n < 15, use NEST PCR plates, and if n > 15, use deep well plates.",
+      "categories": {
+        "Sample Prep": [],
+        "Serial Dilution": []
+      },
+      "method_tags": [
+        "sample prep",
+        "serial dilution"
+      ],
+      "pipettes": [
+        "Opentrons P20 8 Channel Electronic Pipette (GEN2)",
+        "Opentrons P300 8 Channel Electronic Pipette (GEN2)"
+      ],
+      "labware": [
+        "NEST 12 Well Reservoir 15 mL #360102",
+        "NEST 96 Well Plate 100 µL PCR Full Skirt #402501",
+        "Opentrons 96 Filter Tip Rack 20 µL",
+        "Opentrons 96 Filter Tip Rack 200 µL"
+      ],
+      "modules": [],
+      "robot": [],
+      "reagents": [],
+      "parameters": [
+        {
+          "name": "n",
+          "label": "n, this number will be multiplied by the volume (1-40)",
+          "type": "int"
+        },
+        {
+          "name": "m20_mount",
+          "label": "P20 Multi-Channel Mount",
+          "type": "dropDown"
+        },
+        {
+          "name": "m300_mount",
+          "label": "P300 Multi-Channel Mount",
+          "type": "dropDown"
+        }
+      ],
+      "python_file": "056f47.ot2.apiv2.py",
+      "custom_labware_count": 0,
+      "hidden": false,
+      "internal_code": "056f47",
+      "tier": "L1"
+    },
+    {
+      "slug": "05f673",
+      "title": "Cell Normalization",
+      "description": "This protocol allows for a robust cherrypicking and normalization in one step.</br> </br> Using a [P1000 Single-Channel Pipette](https://shop.opentrons.com/collections/ot-2-pipettes/products/single-channel-electronic-pipette), buffer will be transferred to all wells specified in the **Normalization CSV** (see below), before transferring samples from up to four source plates to four destination plates (specific plate and well location specifed in **Normalization CSV**).</br> </br> The .csv file s",
+      "categories": {
+        "Sample Prep": [],
+        "Normalization": []
+      },
+      "method_tags": [
+        "normalization",
+        "sample prep"
+      ],
+      "pipettes": [
+        "P1000 Single Channel Pipette",
+        "P300 8-Channel Pipette, optional"
+      ],
+      "labware": [],
+      "modules": [],
+      "robot": [],
+      "reagents": [],
+      "parameters": [
+        {
+          "name": "p1000mnt",
+          "label": "P1000 (GEN2) Mount",
+          "type": "dropDown"
+        },
+        {
+          "name": "transfer_csv",
+          "label": "Normalization CSV",
+          "type": "textFile"
+        },
+        {
+          "name": "labwareType",
+          "label": "Labware Type",
+          "type": "dropDown"
+        },
+        {
+          "name": "prefill",
+          "label": "Prefill Volume",
+          "type": "int"
+        }
+      ],
+      "python_file": "05f673.ot2.apiv2.py",
+      "custom_labware_count": 0,
+      "hidden": false,
+      "internal_code": "05f673",
+      "tier": "L1"
+    },
+    {
+      "slug": "08aeaa",
+      "title": "Custom Normalization & Transfer",
+      "description": "This protocol performs the normalization of samples by adjusting the concentration in Micronic 96 rack. Once normalized it will transfer nuclease-free water to the corresponding wells in a PCR plate and then transfer samples to the corresponding wells in the PCR plate.",
+      "categories": {
+        "Sample Prep": [],
+        "Normalization": []
+      },
+      "method_tags": [
+        "normalization",
+        "sample prep"
+      ],
+      "pipettes": [],
+      "labware": [],
+      "modules": [],
+      "robot": [
+        "OT-2"
+      ],
+      "reagents": [],
+      "parameters": [
+        {
+          "name": "norm_data",
+          "label": "Normalization CSV",
+          "type": "textFile"
+        },
+        {
+          "name": "p300_mount",
+          "label": "P300 Single GEN2 Mount",
+          "type": "dropDown"
+        },
+        {
+          "name": "p20_mount",
+          "label": "P20 Single GEN2 Mount",
+          "type": "dropDown"
+        },
+        {
+          "name": "water_res_vol",
+          "label": "Water Reservoir Volume per Well (uL)",
+          "type": "float"
+        },
+        {
+          "name": "final_conc",
+          "label": "Final Concentration (ng/ul)",
+          "type": "float"
+        },
+        {
+          "name": "water_vol",
+          "label": "Step 2 Nuclease-Free Water Transfer Volume (uL)",
+          "type": "float"
+        }
+      ],
+      "python_file": "08aeaa.ot2.apiv2.py",
+      "custom_labware_count": 3,
+      "hidden": false,
+      "internal_code": "08aeaa",
+      "tier": "L1"
+    },
+    {
+      "slug": "0a9b58",
+      "title": "Pooling and Normalization via CSV",
+      "description": "This protocol performs a pooling or normalization protocol depending on the user's selection. Please format the csv to the examples below (two header rows before the transfer information). The normalization csv should include \"normalization\", and the pooling csv should include the word \"pooling\" in the top row.  Volumes must be over 1.0ul for all transfers. Volumes should be \"0\" if they are to be skipped for a well.",
+      "categories": {
+        "Sample Prep": [],
+        "Plate Filling": []
+      },
+      "method_tags": [
+        "plate filling",
+        "sample prep"
+      ],
+      "pipettes": [
+        "Opentrons P20 Single Channel Electronic Pipette (GEN2)"
+      ],
+      "labware": [
+        "Agilent 1 Well Reservoir 290 mL #201252-100",
+        "Bio-Rad 96 Well Plate 200 µL PCR #hsp9601",
+        "Opentrons 96 Filter Tip Rack 20 µL"
+      ],
+      "modules": [],
+      "robot": [],
+      "reagents": [],
+      "parameters": [
+        {
+          "name": "protocol",
+          "label": "Normalization or Pooling Protocol?",
+          "type": "dropDown"
+        },
+        {
+          "name": "csv_samp",
+          "label": ".CSV File",
+          "type": "textFile"
+        },
+        {
+          "name": "p20_mount",
+          "label": "P20 Single-Channel Mount",
+          "type": "dropDown"
+        },
+        {
+          "name": "p300_mount",
+          "label": "P300 Single-Channel Mount",
+          "type": "dropDown"
+        }
+      ],
+      "python_file": "0a9b58.ot2.apiv2.py",
+      "custom_labware_count": 0,
+      "hidden": false,
+      "internal_code": "0a9b58",
+      "tier": "L1"
+    },
+    {
+      "slug": "115d98",
+      "title": "Visby Test without Pooling p1000",
+      "description": "This flexible protocol automates the transferring of samples in 12mL tubes to dilution buffer, then to Visby device for rapid Covid testing.</br> </br>",
+      "categories": {
+        "Sample Prep": [],
+        "Aliquoting": []
+      },
+      "method_tags": [
+        "aliquoting",
+        "sample prep"
+      ],
+      "pipettes": [],
+      "labware": [],
+      "modules": [],
+      "robot": [
+        "OT-2"
+      ],
+      "reagents": [],
+      "parameters": [
+        {
+          "name": "mnt1000",
+          "label": "P1000 Single GEN2 Mount",
+          "type": "dropDown"
+        },
+        {
+          "name": "sampVol",
+          "label": "Sample Volume (µL)",
+          "type": "int"
+        },
+        {
+          "name": "numSamps",
+          "label": "Number of Samples",
+          "type": "dropDown"
+        }
+      ],
+      "python_file": "115d98.ot2.apiv2.py",
+      "custom_labware_count": 2,
+      "hidden": false,
+      "internal_code": "115d98",
+      "tier": "L1"
+    },
+    {
+      "slug": "1479",
+      "title": "DNA Concentration Normalization",
+      "description": "With this protocol, your robot can normalize concentration of DNA samples from 2 mL Eppendorf tubes in PCR strips. Volumes of DNA and buffer for each normalization will be provided by the user as a CSV file. See Additional Notes for more details.",
+      "categories": {
+        "Sample Prep": [],
+        "Cherrypicking": []
+      },
+      "method_tags": [
+        "cherrypicking",
+        "sample prep"
+      ],
+      "pipettes": [],
+      "labware": [],
+      "modules": [],
+      "robot": [
+        "OT-2"
+      ],
+      "reagents": [],
+      "parameters": [
+        {
+          "name": "volume_csv",
+          "label": "input csv file",
+          "type": "textFile"
+        },
+        {
+          "name": "max_reaction_volume",
+          "label": "max reaction volume (in ul)",
+          "type": "float"
+        }
+      ],
+      "python_file": "dna_concentration_normalization.ot2.apiv2.py",
+      "custom_labware_count": 0,
+      "hidden": false,
+      "internal_code": "1479",
+      "tier": "L1"
+    },
+    {
+      "slug": "2082dd",
+      "title": "NGS Prep from .csv",
+      "description": "This protocol performs a NGS library prep through 2 fold dilutions and final pooling. All volumes are specified in a `.csv` file.",
+      "categories": {
+        "Sample Prep": [],
+        "Cherrypicking": []
+      },
+      "method_tags": [
+        "cherrypicking",
+        "sample prep"
+      ],
+      "pipettes": [],
+      "labware": [],
+      "modules": [],
+      "robot": [
+        "OT-2"
+      ],
+      "reagents": [],
+      "parameters": [
+        {
+          "name": "p20_single_mount",
+          "label": "P20 GEN2 single-channel mount",
+          "type": "dropDown"
+        },
+        {
+          "name": "p300_single_mount",
+          "label": "P300 GEN2 single-channel mount",
+          "type": "dropDown"
+        },
+        {
+          "name": "csv_file",
+          "label": ".csv file for volumes",
+          "type": "textFile"
+        }
+      ],
+      "python_file": "ngs_prep.ot2.apiv2.py",
+      "custom_labware_count": 0,
+      "hidden": false,
+      "internal_code": "2082dd",
+      "tier": "L1"
+    },
+    {
+      "slug": "211a24",
+      "title": "Customizable Serial Dilution for OT-2",
+      "description": "This protocol allows for a customizable serial dilution workflow based on 4 text files containing worklist information. This protocol uses a P300 GEN2 single-channel pipette. The 4 steps, each corresponding to its own input text file, are as follows: * diluent addition to serial dilution plate * sample addition to serial dilution plate * serial dilution across plate * cherrypicking to load final plate",
+      "categories": {
+        "Sample Prep": [],
+        "Serial Dilution": []
+      },
+      "method_tags": [
+        "sample prep",
+        "serial dilution"
+      ],
+      "pipettes": [
+        "Opentrons P300 Single-Channel Electronic Pipette (GEN2)"
+      ],
+      "labware": [
+        "NEST 96 Well Plate 100 µL PCR Full Skirt",
+        "NEST 1 Well Reservoir 195 mL",
+        "Opentrons 96 Tip Rack 300 µL"
+      ],
+      "modules": [],
+      "robot": [],
+      "reagents": [],
+      "parameters": [
+        {
+          "name": "pipette_mount",
+          "label": "P300 GEN2 pipette mount",
+          "type": "dropDown"
+        },
+        {
+          "name": "diluent_csv",
+          "label": "Gyros_Diluent worklist",
+          "type": "textFile"
+        },
+        {
+          "name": "sample_csv",
+          "label": "Gyros_Samples worklist",
+          "type": "textFile"
+        },
+        {
+          "name": "serial_csv",
+          "label": "Gyros_SerialDilution worklist",
+          "type": "textFile"
+        },
+        {
+          "name": "load_csv",
+          "label": "Gyros_LoadPlate worklist",
+          "type": "textFile"
+        }
+      ],
+      "python_file": "customizable_serial_dilution.ot2.apiv2.py",
+      "custom_labware_count": 0,
+      "hidden": false,
+      "internal_code": "211a24",
+      "tier": "L1"
+    },
+    {
+      "slug": "29225e",
+      "title": "qRT-PCR Setup: Part 1 - Custom RNA Normalization from CSV",
+      "description": "This protocol uses p300 and p20 single channel pipettes to transfer custom volumes of water (1-50 uL from a single tube) and then RNA (1-50 uL) from a single 96-well source plate or from up to four 24-tube racks to a single 96-well destination plate (RNA volume and water volume, rack number (1-4) or plate number (1) for the input RNA source, tube (A1-D6) or well (A1-H12) location for the RNA source, and destination well (A1-H12) specified by user in a csv file uploaded at the time of protocol do",
+      "categories": {
+        "Sample Prep": [],
+        "Normalization": []
+      },
+      "method_tags": [
+        "normalization",
+        "sample prep"
+      ],
+      "pipettes": [],
+      "labware": [],
+      "modules": [],
+      "robot": [
+        "OT-2"
+      ],
+      "reagents": [],
+      "parameters": [
+        {
+          "name": "move_side",
+          "label": "Sideways Move to Blow Out at Side of Well (mm)",
+          "type": "float"
+        },
+        {
+          "name": "vol_dead",
+          "label": "Remaining Volume at Which to Move on to Next Water Tube (uL)",
+          "type": "float"
+        },
+        {
+          "name": "mix_rate",
+          "label": "Flow Rate for p20 Mixes (up to 3x default rate)",
+          "type": "dropDown"
+        },
+        {
+          "name": "clearance_water_tube",
+          "label": "Minimum Well Bottom Clearance for Water Tubes (mm)",
+          "type": "float"
+        },
+        {
+          "name": "clearance_rna",
+          "label": "Well Bottom Clearance for RNA Aspiration (mm)",
+          "type": "float"
+        },
+        {
+          "name": "clearance_dest",
+          "label": "Well Bottom Clearance for Dispense to Destination Plate (mm)",
+          "type": "float"
+        },
+        {
+          "name": "clearance_mix_aspirate",
+          "label": "Well Bottom Clearance for Mix Aspirate (mm)",
+          "type": "float"
+        },
+        {
+          "name": "raise_mix_dispense",
+          "label": "Raise the Height of the Mix Dispense (mm)",
+          "type": "float"
+        },
+        {
+          "name": "labware_water_tube",
+          "label": "Labware for Water Tubes",
+          "type": "dropDown"
+        },
+        {
+          "name": "labware_firstrna",
+          "label": "Labware Containing First Input RNA Samples in Slot 3 at 4 Degrees",
+          "type": "dropDown"
+        },
+        {
+          "name": "labware_rna",
+          "label": "Labware Containing Additional Input RNA Samples in Slots 2,5,6",
+          "type": "dropDown"
+        },
+        {
+          "name": "labware_dest",
+          "label": "Labware for Destination Plate",
+          "type": "dropDown"
+        },
+        {
+          "name": "vol_h2o",
+          "label": "Initial Volume of RNAse-Free Water in Each Water Tube (uL)",
+          "type": "float"
+        },
+        {
+          "name": "uploaded_csv",
+          "label": "Upload CSV Input File (Upload CSV-formatted Excel File-with formatting of data values and file identical to example)",
+          "type": "textFile"
+        }
+      ],
+      "python_file": "29225e.ot2.apiv2.py",
+      "custom_labware_count": 8,
+      "hidden": false,
+      "internal_code": "29225e",
+      "tier": "L1"
+    },
+    {
+      "slug": "2bba96",
+      "title": "Custom Cherrypicking and Normalization From CSV",
+      "description": "This protocol uses a p300 single-channel pipette to distribute custom volumes of buffer from a 12-well reservoir to specified wells of a 96-well child plate followed by transfer of well contents from up to five 96-well parent plates to specified wells in the child plate (volumes, plate locations and well locations are specified in a csv file uploaded at the time of protocol download).",
+      "categories": {
+        "Sample Prep": [],
+        "Normalization": []
+      },
+      "method_tags": [
+        "normalization",
+        "sample prep"
+      ],
+      "pipettes": [],
+      "labware": [],
+      "modules": [],
+      "robot": [
+        "OT-2"
+      ],
+      "reagents": [],
+      "parameters": [
+        {
+          "name": "mix_asp_rate",
+          "label": "Aspiration Flow Rate for Mixing (use 0.3-3) (for 0.3-3 times the default rate)",
+          "type": "float"
+        },
+        {
+          "name": "mix_disp_rate",
+          "label": "Dispense Flow Rate for Mixing (use 0.3-3) (for 0.3-3 times the default rate)",
+          "type": "float"
+        },
+        {
+          "name": "dead_vol",
+          "label": "Dead Volume in Reservoir Wells (volume in ul at which to move on to next source well)",
+          "type": "float"
+        },
+        {
+          "name": "labware_parent",
+          "label": "Labware for Parent Plate",
+          "type": "dropDown"
+        },
+        {
+          "name": "labware_child",
+          "label": "Labware for Child Plates",
+          "type": "dropDown"
+        },
+        {
+          "name": "labware_reservoir",
+          "label": "Labware for Reservoir",
+          "type": "dropDown"
+        },
+        {
+          "name": "clearance_plate",
+          "label": "Well Bottom Clearance for Buffer Dispenses (mm)",
+          "type": "float"
+        },
+        {
+          "name": "clearance_reservoir",
+          "label": "Minimum Well Bottom Clearance for Reservoir (mm)",
+          "type": "float"
+        },
+        {
+          "name": "clearance_aspirate",
+          "label": "Well Bottom Clearance for Aspiration from Parent Plate (mm)",
+          "type": "float"
+        },
+        {
+          "name": "clearance_dispense",
+          "label": "Well Bottom Clearance for Dispense of Parent Volume to Child Plate (mm)",
+          "type": "float"
+        },
+        {
+          "name": "mix_reps",
+          "label": "Count of Mix Repetitions to Perform (0-5)",
+          "type": "int"
+        },
+        {
+          "name": "uploaded_csv",
+          "label": "Upload CSV Input File (Upload CSV-formatted Excel File-with formatting of data values and file identical to example)",
+          "type": "textFile"
+        }
+      ],
+      "python_file": "2bba96.ot2.apiv2.py",
+      "custom_labware_count": 4,
+      "hidden": false,
+      "internal_code": "2bba96",
+      "tier": "L1"
+    },
+    {
+      "slug": "2bdff3",
+      "title": "Post RC-PCR Pooling of Nimagen SARS CoV-2 Library Prep",
+      "description": "This protocol performs the post RC-PCR pooling of the [Nimagen SARS CoV-2 Library Prep](https://www.nimagen.com/shop/products/rc-cov096/easyseq-sars-cov-2-novel-coronavirus-whole-genome-sequencing-kit). It has the option to pool samples from a variety of 384 well plates. The 384 well plate is divided into four quadrants and each quadrant can have up to 12 columns of samples, yielding a total of 48 columns worth of samples on a full plate.",
+      "categories": {
+        "Sample Prep": [],
+        "Pooling": []
+      },
+      "method_tags": [
+        "pooling",
+        "sample prep"
+      ],
+      "pipettes": [],
+      "labware": [],
+      "modules": [],
+      "robot": [
+        "OT-2"
+      ],
+      "reagents": [],
+      "parameters": [
+        {
+          "name": "step1",
+          "label": "Run Step 1",
+          "type": "dropDown"
+        },
+        {
+          "name": "step2",
+          "label": "Run Step 2",
+          "type": "dropDown"
+        },
+        {
+          "name": "quad1_exclude_cols",
+          "label": "Quadrant 1 Columns to Exclude",
+          "type": "str"
+        },
+        {
+          "name": "quad2_exclude_cols",
+          "label": "Quadrant 2 Columns to Exclude",
+          "type": "str"
+        },
+        {
+          "name": "quad3_exclude_cols",
+          "label": "Quadrant 3 Columns to Exclude",
+          "type": "str"
+        },
+        {
+          "name": "quad4_exclude_cols",
+          "label": "Quadrant 4 Columns to Exclude",
+          "type": "str"
+        },
+        {
+          "name": "m20_mount",
+          "label": "P20 Multichannel Mount Position",
+          "type": "dropDown"
+        },
+        {
+          "name": "p300_mount",
+          "label": "P300 Single Channel Mount Position",
+          "type": "dropDown"
+        },
+        {
+          "name": "donor_384_type",
+          "label": "Donor 384 Well Plate Type",
+          "type": "dropDown"
+        },
+        {
+          "name": "step1_mix_vol",
+          "label": "Step 1 Mixing Volume",
+          "type": "float"
+        },
+        {
+          "name": "trans_vol1",
+          "label": "Step 1 Transfer Volume",
+          "type": "float"
+        },
+        {
+          "name": "delay_after_asp",
+          "label": "Delay After Aspirating (seconds)",
+          "type": "float"
+        },
+        {
+          "name": "delay_after_disp",
+          "label": "Delay After Dispensing (seconds)",
+          "type": "float"
+        },
+        {
+          "name": "disp_speed",
+          "label": "Dispensing Speed (uL/s)",
+          "type": "float"
+        },
+        {
+          "name": "stage1_dispense_height",
+          "label": "Dispense Height (Stage 1, mm)",
+          "type": "float"
+        },
+        {
+          "name": "height_after_disp",
+          "label": "Delay Height after Dispensing (Stage 1, mm)",
+          "type": "float"
+        },
+        {
+          "name": "stage2_asp_speed",
+          "label": "Aspirate Flow Rate for Mixing (Stage 2, uL/s)",
+          "type": "float"
+        },
+        {
+          "name": "stage2_disp_speed",
+          "label": "Dispense Flow Rate for Mixing (Stage 2, uL/s)",
+          "type": "float"
+        },
+        {
+          "name": "stage2_dispense_height",
+          "label": "Dispense Height (Stage 2, mm)",
+          "type": "float"
+        },
+        {
+          "name": "stage2_height_after_disp",
+          "label": "Delay Height after Dispensing (Stage 2, mm)",
+          "type": "float"
+        }
+      ],
+      "python_file": "2bdff3.ot2.apiv2.py",
+      "custom_labware_count": 4,
+      "hidden": false,
+      "internal_code": "2bdff3",
+      "tier": "L1"
+    },
+    {
+      "slug": "3607d5-4",
+      "title": "Normalization and Pooling",
+      "description": "Links: * [SPRI 1 & 2](./3607d5-2) <br /> <br /> * [PCR2 Setup](./3607d5) <br /> <br /> * [SPRI 3](./3607d5-3) <br /> <br /> * [Normalization and Pooling](./3607d5-4) <br /> <br /> * [Rerack](./3607d5-5)",
+      "categories": {
+        "Sample Prep": [],
+        "Normalization": []
+      },
+      "method_tags": [
+        "normalization",
+        "sample prep"
+      ],
+      "pipettes": [
+        "P20 Multi GEN2 Pipette",
+        "P300 Multi GEN2 Pipette"
+      ],
+      "labware": [
+        "Opentrons 20µl Tiprack",
+        "Opentrons 300µl Tiprack",
+        "Opentrons 96 Well Aluminum Block",
+        "Opentrons 4-in-1 Tuberack Set"
+      ],
+      "modules": [],
+      "robot": [],
+      "reagents": [],
+      "parameters": [
+        {
+          "name": "transfer_csv",
+          "label": "transfer .csv file",
+          "type": "textFile"
+        },
+        {
+          "name": "m20_mount",
+          "label": "P20 multi-channel GEN2 pipette mount",
+          "type": "dropDown"
+        },
+        {
+          "name": "m300_mount",
+          "label": "P300 multi-channel GEN2 pipette mount",
+          "type": "dropDown"
+        },
+        {
+          "name": "sample_vol",
+          "label": "sample volume (in µl)",
+          "type": "float"
+        }
+      ],
+      "python_file": "pooling.ot2.apiv2.py",
+      "custom_labware_count": 5,
+      "hidden": true,
+      "internal_code": "3607d5",
+      "tier": "L1"
+    },
+    {
+      "slug": "3607d5-5",
+      "title": "Rerack",
+      "description": "Links: * [SPRI 1 & 2](./3607d5-2) <br /> <br /> * [PCR2 Setup](./3607d5) <br /> <br /> * [SPRI 3](./3607d5-3) <br /> <br /> * [Normalization and Pooling](./3607d5-4) <br /> <br /> * [Rerack](./3607d5-5)",
+      "categories": {
+        "Sample Prep": [],
+        "Normalization": []
+      },
+      "method_tags": [
+        "normalization",
+        "sample prep"
+      ],
+      "pipettes": [
+        "P300 Multi GEN2 Pipette"
+      ],
+      "labware": [
+        "Opentrons 200ul Filtertipracks"
+      ],
+      "modules": [],
+      "robot": [],
+      "reagents": [],
+      "parameters": [
+        {
+          "name": "m300_mount",
+          "label": "P300 multi-channel GEN2 pipette mount",
+          "type": "dropDown"
+        }
+      ],
+      "python_file": "rerack.ot2.apiv2.py",
+      "custom_labware_count": 0,
+      "hidden": true,
+      "internal_code": "3607d5",
+      "tier": "L1"
+    },
+    {
+      "slug": "3662e6",
+      "title": "Custom Drug Dilution Assay",
+      "description": "This protocol is an updated version of a drug dilution protocol designed with Protocol Designer.</br> </br> In this protocol, the p300-multi channel pipette (GEN1) is used to transfer 100µL media to all of the columns of the three dilution plates (10uM, 1uM, and 0.1uM). When transferring the media, the same tips (column 1) will be used for all transfers, but after every four transfers, the pipette will return the tips to the tiprack and pick up them up again to ensure a good seal with the tips.<",
+      "categories": {
+        "Sample Prep": [],
+        "Serial Dilution": []
+      },
+      "method_tags": [
+        "sample prep",
+        "serial dilution"
+      ],
+      "pipettes": [],
+      "labware": [],
+      "modules": [],
+      "robot": [
+        "OT-2"
+      ],
+      "reagents": [],
+      "parameters": [
+        {
+          "name": "mnt300",
+          "label": "P300-Multi Mount",
+          "type": "dropDown"
+        },
+        {
+          "name": "mnt10",
+          "label": "P10-Multi Mount",
+          "type": "dropDown"
+        },
+        {
+          "name": "nc",
+          "label": "Number of Columns (1-12)",
+          "type": "int"
+        }
+      ],
+      "python_file": "3662e6.ot2.apiv2.py",
+      "custom_labware_count": 0,
+      "hidden": false,
+      "internal_code": "3662e6",
+      "tier": "L1"
+    },
+    {
+      "slug": "37de37",
+      "title": "Cherrypicking DNA and Pooling with CSV input",
+      "description": "This protocol normalizes DNA transfers with diluent via a user imported .csv. Diluent is transferred to all relevent wells, and then DNA is premixed (from up to 3 source plates) and added to the diluent well, post-mixed, and pooled in H12 of the final plate.",
+      "categories": {
+        "Sample Prep": [],
+        "Cherrypicking": []
+      },
+      "method_tags": [
+        "cherrypicking",
+        "sample prep"
+      ],
+      "pipettes": [
+        "P20 Single-Channel Electronic Pipette (GEN2)"
+      ],
+      "labware": [
+        "Corning 384 Well Plate 360 µL",
+        "Brooks Life Sciences 21mL 15-well reservoir",
+        "Opentrons 20uL Tips"
+      ],
+      "modules": [],
+      "robot": [],
+      "reagents": [],
+      "parameters": [
+        {
+          "name": "csv",
+          "label": ".CSV File",
+          "type": "textFile"
+        },
+        {
+          "name": "num_plates",
+          "label": "Number of Plates",
+          "type": "int"
+        },
+        {
+          "name": "p20_mount",
+          "label": "P20 Single Channel Mount",
+          "type": "dropDown"
+        }
+      ],
+      "python_file": "37de37.ot2.apiv2.py",
+      "custom_labware_count": 1,
+      "hidden": false,
+      "internal_code": "37de37",
+      "tier": "L1"
+    },
+    {
+      "slug": "39bbbb",
+      "title": "Anti-PEG ELISA",
+      "description": "This protocol uses a p300 multi-channel and p300 single-channel pipette to transfer up to 57 samples plus serial dilutions of IgG, IgM and IgE standards to 384-well ELISA plates.",
+      "categories": {
+        "Sample Prep": [],
+        "Plate Filling": []
+      },
+      "method_tags": [
+        "plate filling",
+        "sample prep"
+      ],
+      "pipettes": [],
+      "labware": [],
+      "modules": [],
+      "robot": [
+        "OT-2"
+      ],
+      "reagents": [],
+      "parameters": [
+        {
+          "name": "sample_count",
+          "label": "Number of Samples (up to 56)",
+          "type": "int"
+        },
+        {
+          "name": "labware_tube_rack",
+          "label": "Choice of Labware for 24 Tube Rack",
+          "type": "dropDown"
+        },
+        {
+          "name": "labware_sample_plate",
+          "label": "Choice of Labware for Sample Prep Plate",
+          "type": "dropDown"
+        },
+        {
+          "name": "labware_elisa_plate",
+          "label": "Choice of Labware for ELISA Plate",
+          "type": "dropDown"
+        },
+        {
+          "name": "clearance_sample_tube",
+          "label": "Default Well Bottom Clearance for Sample Eppendorfs in 24 Tube Rack (mm)",
+          "type": "float"
+        },
+        {
+          "name": "clearance_sample_prep",
+          "label": "Default Well Bottom Clearance for Sample Prep Plate (mm)",
+          "type": "float"
+        }
+      ],
+      "python_file": "39bbbb.ot2.apiv2.py",
+      "custom_labware_count": 3,
+      "hidden": false,
+      "internal_code": "39bbbb",
+      "tier": "L1"
+    },
+    {
+      "slug": "3b3f1c",
+      "title": "STANDARD MP",
+      "description": "This protocol performs a specific set of genealogy dilutions and transferred to and from 96 deepwell plates and 1.5ml, 15ml, and 50ml. Input for the protocol should be specified in a `.csv` file as shown in [this template](https://opentrons-protocol-library-website.s3.amazonaws.com/custom-README-images/3b3f1c/Alturas+Dilution+Temp+and+OT2+Pipette+Settings+332+312+V4.csv).",
+      "categories": {
+        "Sample Prep": [],
+        "Plate Filling": []
+      },
+      "method_tags": [
+        "plate filling",
+        "sample prep"
+      ],
+      "pipettes": [],
+      "labware": [],
+      "modules": [],
+      "robot": [
+        "OT-2"
+      ],
+      "reagents": [],
+      "parameters": [
+        {
+          "name": "input_csv",
+          "label": "input .csv file",
+          "type": "textFile"
+        },
+        {
+          "name": "test_method",
+          "label": "test method",
+          "type": "str"
+        },
+        {
+          "name": "vol_aliqout",
+          "label": "volume of aliquot (in µl)",
+          "type": "float"
+        },
+        {
+          "name": "vol_mobile_phase",
+          "label": "volume of mobile phase (in µl)",
+          "type": "float"
+        },
+        {
+          "name": "vol_tests",
+          "label": "volume of tests (in µl)",
+          "type": "float"
+        },
+        {
+          "name": "qc_height",
+          "label": "QC (slot 1, well H11) starting height (in mm)",
+          "type": "float"
+        },
+        {
+          "name": "std_height",
+          "label": "STD (slot 1, well H12) starting height (in mm)",
+          "type": "float"
+        },
+        {
+          "name": "air_gap_bool",
+          "label": "air gap",
+          "type": "dropDown"
+        }
+      ],
+      "python_file": "STANDARD_MP_332_312_V13.ot2.apiv2.py",
+      "custom_labware_count": 0,
+      "hidden": false,
+      "internal_code": "3b3f1c",
+      "tier": "L1"
+    },
+    {
+      "slug": "41ece2",
+      "title": "Custom Drug Dilution Assay (version 2)",
+      "description": "**Note**: This protocol is a modified version of this [drug dilution protocol](https://protocols.opentrons.com/protocol/3662e6). For a note on the differences, please see the note on *modifications*.</br> </br> This protocol is an updated version of a drug dilution protocol designed with Protocol Designer.</br> </br> In this protocol, the p300-multi channel pipette (GEN1) is used to transfer 100µL media to all of the columns of the three dilution plates (10uM, 1uM, and 0.1uM). When transferring ",
+      "categories": {
+        "Sample Prep": [],
+        "Serial Dilution": []
+      },
+      "method_tags": [
+        "sample prep",
+        "serial dilution"
+      ],
+      "pipettes": [],
+      "labware": [],
+      "modules": [],
+      "robot": [
+        "OT-2"
+      ],
+      "reagents": [],
+      "parameters": [
+        {
+          "name": "mnt300",
+          "label": "P300-Multi Mount",
+          "type": "dropDown"
+        },
+        {
+          "name": "mnt10",
+          "label": "P10-Multi Mount",
+          "type": "dropDown"
+        },
+        {
+          "name": "cellsmedia",
+          "label": "Add Cells + Media?",
+          "type": "dropDown"
+        },
+        {
+          "name": "np",
+          "label": "Number of Dilution Plates",
+          "type": "dropDown"
+        }
+      ],
+      "python_file": "41ece2.ot2.apiv2.py",
+      "custom_labware_count": 0,
+      "hidden": false,
+      "internal_code": "41ece2",
+      "tier": "L1"
+    },
+    {
+      "slug": "5654c0",
+      "title": "DNA Normalization from .csv",
+      "description": "This protocol performs a custom sample normalization from a source PCR plate to a second PCR plate and a third norm plate. Transfer take place from multiple locations specified below based on the volumes described in the example CSV below:",
+      "categories": {
+        "Sample Prep": [],
+        "Normalization": []
+      },
+      "method_tags": [
+        "normalization",
+        "sample prep"
+      ],
+      "pipettes": [],
+      "labware": [],
+      "modules": [],
+      "robot": [
+        "OT-2"
+      ],
+      "reagents": [],
+      "parameters": [
+        {
+          "name": "dna_csv",
+          "label": "DNA Norm .csv File",
+          "type": "textFile"
+        },
+        {
+          "name": "p300_mount",
+          "label": "P300-single GEN2 mount",
+          "type": "dropDown"
+        },
+        {
+          "name": "p20_mount",
+          "label": "P20-single GEN2 mount",
+          "type": "dropDown"
+        }
+      ],
+      "python_file": "5654c0.ot2.apiv2.py",
+      "custom_labware_count": 1,
+      "hidden": false,
+      "internal_code": "5654c0",
+      "tier": "L1"
+    },
+    {
+      "slug": "62679a",
+      "title": "Compound Dilution",
+      "description": "This protocol performs a compound plating and subsequent serial dilution for up to 36 stock compounds. Each compound's dilution will occupy a column of a 96-well plate, requiring up to 4x 96-well plates for a full 48-compound dilution protocol. Stock compound will be transferred to row A of the dilution plates, and a 6-step dilution will be carried down the plate through rows B-G. Well H of that column will contain pure DMSO. A P300 or P20 pipette is automatically selected for each compound's di",
+      "categories": {
+        "Sample Prep": [],
+        "Serial Dilution": []
+      },
+      "method_tags": [
+        "sample prep",
+        "serial dilution"
+      ],
+      "pipettes": [
+        "Opentrons P300 Single Channel Electronic Pipette (GEN2)",
+        "Opentrons P20 Single Channel Electronic Pipette (GEN2)"
+      ],
+      "labware": [
+        "Greiner Bio-One 96-Wellplate V-Bottom 340µL, #651201",
+        "PerkinElmer 96-Well StorPlate, U-Bottom 450µL, #6008190",
+        "Beckman Coulter 8-Channel Reservoir 19mL or NEST 12-Well Reservoirs 15 mL #999-00076",
+        "Opentrons 200µL Filter Tips",
+        "Opentrons 20µL Filter Tips"
+      ],
+      "modules": [],
+      "robot": [],
+      "reagents": [],
+      "parameters": [
+        {
+          "name": "file_dilution",
+          "label": "input dilution file",
+          "type": "textFile"
+        },
+        {
+          "name": "lw_dmso",
+          "label": "DMSO reservoir type",
+          "type": "dropDown"
+        },
+        {
+          "name": "mount_p300",
+          "label": "P300 single-channel (GEN2) pipette mount",
+          "type": "dropDown"
+        },
+        {
+          "name": "mount_p20",
+          "label": "P20 single-channel (GEN2) pipette mount",
+          "type": "dropDown"
+        },
+        {
+          "name": "tipstrategy_dilution",
+          "label": "tip strategy for dilution",
+          "type": "dropDown"
+        }
+      ],
+      "python_file": "dilution.ot2.apiv2.py",
+      "custom_labware_count": 3,
+      "hidden": false,
+      "internal_code": "62679a",
+      "tier": "L1"
+    },
+    {
+      "slug": "6b51bd",
+      "title": "Custom Dilution From CSV",
+      "description": "This protocol uses a p300 single-channel pipette to distribute custom volumes of buffer from a 12-well reservoir to specified wells of up to three 96-well child plates followed by transfer of well contents from up to three 96-well parent plates to the corresponding well in a child plate (volumes, plate locations and well locations are specified in a csv file uploaded at the time of protocol download).",
+      "categories": {
+        "Sample Prep": [],
+        "Normalization": []
+      },
+      "method_tags": [
+        "normalization",
+        "sample prep"
+      ],
+      "pipettes": [],
+      "labware": [],
+      "modules": [],
+      "robot": [
+        "OT-2"
+      ],
+      "reagents": [],
+      "parameters": [
+        {
+          "name": "mix_asp_rate",
+          "label": "Aspiration Flow Rate for Mixing (use 0.3-3) (for 0.3-3 times the default rate)",
+          "type": "float"
+        },
+        {
+          "name": "mix_disp_rate",
+          "label": "Dispense Flow Rate for Mixing (use 0.3-3) (for 0.3-3 times the default rate)",
+          "type": "float"
+        },
+        {
+          "name": "dead_vol",
+          "label": "Dead Volume in Reservoir Wells (volume in ul at which to move on to next source well)",
+          "type": "float"
+        },
+        {
+          "name": "labware_parent",
+          "label": "Labware for Parent Plate",
+          "type": "dropDown"
+        },
+        {
+          "name": "labware_child",
+          "label": "Labware for Child Plates",
+          "type": "dropDown"
+        },
+        {
+          "name": "labware_reservoir",
+          "label": "Labware for Reservoir",
+          "type": "dropDown"
+        },
+        {
+          "name": "clearance_plate",
+          "label": "Well Bottom Clearance for Buffer Dispenses (mm)",
+          "type": "float"
+        },
+        {
+          "name": "clearance_reservoir",
+          "label": "Minimum Well Bottom Clearance for Reservoir (mm)",
+          "type": "float"
+        },
+        {
+          "name": "clearance_aspirate",
+          "label": "Well Bottom Clearance for Aspiration from Parent Plate (mm)",
+          "type": "float"
+        },
+        {
+          "name": "clearance_dispense",
+          "label": "Well Bottom Clearance for Dispense of Parent Volume to Child Plate (mm)",
+          "type": "float"
+        },
+        {
+          "name": "mix_reps",
+          "label": "Count of Mix Repetitions to Perform (0-5)",
+          "type": "int"
+        },
+        {
+          "name": "uploaded_csv",
+          "label": "Upload CSV Input File (Upload CSV-formatted Excel File-with formatting of data values and file identical to example)",
+          "type": "textFile"
+        }
+      ],
+      "python_file": "6b51bd.ot2.apiv2.py",
+      "custom_labware_count": 4,
+      "hidden": false,
+      "internal_code": "6b51bd",
+      "tier": "L1"
+    },
+    {
+      "slug": "6e2509",
+      "title": "Sample Plate Filling 96 Wells to 384 Well Plate",
+      "description": "This protocol automates the transfer of PCR mix and samples from up to four 96-well elution plates to a 384-well plate. It follows a specific format detailed in the image below. Columns from the 96 well elution plates correspond to specific wells on the 384 well plate. Each elution plate contains a control that is also transferred into the 384-well plate. For runs that have less than four plates, the controls will need to be added manually for the corresponding elution plate.",
+      "categories": {
+        "Sample Prep": [],
+        "Plate Filling": []
+      },
+      "method_tags": [
+        "plate filling",
+        "sample prep"
+      ],
+      "pipettes": [],
+      "labware": [],
+      "modules": [],
+      "robot": [
+        "OT-2"
+      ],
+      "reagents": [],
+      "parameters": [
+        {
+          "name": "m20_mount",
+          "label": "P20 Multichannel Mount",
+          "type": "dropDown"
+        },
+        {
+          "name": "samples",
+          "label": "Sample Number",
+          "type": "int"
+        },
+        {
+          "name": "pcr_mix_vol",
+          "label": "PCR Mix Transfer Volume (uL)",
+          "type": "float"
+        },
+        {
+          "name": "sample_vol",
+          "label": "Sample Transfer Volume (uL)",
+          "type": "float"
+        },
+        {
+          "name": "sample_asp_height",
+          "label": "Sample Aspiration Height Above Bottom of the Well (mm)",
+          "type": "float"
+        },
+        {
+          "name": "sample_disp_height",
+          "label": "Sample Dispensing Height Above Bottom of the Well (mm)",
+          "type": "float"
+        },
+        {
+          "name": "mm_asp_height",
+          "label": "Master Mix Aspiration Height Above Bottom of the Well (mm)",
+          "type": "float"
+        },
+        {
+          "name": "mm_disp_height",
+          "label": "Master Mix Dispensing Height Above Bottom of the Well (mm)",
+          "type": "float"
+        }
+      ],
+      "python_file": "6e2509.ot2.apiv2.py",
+      "custom_labware_count": 4,
+      "hidden": false,
+      "internal_code": "6e2509",
+      "tier": "L1"
+    },
+    {
+      "slug": "6e2509-v2",
+      "title": "Sample Plate Filling 96 Wells to 384 Well Plate v2",
+      "description": "This protocol automates the transfer of PCR mix and samples from up to four 96-well elution plates to a 384-well plate. It follows a specific format detailed in the image below. Columns from the 96 well elution plates correspond to specific wells on the 384 well plate. Each elution plate contains a control that is also transferred into the 384-well plate. For runs that have less than four plates, the controls will need to be added manually for the corresponding elution plate. This protocol is ve",
+      "categories": {
+        "Sample Prep": [],
+        "Plate Filling": []
+      },
+      "method_tags": [
+        "plate filling",
+        "sample prep"
+      ],
+      "pipettes": [],
+      "labware": [],
+      "modules": [],
+      "robot": [
+        "OT-2"
+      ],
+      "reagents": [],
+      "parameters": [
+        {
+          "name": "samples",
+          "label": "Sample Number",
+          "type": "int"
+        }
+      ],
+      "python_file": "6e2509-v2.ot2.apiv2.py",
+      "custom_labware_count": 4,
+      "hidden": false,
+      "internal_code": "6e2509-v2",
+      "tier": "L1"
+    },
+    {
+      "slug": "74750e",
+      "title": "Standard Serial Dilution",
+      "description": "This protocol performs a simple serial dilution (factor 10) within each well plate for a specified number of well plates. 100ul of solution is mixed 12 times in each column before 20ul is transferred to the following column, with the mix-transfer iteration repeated up to the specified number of columns. New tips are granted between each well plate.",
+      "categories": {
+        "Sample Prep": [],
+        "Serial Dilution": []
+      },
+      "method_tags": [
+        "sample prep",
+        "serial dilution"
+      ],
+      "pipettes": [],
+      "labware": [],
+      "modules": [],
+      "robot": [
+        "OT-2"
+      ],
+      "reagents": [],
+      "parameters": [
+        {
+          "name": "num_columns",
+          "label": "Number of Columns With Solution (1-12)",
+          "type": "int"
+        },
+        {
+          "name": "num_plates",
+          "label": "Number of Plates (1-10)",
+          "type": "int"
+        }
+      ],
+      "python_file": "74750e.ot2.apiv2.py",
+      "custom_labware_count": 0,
+      "hidden": false,
+      "internal_code": "74750e",
+      "tier": "L1"
+    },
+    {
+      "slug": "751127",
+      "title": "Cherrypicking",
+      "description": "This is a flexible protocol to accommodate .csv file-specified coordinates. You can upload your coordinates for 2 sources and up to 10 locations specified in the .csv template [here](https://opentrons-protocol-library-website.s3.amazonaws.com/custom-README-images/751127/CSV+Template+-+Sheet1.csv), and upload your edited template below at the parameter `Transfer .csv File`. The template has some pre-defined values, but you will likely need to modify these values to suit your specific labware and ",
+      "categories": {
+        "Sample Prep": [],
+        "Cherrypicking": []
+      },
+      "method_tags": [
+        "cherrypicking",
+        "sample prep"
+      ],
+      "pipettes": [],
+      "labware": [],
+      "modules": [],
+      "robot": [
+        "OT-2"
+      ],
+      "reagents": [],
+      "parameters": [
+        {
+          "name": "transfer_csv",
+          "label": "Transfer .csv File",
+          "type": "textFile"
+        }
+      ],
+      "python_file": "cherrypicking.ot2.apiv2.py",
+      "custom_labware_count": 0,
+      "hidden": false,
+      "internal_code": "751127",
+      "tier": "L1"
+    },
+    {
+      "slug": "76c562",
+      "title": "Cherrypicking and Normalization",
+      "description": "This protocol allows for a robust cherrypicking and normalization in one step.</br> </br> Using two CSV files (Dilutant CSV and Sample CSV), the OT-2 will make all transfers of dilutant using a single tip (transfers based on Dilutant CSV). Then, using a new tip for each transfer, the OT-2 will make each sample transfers according to the Sample CSV (the dilutant and sample will be mixed after dispensing the sample).</br> </br> The two .csv files should be formatted as shown in the example below, ",
+      "categories": {
+        "Sample Prep": [],
+        "Normalization": []
+      },
+      "method_tags": [
+        "normalization",
+        "sample prep"
+      ],
+      "pipettes": [],
+      "labware": [],
+      "modules": [],
+      "robot": [
+        "OT-2"
+      ],
+      "reagents": [],
+      "parameters": [
+        {
+          "name": "left_pipette_type",
+          "label": "left pipette type",
+          "type": "dropDown"
+        },
+        {
+          "name": "right_pipette_type",
+          "label": "right pipette type",
+          "type": "dropDown"
+        },
+        {
+          "name": "left_pip_slot",
+          "label": "left pipette start slot",
+          "type": "str"
+        },
+        {
+          "name": "right_pip_slot",
+          "label": "right pipette start slot",
+          "type": "str"
+        },
+        {
+          "name": "left_pip_tip",
+          "label": "left pipette start tip",
+          "type": "str"
+        },
+        {
+          "name": "right_pip_tip",
+          "label": "right pipette start tip",
+          "type": "str"
+        },
+        {
+          "name": "d_csv1",
+          "label": "diluent 1 CSV",
+          "type": "textFile"
+        },
+        {
+          "name": "s_csv",
+          "label": "sample CSV",
+          "type": "textFile"
+        },
+        {
+          "name": "diluent_scheme",
+          "label": "diluent tip scheme",
+          "type": "dropDown"
+        },
+        {
+          "name": "mix",
+          "label": "mix after final transfer",
+          "type": "dropDown"
+        }
+      ],
+      "python_file": "76c562.ot2.apiv2.py",
+      "custom_labware_count": 0,
+      "hidden": false,
+      "internal_code": "76c562",
+      "tier": "L1"
+    },
+    {
+      "slug": "7aad4e",
+      "title": "Cell Culture Cherry Picking with CSV File",
+      "description": "This protocol preps up to two 96 well plates with cell culture media from up to 6 source 384 well plates. The protocol will automatically parse through the csv to determine how many plates are on the deck, giving the user the ability to have flexibility in run size, however plates should still be placed in order of the deck slot numbers. Culture is pre-mixed with an airgap before transfer.",
+      "categories": {
+        "Sample Prep": [],
+        "Cherry Picking": []
+      },
+      "method_tags": [
+        "cherry picking",
+        "sample prep"
+      ],
+      "pipettes": [
+        "Opentrons P300 Single-Channel Pipette"
+      ],
+      "labware": [
+        "Corning 96 well plate, flat",
+        "Perkin Elmer 110ul 384 well plate, flat",
+        "Opentrons 200ul Filter tips"
+      ],
+      "modules": [],
+      "robot": [],
+      "reagents": [],
+      "parameters": [
+        {
+          "name": "csv",
+          "label": ".CSV File",
+          "type": "textFile"
+        },
+        {
+          "name": "p300_mount",
+          "label": "P300 Single-Channel Mount",
+          "type": "dropDown"
+        }
+      ],
+      "python_file": "7aad4e.ot2.apiv2.py",
+      "custom_labware_count": 2,
+      "hidden": false,
+      "internal_code": "7aad4e",
+      "tier": "L1"
+    },
+    {
+      "slug": "7f9595",
+      "title": "Sample Serial Dilution (1:10)",
+      "description": "This protocol automates the serial dilution of two separate sample columns and also adds PBS buffer to the necessary wells. It will perform additional mixing steps before and after the addition of reagents. Each transfer performs a blow out in the destination well.",
+      "categories": {
+        "Sample Prep": [],
+        "Serial Dilution": []
+      },
+      "method_tags": [
+        "sample prep",
+        "serial dilution"
+      ],
+      "pipettes": [
+        "P300 GEN2 Multi-Channel Pipette"
+      ],
+      "labware": [
+        "Corning 96 Well Plate 360 µL Flat",
+        "NEST 12-Well Reservoirs, 15 mL",
+        "Opentrons 300uL Tips"
+      ],
+      "modules": [],
+      "robot": [],
+      "reagents": [],
+      "parameters": [
+        {
+          "name": "m300_mount",
+          "label": "P300 Multichannel GEN2 Mount Position",
+          "type": "dropDown"
+        },
+        {
+          "name": "reservoir_type",
+          "label": "Reservoir Type",
+          "type": "dropDown"
+        },
+        {
+          "name": "blowout_height",
+          "label": "Blowout Height from Well Bottom (mm)",
+          "type": "float"
+        },
+        {
+          "name": "asp_rate",
+          "label": "Mix Aspiration Flow Rate (uL/s)",
+          "type": "float"
+        },
+        {
+          "name": "disp_rate",
+          "label": "Mix Dispensing Flow Rate (uL/s)",
+          "type": "float"
+        }
+      ],
+      "python_file": "7f9595.ot2.apiv2.py",
+      "custom_labware_count": 0,
+      "hidden": false,
+      "internal_code": "7f9595",
+      "tier": "L1"
+    },
+    {
+      "slug": "0479ad-cp",
+      "title": "Normalization from Plates with a Single-Channel Pipette",
+      "description": "This protocol performs normalization on up to 96 samples in PCR plates using Opentrons single-channel pipettes. The `Volumes CSV` download parameter should be formatted as the following:",
+      "categories": {
+        "Sample Prep": [],
+        "Normalization": []
+      },
+      "method_tags": [
+        "normalization",
+        "sample prep"
+      ],
+      "pipettes": [
+        "Opentrons P20 Single Channel Electronic Pipette (GEN2)",
+        "Opentrons P300 Single Channel Electronic Pipette (GEN2)"
+      ],
+      "labware": [
+        "thermofisher 96 well pcr plate semi-skirted 200 uL + plastic adapter",
+        "thermofisher 96-well PCR Plate semi-skirted 200 uL + aluminum block",
+        "USA Scientific 12 Well Reservoir 22 mL #1061-8150",
+        "Opentrons 96 Filter Tip Rack 200 µL",
+        "Opentrons 96 Filter Tip Rack 20 µL"
+      ],
+      "modules": [
+        "Opentrons Temperature Module (GEN2)"
+      ],
+      "robot": [],
+      "reagents": [],
+      "parameters": [
+        {
+          "name": "volumes_csv",
+          "label": "Volumes CSV",
+          "type": "textFile"
+        },
+        {
+          "name": "p300_mount",
+          "label": "P300 single-channel GEN2 pipette mount",
+          "type": "dropDown"
+        },
+        {
+          "name": "p20_mount",
+          "label": "P20 single-channel GEN2 pipette Mount",
+          "type": "dropDown"
+        },
+        {
+          "name": "plate_type",
+          "label": "Plate Type",
+          "type": "dropDown"
+        },
+        {
+          "name": "res_type",
+          "label": "Reservoir Type",
+          "type": "dropDown"
+        },
+        {
+          "name": "filter_tip",
+          "label": "Use Filter Tips?",
+          "type": "dropDown"
+        },
+        {
+          "name": "tip_reuse",
+          "label": "Tip Usage Strategy",
+          "type": "dropDown"
+        }
+      ],
+      "python_file": "normalization.ot2.apiv2.py",
+      "custom_labware_count": 2,
+      "hidden": false,
+      "internal_code": "0479ad-cp",
+      "tier": "L1"
+    },
+    {
+      "slug": "052d03",
+      "title": "Dilution and Amplification",
+      "description": "This protocol performs a custom dilution and PCR protocol on the Opentrons Thermocycler GEN2 Module. The number of samples will be automatically calculated from the input cherrypicking .csv list, which should be formatted as the following example **excluding the positive control**:",
+      "categories": {
+        "PCR": []
+      },
+      "method_tags": [
+        "pcr"
+      ],
+      "pipettes": [
+        "Opentrons P300 8 Channel Electronic Pipette (GEN2)",
+        "Opentrons P20 8 Channel Electronic Pipette (GEN2)"
+      ],
+      "labware": [
+        "NEST 96 Well Plate 100 µL PCR Full Skirt #402501",
+        "NEST 12 Well Reservoir 15 mL #360102",
+        "Opentrons 96 Tip Rack 300 µL",
+        "Opentrons 24 Tube Rack with Eppendorf 1.5 mL Safe-Lock Snapcap",
+        "Opentrons 96 Tip Rack 20 µL"
+      ],
+      "modules": [
+        "Opentrons Thermocycler Module"
+      ],
+      "robot": [],
+      "reagents": [],
+      "parameters": [
+        {
+          "name": "num_samples",
+          "label": "number of samples (1-24, including all controls)",
+          "type": "int"
+        },
+        {
+          "name": "cp_list",
+          "label": "cherrypicking input list",
+          "type": "textFile"
+        },
+        {
+          "name": "type_molecule",
+          "label": "molecule type",
+          "type": "dropDown"
+        },
+        {
+          "name": "type_sample_rack",
+          "label": "sample rack type",
+          "type": "dropDown"
+        }
+      ],
+      "python_file": "tc.ot2.apiv2.py",
+      "custom_labware_count": 1,
+      "hidden": false,
+      "internal_code": "052d03",
+      "tier": "L1"
+    },
+    {
+      "slug": "07c65a",
+      "title": "Sample Dilution with CSV Input",
+      "description": "This protocol dilutes sample with water at 4C, mixing with the transfer volume for 3 repetitions upon dispensing. The multi-channel pipette will be used as a single for this protocol.",
+      "categories": {
+        "Sample Prep": [],
+        "Plate Filling": []
+      },
+      "method_tags": [
+        "plate filling",
+        "sample prep"
+      ],
+      "pipettes": [
+        "Opentrons P20 8 Channel Electronic Pipette (GEN2)"
+      ],
+      "labware": [
+        "Armadillo 96 Well Plate 200 µL PCR Full Skirt #AB2396",
+        "Opentrons 24 Well Aluminum Block with NEST 2 mL Snapcap",
+        "Opentrons 96 Tip Rack 20 µL"
+      ],
+      "modules": [
+        "Opentrons Temperature Module (GEN2)"
+      ],
+      "robot": [],
+      "reagents": [],
+      "parameters": [
+        {
+          "name": "csv_samp",
+          "label": ".CSV File",
+          "type": "textFile"
+        },
+        {
+          "name": "p20_mount",
+          "label": "P20 Multi-Channel Mount",
+          "type": "dropDown"
+        }
+      ],
+      "python_file": "07c65a.ot2.apiv2.py",
+      "custom_labware_count": 1,
+      "hidden": false,
+      "internal_code": "07c65a",
+      "tier": "L1"
+    },
+    {
+      "slug": "0ca318-pt2",
+      "title": "Magnetic Bead Purification + PCR",
+      "description": "The protocol begins with a bead-based cleanup. Note: each well for the ethanol in the reservoir is per 24 samples. That is, for 48 samples, load two wells of ethanol. For 48-72 samples, 3 wells of ethanol, so on and so forth. The ethanol should be distributed evenly among all wells (volume is the same in each well). The protocol will automatically pause when the tips are depleted, asking the user to resume the protocol.",
+      "categories": {
+        "PCR": []
+      },
+      "method_tags": [
+        "pcr"
+      ],
+      "pipettes": [
+        "Opentrons P300 Single Channel Electronic Pipette (GEN2)",
+        "Opentrons P300 8 Channel Electronic Pipette (GEN2)"
+      ],
+      "labware": [
+        "Abgene™ 96 Well 0.8mL Thermo Scientific #AB0859",
+        "NEST 12 Well Reservoir 15 mL #360102",
+        "NEST 96 Well Plate 100 µL PCR Full Skirt #402501",
+        "Opentrons 96 Filter Tip Rack 200 µL"
+      ],
+      "modules": [
+        "Opentrons Magnetic Module (GEN2)"
+      ],
+      "robot": [],
+      "reagents": [],
+      "parameters": [
+        {
+          "name": "num_samp",
+          "label": "Number of Samples (1-96)",
+          "type": "int"
+        },
+        {
+          "name": "mag_height",
+          "label": "Magnetic Module Engage Height",
+          "type": "int"
+        },
+        {
+          "name": "p300_mount",
+          "label": "P300 Single-Channel Mount",
+          "type": "dropDown"
+        },
+        {
+          "name": "m300_mount",
+          "label": "P300 Multi-Channel Mount",
+          "type": "dropDown"
+        }
+      ],
+      "python_file": "0ca318-pt2.ot2.apiv2.py",
+      "custom_labware_count": 1,
+      "hidden": false,
+      "internal_code": "0ca318",
+      "tier": "L1"
+    },
+    {
+      "slug": "0dda91",
+      "title": "16S Library pooling",
+      "description": "This protocol uses a .csv file to pool a calculated volume of each sample from a PCR plate into one or more 1.5 mL snapcap tube(s).",
+      "categories": {
+        "Sample Prep": [],
+        "Pooling": []
+      },
+      "method_tags": [
+        "pooling",
+        "sample prep"
+      ],
+      "pipettes": [
+        "P20 GEN2 Single Channel Pipette"
+      ],
+      "labware": [
+        "OT-2 Filter Tips, 20µL",
+        "Opentrons Tough 0.2 mL 96-Well PCR Plate, Full Skirt",
+        "4-in-1 Tube Rack Set",
+        "Fisherbrand 2.0 mL Microcentrifuge Tubes with Locking Snap Cap"
+      ],
+      "modules": [
+        "Magnetic Module (GEN2) - Not used in protocol but loaded so module can remain on the deck"
+      ],
+      "robot": [],
+      "reagents": [],
+      "parameters": [
+        {
+          "name": "input_csv",
+          "label": "input .csv file",
+          "type": "textFile"
+        },
+        {
+          "name": "p20_mount",
+          "label": "P20 Single GEN2 Mount",
+          "type": "dropDown"
+        }
+      ],
+      "python_file": "0dda91.ot2.apiv2.py",
+      "custom_labware_count": 0,
+      "hidden": false,
+      "internal_code": "0dda91",
+      "tier": "L1"
+    }
+  ]
+}

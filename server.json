@@ -1,0 +1,10 @@
+{
+  "name": "opentrons-lab",
+  "command": "node",
+  "args": ["servers/opentrons-mcp/index.js"],
+  "env": {
+    "OPENTRONS_PLUGIN_ROOT": ".",
+    "OPENTRONS_PROTOCOL_LIBRARY_PATH": "bundled-library",
+    "PLUGIN_DATA": ".plugin-data"
+  }
+}

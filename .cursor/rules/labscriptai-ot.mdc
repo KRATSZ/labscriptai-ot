@@ -1,0 +1,10 @@
+---
+description: LabscriptAI OT safety and workflow rules
+alwaysApply: false
+---
+
+# LabscriptAI OT
+
+Use the bundled `opentrons-lab` MCP server and `skills/opentrons-*` skills for Opentrons protocol authoring, simulation, and safe runtime checks.
+
+Live robot actions are opt-in. Run simulation before unattended live execution, and treat vision as observation-only.

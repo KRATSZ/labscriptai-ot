@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "opentrons-lab": {
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/servers/opentrons-mcp/index.js"],
+      "env": {
+        "OPENTRONS_PLUGIN_ROOT": "${CLAUDE_PLUGIN_ROOT}",
+        "OPENTRONS_PROTOCOL_LIBRARY_PATH": "${CLAUDE_PLUGIN_ROOT}/bundled-library",
+        "PLUGIN_DATA": "${CLAUDE_PLUGIN_DATA}"
+      }
+    }
+  }
+}

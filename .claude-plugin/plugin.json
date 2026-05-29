@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "labscriptai-ot",
+  "displayName": "LabscriptAI OT",
+  "version": "0.1.0",
+  "description": "Single-package LabscriptAI Opentrons plugin with MCP, skills, safety policy, and curated protocols.",
+  "author": {
+    "name": "gaoyuan"
+  },
+  "homepage": "https://github.com/KRATSZ/labscriptai-ot",
+  "repository": "https://github.com/KRATSZ/labscriptai-ot",
+  "license": "MIT",
+  "keywords": ["opentrons", "labscriptai", "mcp", "robotics", "protocol-authoring"],
+  "defaultEnabled": true,
+  "skills": "./skills/",
+  "mcpServers": "./.claude-plugin/mcp.json"
+}

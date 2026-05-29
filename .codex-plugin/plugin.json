@@ -1,0 +1,28 @@
+{
+  "name": "labscriptai-ot",
+  "version": "0.1.0",
+  "description": "LabscriptAI Opentrons plugin bundle for Codex-style agents.",
+  "author": {
+    "name": "gaoyuan"
+  },
+  "homepage": "https://github.com/KRATSZ/labscriptai-ot",
+  "repository": "https://github.com/KRATSZ/labscriptai-ot",
+  "license": "MIT",
+  "keywords": ["opentrons", "labscriptai", "mcp", "codex", "robotics"],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "policy": "./policy/",
+  "interface": {
+    "displayName": "LabscriptAI OT",
+    "shortDescription": "Opentrons simulation-first authoring and safe MCP runtime",
+    "longDescription": "LabscriptAI OT bundles seven Opentrons skills, a local MCP server, safety policy, and a small curated protocol library. Live robot actions stay opt-in and simulation remains the gate before unattended execution.",
+    "developerName": "gaoyuan",
+    "category": "Coding",
+    "capabilities": ["Interactive", "Read", "Write"],
+    "defaultPrompt": [
+      "Author and simulate an Opentrons Flex protocol",
+      "Check whether this Opentrons protocol is safe to run",
+      "Review an Opentrons deck intent before coding"
+    ]
+  }
+}
