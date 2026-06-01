@@ -28,9 +28,9 @@ For questions, collaboration, bug reports, or research use, contact:
 gaoyuanbio@qq.com
 ```
 
-## Citation
+## Citation Requirement
 
-If you use this plugin, the LabscriptAI workflow, or the bundled agent design in research, please cite the LabscriptAI bioRxiv preprint:
+Use of this plugin, the LabscriptAI workflow, the bundled agent design, or substantial derived work requires citation of the LabscriptAI bioRxiv preprint under the repository license:
 
 ```bibtex
 @article{gao2025labscriptai,
@@ -43,6 +43,12 @@ If you use this plugin, the LabscriptAI workflow, or the bundled agent design in
 ```
 
 Paper link: https://doi.org/10.1101/2025.09.30.679666
+
+## License
+
+This repository uses the LabscriptAI Research Citation License v1.0, not MIT. The license permits research, education, evaluation, internal development, and non-commercial use, but citation is mandatory. Commercial use, paid hosted services, sublicensing, or removing the citation requirement requires written permission from `gaoyuanbio@qq.com`.
+
+This is a stricter citation-required research license. It should not be relabeled as MIT in downstream plugin metadata, package registries, or redistributed archives.
 
 ## Install
 

@@ -6,6 +6,16 @@ This plugin is packaged as one bundle with MCP, skills, safety policy, and the c
 
 Target public repository: `https://github.com/KRATSZ/labscriptai-ot`
 
+## License Rule
+
+This release is not MIT licensed. It uses the LabscriptAI Research Citation License v1.0. Keep the `LICENSE` and `CITATION.cff` files in every archive, and do not relabel the plugin as MIT in Cursor, Claude Code, Codex, npm, or marketplace metadata.
+
+Public use, derivative work, publications, reports, benchmarks, demos, repositories, and AI tool/plugin integrations must cite the LabscriptAI bioRxiv preprint:
+
+```text
+Gao, Yuan et al. Autonomous Liquid-handling Robotics Scripting for Accessible and Responsible Protein Engineering. bioRxiv, 2025. DOI: 10.1101/2025.09.30.679666
+```
+
 ## Build Release Archives
 
 From the repository root:

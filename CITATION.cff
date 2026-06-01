@@ -1,5 +1,5 @@
 cff-version: 1.2.0
-message: "If you use LabscriptAI OT, please cite the LabscriptAI bioRxiv preprint."
+message: "Use of LabscriptAI OT requires citation of the LabscriptAI bioRxiv preprint under the repository license."
 title: "LabscriptAI OT"
 authors:
   - family-names: "Gao"
@@ -7,7 +7,7 @@ authors:
 email: "gaoyuanbio@qq.com"
 version: "0.1.0"
 repository-code: "https://github.com/KRATSZ/labscriptai-ot"
-license: "MIT"
+license: "LabscriptAI Research Citation License v1.0"
 preferred-citation:
   type: article
   title: "Autonomous Liquid-handling Robotics Scripting for Accessible and Responsible Protein Engineering"

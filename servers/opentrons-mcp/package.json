@@ -18,7 +18,7 @@
     "simulation",
     "claude-code"
   ],
-  "license": "MIT",
+  "license": "SEE LICENSE IN LICENSE",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.17.5"
   },

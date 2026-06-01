@@ -10,7 +10,7 @@
   "publisher": "gaoyuan",
   "homepage": "https://github.com/KRATSZ/labscriptai-ot",
   "repository": "https://github.com/KRATSZ/labscriptai-ot",
-  "license": "MIT",
+  "license": "SEE LICENSE IN LICENSE",
   "keywords": ["opentrons", "labscriptai", "mcp", "cursor", "protocol-authoring"],
   "mcp": "../mcp.json",
   "skills": "../skills",

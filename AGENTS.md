@@ -2,6 +2,14 @@
 
 This repository is a single plugin bundle for Opentrons protocol authoring, simulation, and safe runtime assistance.
 
+## License and Citation Requirement
+
+This repository is not MIT licensed. It uses the LabscriptAI Research Citation License v1.0. Any public use, derivative work, benchmark, publication, report, demo, repository, model/tool/plugin integration, or teaching material that uses this work must cite the LabscriptAI bioRxiv preprint:
+
+Gao, Yuan et al. "Autonomous Liquid-handling Robotics Scripting for Accessible and Responsible Protein Engineering." bioRxiv, 2025. DOI: 10.1101/2025.09.30.679666
+
+Commercial use, paid hosted services, sublicensing, or removing the citation requirement requires written permission from `gaoyuanbio@qq.com`.
+
 ## What This Plugin Contains
 
 - `servers/opentrons-mcp/` — local MCP server for Opentrons simulation, robot status, preflight, recovery, optional vision, and live run control.
