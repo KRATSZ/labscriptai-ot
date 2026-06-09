@@ -21,8 +21,15 @@
   "interface": {
     "displayName": "LabscriptAI OT",
     "shortDescription": "Opentrons simulation-first authoring and safe MCP runtime",
+    "longDescription": "LabscriptAI OT bundles seven Opentrons skills, a local MCP server, safety policy, and a small curated protocol library. Live robot actions stay opt-in and simulation remains the gate before unattended execution.",
     "developerName": "gaoyuan",
     "category": "Coding",
-    "capabilities": ["Read", "Write", "Interactive"]
+    "capabilities": ["Read", "Write", "Interactive"],
+    "defaultPrompt": [
+      "Help me design a Flex liquid-handling experiment from scratch — review intent first, then write and simulate the protocol",
+      "Check whether this Opentrons protocol can pass local simulation safely",
+      "What state is the robot in? Run safety checks before any recovery action"
+    ],
+    "postInstallMessage": "LabscriptAI OT installed. Run node scripts/verify-setup.mjs from the plugin root, then read docs/GETTING_STARTED.md for platform setup and your first command."
   }
 }

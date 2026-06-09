@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -150,6 +151,14 @@ else:
 """.strip()
 
 
+def _subprocess_env() -> dict[str, str]:
+    """Force UTF-8 stdout/stderr so simulate runlogs with µL do not fail on Windows GBK."""
+    env = os.environ.copy()
+    env["PYTHONIOENCODING"] = "utf-8"
+    env["PYTHONUTF8"] = "1"
+    return env
+
+
 def probe_module(
     python_executable: str,
     paths: WorkspacePaths,
@@ -161,7 +170,7 @@ def probe_module(
     if use_source_layout:
         args.extend([str(paths.api_src), str(paths.shared_data_python)])
 
-    result = subprocess.run(args, capture_output=True, text=True, check=False)
+    result = subprocess.run(args, capture_output=True, text=True, check=False, env=_subprocess_env())
     payload = result.stdout.strip() or result.stderr.strip()
     if not payload:
         return {
@@ -200,7 +209,7 @@ def run_module(
     if use_source_layout:
         args.extend([str(paths.api_src), str(paths.shared_data_python)])
     args.extend(forwarded_argv)
-    return subprocess.run(args, capture_output=True, text=True, check=False)
+    return subprocess.run(args, capture_output=True, text=True, check=False, env=_subprocess_env())
 
 
 def build_result(

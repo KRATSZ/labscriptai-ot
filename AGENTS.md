@@ -10,6 +10,14 @@ Gao, Yuan et al. "Autonomous Liquid-handling Robotics Scripting for Accessible a
 
 Commercial use, paid hosted services, sublicensing, or removing the citation requirement requires written permission from `gaoyuanbio@qq.com`.
 
+## User and operator docs
+
+- [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) — install, verify, platform setup, first commands
+- [docs/GLOSSARY.md](docs/GLOSSARY.md) — deck truth, simulate gate, reconcile_state, tip policy, etc.
+- [docs/MCP_TOOLS.md](docs/MCP_TOOLS.md) — MCP tool reference by tier (L0–L4)
+- [policy/workflows.md](policy/workflows.md) — canonical workflow sequences (single source of truth)
+- [policy/output-contract.md](policy/output-contract.md) — unified status JSON at phase boundaries
+
 ## What This Plugin Contains
 
 - `servers/opentrons-mcp/` — local MCP server for Opentrons simulation, robot status, preflight, recovery, optional vision, and live run control.
@@ -17,9 +25,25 @@ Commercial use, paid hosted services, sublicensing, or removing the citation req
 - `policy/` and `rules/` — safety and workflow rules.
 - `bundled-library/` — small curated protocol library. Use `OPENTRONS_PROTOCOL_LIBRARY_PATH` for the full external catalog.
 
+## Default entry and skill routing
+
+For **new experiments**, **full end-to-end flows**, **robot status / recovery**, and **resume after restart**, start with **`opentrons-experiment-run`**. It orchestrates the phase machine from intent through the simulation gate to opt-in live execution.
+
+Route to individual skills when the user intent is narrow:
+
+| User intent | Skill |
+|-------------|-------|
+| New experiment / full workflow | `opentrons-experiment-run` |
+| Intent review only | `opentrons-experiment-intent-review` |
+| Write or edit protocol code | `opentrons-protocol-author` |
+| Simulation failed | `opentrons-simulation-repair` |
+| Find reference protocol | `opentrons-protocol-library` |
+| Direct robot HTTP (LAN) | `opentrons-robot-lan` |
+| Validate existing protocol only | `opentrons-protocol-verify` |
+
 ## Default Behavior
 
-1. For new experiments, start with intent review before writing protocol code.
+1. For new experiments, use `opentrons-experiment-run` (which starts with intent review when needed).
 2. Before any unattended live execution, run local simulation.
 3. Treat live robot actions as opt-in only.
 4. Treat vision as observation-only; never use it as committed deck truth.
@@ -31,9 +55,10 @@ From repository root:
 
 ```bash
 bash install-labscriptai-ot.sh
-cd servers/opentrons-mcp
-OPENTRONS_PLUGIN_ROOT="$(cd ../.. && pwd)" npm test
+node scripts/verify-setup.mjs
 ```
+
+Or on Windows: `.\install-labscriptai-ot.ps1`
 
 ## Platform Files
 

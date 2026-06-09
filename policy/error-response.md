@@ -98,7 +98,7 @@ These rules are implemented in `servers/opentrons-mcp/` and covered by tests und
 
 ## See also
 
-- Live gating and staged validation: [live-readiness-runbook.md](../runbooks/live-readiness-runbook.md)
-- Restart/reconcile operator flow: [restart-review-runbook.md](../runbooks/restart-review-runbook.md)
+- Simulation failures: [simulation-fails.md](../docs/runbooks/simulation-fails.md)
+- MCP startup: [mcp-wont-start.md](../docs/runbooks/mcp-wont-start.md)
 - Workflow sequences: [workflows.md](workflows.md)
 - Safety policy: [safety-policy.md](safety-policy.md)

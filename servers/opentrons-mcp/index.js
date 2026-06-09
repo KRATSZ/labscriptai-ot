@@ -56,6 +56,10 @@ import {
   shouldPreflightCloseHeaterShakerLatch,
   shouldRetryHeaterShakerAfterLatchError,
 } from "./lib/execution.js";
+import {
+  buildProtocolRunCreateBody,
+  resolveRunLabwareOffsets,
+} from "./lib/labware-offsets.js";
 import { parseSimulationLog, runDoctorTool, runSimulationTool } from "./lib/simulation.js";
 import { buildProbeWellsProtocol, extractProbeResultsFromCommands } from "./lib/probe.js";
 import {
@@ -312,7 +316,8 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: "create_run_context",
-    description: "Create either a protocol run context or a maintenance-run context before enqueueing commands.",
+    description:
+      "Create either a protocol run context or a maintenance-run context before enqueueing commands. Automatically attaches stored labware offsets unless labware_offsets is provided.",
     inputSchema: {
       type: "object",
       properties: {
@@ -806,7 +811,7 @@ const TOOL_DEFINITIONS = [
   {
     name: "run_protocol",
     description:
-      "Upload a protocol, create a run, optionally play it, then poll until the run reaches a terminal or intervention-required state.",
+      "Upload a protocol, create a run (auto-attaching stored labware offsets), optionally play it, then poll until the run reaches a terminal or intervention-required state.",
     inputSchema: {
       type: "object",
       properties: {
@@ -818,6 +823,12 @@ const TOOL_DEFINITIONS = [
         },
         key: { type: "string" },
         run_time_parameters: { type: "object" },
+        labware_offsets: {
+          type: "array",
+          items: { type: "object" },
+          description:
+            "Optional explicit offsets. When omitted, fetches and dedupes stored robot offsets.",
+        },
         auto_play: { type: "boolean", default: true },
         timeout_ms: { type: "integer", default: 1800000 },
         poll_interval_ms: { type: "integer", default: 1000 },
@@ -897,13 +908,20 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: "create_run",
-    description: "Create a run for a protocol already on the robot.",
+    description:
+      "Create a run for a protocol already on the robot. Automatically attaches stored labware offsets from the robot unless labware_offsets is provided.",
     inputSchema: {
       type: "object",
       properties: {
         robot_ip: { type: "string", description: "Robot IP or full base URL" },
         protocol_id: { type: "string", description: "Uploaded protocol ID" },
         run_time_parameters: { type: "object" },
+        labware_offsets: {
+          type: "array",
+          items: { type: "object" },
+          description:
+            "Optional explicit offsets. When omitted, fetches and dedupes stored robot offsets.",
+        },
         page_length: { type: "integer", default: 10 },
       },
       required: ["protocol_id"],
@@ -2796,11 +2814,12 @@ const TOOL_HANDLERS = {
   },
 
   async create_run_context(args) {
+    const labwareOffsets = await resolveRunLabwareOffsets(args.robot_ip, args.labware_offsets);
     const request = buildCreateRunContextRequest({
       contextType: args.context_type,
       protocolId: args.protocol_id,
       runTimeParameters: args.run_time_parameters,
-      labwareOffsets: args.labware_offsets,
+      labwareOffsets,
     });
     const created = await requestRobotJson("POST", args.robot_ip, request.path, {
       headers: { "Content-Type": "application/json" },
@@ -3827,16 +3846,16 @@ const TOOL_HANDLERS = {
         throw new Error("Protocol upload did not return a protocol id.");
       }
 
+      const labwareOffsets = await resolveRunLabwareOffsets(args.robot_ip, args.labware_offsets);
       const createdRun = await requestRobotJson("POST", args.robot_ip, "/runs", {
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          data: {
+        body: JSON.stringify(
+          buildProtocolRunCreateBody({
             protocolId,
-            ...(args.run_time_parameters
-              ? { runTimeParameterValues: args.run_time_parameters }
-              : {}),
-          },
-        }),
+            runTimeParameters: args.run_time_parameters,
+            labwareOffsets,
+          }),
+        ),
       });
       const runId = readNested(unwrapData(createdRun) || {}, [["id"]], null);
       if (!runId) {
@@ -4105,16 +4124,16 @@ const TOOL_HANDLERS = {
   },
 
   async create_run(args) {
+    const labwareOffsets = await resolveRunLabwareOffsets(args.robot_ip, args.labware_offsets);
     const run = await requestRobotJson("POST", args.robot_ip, "/runs", {
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        data: {
+      body: JSON.stringify(
+        buildProtocolRunCreateBody({
           protocolId: args.protocol_id,
-          ...(args.run_time_parameters
-            ? { runTimeParameterValues: args.run_time_parameters }
-            : {}),
-        },
-      }),
+          runTimeParameters: args.run_time_parameters,
+          labwareOffsets,
+        }),
+      ),
     });
     const runId = run?.data?.id || run?.id || null;
     const snapshot = await collectRunExecutionSnapshot({

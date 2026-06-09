@@ -21,9 +21,10 @@
     "category": "Coding",
     "capabilities": ["Interactive", "Read", "Write"],
     "defaultPrompt": [
-      "Author and simulate an Opentrons Flex protocol",
-      "Check whether this Opentrons protocol is safe to run",
-      "Review an Opentrons deck intent before coding"
-    ]
+      "Help me design a Flex liquid-handling experiment from scratch — review intent first, then write and simulate the protocol",
+      "Check whether this Opentrons protocol can pass local simulation safely",
+      "What state is the robot in? Run safety checks before any recovery action"
+    ],
+    "postInstallMessage": "LabscriptAI OT installed. Run node scripts/verify-setup.mjs from the plugin root, then read docs/GETTING_STARTED.md for platform setup and your first command."
   }
 }

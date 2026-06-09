@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>LabscriptAI OT 插件改进方案</title>
+  <style>
+    :root {
+      --bg: #f6f7f9;
+      --surface: #ffffff;
+      --text: #1a1d23;
+      --muted: #5c6370;
+      --border: #e2e5eb;
+      --accent: #1a5fb4;
+      --accent-soft: #e8f0fa;
+      --green: #2e7d32;
+      --green-soft: #e8f5e9;
+      --amber: #b45309;
+      --amber-soft: #fef3c7;
+      --red: #c62828;
+      --red-soft: #ffebee;
+      --mono: "SF Mono", "Cascadia Code", Consolas, monospace;
+      --sans: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: var(--sans);
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.65;
+      font-size: 15px;
+    }
+    .page { max-width: 1080px; margin: 0 auto; padding: 32px 24px 64px; }
+    header {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 28px 32px;
+      margin-bottom: 24px;
+    }
+    header h1 { font-size: 1.75rem; font-weight: 650; letter-spacing: -0.02em; }
+    header .meta { color: var(--muted); margin-top: 8px; font-size: 0.92rem; }
+    header .meta span { margin-right: 16px; }
+    .tag-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+    .tag {
+      font-size: 0.78rem;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-weight: 500;
+    }
+    nav.toc {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px 24px;
+      margin-bottom: 24px;
+    }
+    nav.toc h2 { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-bottom: 12px; }
+    nav.toc ol { padding-left: 20px; }
+    nav.toc li { margin: 6px 0; }
+    nav.toc a { color: var(--accent); text-decoration: none; }
+    nav.toc a:hover { text-decoration: underline; }
+    section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 28px 32px;
+      margin-bottom: 20px;
+    }
+    section h2 {
+      font-size: 1.25rem;
+      font-weight: 650;
+      margin-bottom: 16px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--border);
+    }
+    section h3 { font-size: 1.05rem; font-weight: 600; margin: 20px 0 10px; }
+    section h4 { font-size: 0.95rem; font-weight: 600; margin: 14px 0 8px; color: var(--muted); }
+    p { margin-bottom: 12px; }
+    ul, ol { margin: 0 0 12px 20px; }
+    li { margin: 4px 0; }
+    .callout {
+      border-left: 4px solid var(--accent);
+      background: var(--accent-soft);
+      padding: 14px 18px;
+      border-radius: 0 8px 8px 0;
+      margin: 16px 0;
+      font-size: 0.94rem;
+    }
+    .callout.warn { border-color: var(--amber); background: var(--amber-soft); }
+    .callout.ok { border-color: var(--green); background: var(--green-soft); }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 16px 0; }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin: 16px 0; }
+    @media (max-width: 800px) {
+      .grid-2, .grid-3 { grid-template-columns: 1fr; }
+    }
+    .card {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px 18px;
+      background: var(--bg);
+    }
+    .card h4 { margin-top: 0; color: var(--text); }
+    .card .label {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+    .priority-p0 { border-left: 4px solid var(--red); }
+    .priority-p1 { border-left: 4px solid var(--amber); }
+    .priority-p2 { border-left: 4px solid var(--accent); }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.9rem;
+      margin: 14px 0;
+    }
+    th, td {
+      border: 1px solid var(--border);
+      padding: 10px 12px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th { background: var(--bg); font-weight: 600; }
+    code, .mono { font-family: var(--mono); font-size: 0.86em; background: var(--bg); padding: 2px 6px; border-radius: 4px; }
+    pre {
+      background: #1e2228;
+      color: #e6edf3;
+      padding: 16px 18px;
+      border-radius: 8px;
+      overflow-x: auto;
+      font-family: var(--mono);
+      font-size: 0.82rem;
+      line-height: 1.5;
+      margin: 12px 0;
+    }
+    .flow {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px;
+      margin: 14px 0;
+      font-size: 0.88rem;
+    }
+    .flow .step {
+      background: var(--accent-soft);
+      color: var(--accent);
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-weight: 500;
+      white-space: nowrap;
+    }
+    .flow .arrow { color: var(--muted); }
+    .badge {
+      display: inline-block;
+      font-size: 0.72rem;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 4px;
+      margin-right: 6px;
+    }
+    .badge-p0 { background: var(--red-soft); color: var(--red); }
+    .badge-p1 { background: var(--amber-soft); color: var(--amber); }
+    .badge-p2 { background: var(--accent-soft); color: var(--accent); }
+    .discuss {
+      background: var(--bg);
+      border: 1px dashed var(--border);
+      border-radius: 10px;
+      padding: 18px 20px;
+      margin-top: 12px;
+    }
+    .discuss h4 { color: var(--accent); margin-top: 0; }
+    footer {
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.85rem;
+      margin-top: 32px;
+    }
+    .matrix-dot { font-weight: 700; }
+    .matrix-high { color: var(--green); }
+    .matrix-mid { color: var(--amber); }
+    .matrix-low { color: var(--muted); }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header>
+      <h1>LabscriptAI OT 插件改进方案</h1>
+      <p class="meta">
+        <span>版本：讨论稿 v0.1</span>
+        <span>日期：2026-06-05</span>
+        <span>目标平台：Claude Code · Codex · Cursor</span>
+      </p>
+      <div class="tag-row">
+        <span class="tag">更实用</span>
+        <span class="tag">更易上手</span>
+        <span class="tag">说明更清晰</span>
+        <span class="tag">安全边界不变</span>
+      </div>
+    </header>
+
+    <nav class="toc">
+      <h2>目录</h2>
+      <ol>
+        <li><a href="#summary">方案摘要</a></li>
+        <li><a href="#diagnosis">现状诊断</a></li>
+        <li><a href="#principles">设计原则</a></li>
+        <li><a href="#phases">分阶段改进计划</a></li>
+        <li><a href="#architecture">信息架构重组</a></li>
+        <li><a href="#platform">三端差异化体验</a></li>
+        <li><a href="#priority">优先级矩阵</a></li>
+        <li><a href="#discuss">待讨论决策点</a></li>
+        <li><a href="#roadmap">建议排期</a></li>
+      </ol>
+    </nav>
+
+    <!-- 1. Summary -->
+    <section id="summary">
+      <h2>1. 方案摘要</h2>
+      <div class="callout ok">
+        <strong>核心判断：</strong>插件的技术能力已经相当完整（7 个 Skill、40+ MCP 工具、安全策略、协议库），但<strong>用户感知到的价值被「安装门槛 + 文档分散 + 入口不清晰」掩盖</strong>。改进重点不是加更多功能，而是<strong>降低首次成功路径的长度</strong>，并把 Agent 能力包装成用户能理解的「任务入口」。
+      </div>
+      <p>建议分三期推进：</p>
+      <div class="grid-3">
+        <div class="card priority-p0">
+          <div class="label">Phase 1 · 立即可感知</div>
+          <h4>5 分钟上手</h4>
+          <p>统一入门文档、安装自检脚本、默认任务入口、术语表。让用户第一次对话就能跑通 simulate。</p>
+        </div>
+        <div class="card priority-p1">
+          <div class="label">Phase 2 · 实用性提升</div>
+          <h4>任务导向重组</h4>
+          <p>以 <code>opentrons-experiment-run</code> 为默认编排 Skill，MCP 工具分层展示，内置示例实验与故障排查 Runbook。</p>
+        </div>
+        <div class="card priority-p2">
+          <div class="label">Phase 3 · 生态完善</div>
+          <h4>跨平台一致</h4>
+          <p>Claude / Codex / Cursor 三端 manifest 对齐、Windows 原生安装、可选中文界面文案、发布前自动化验收。</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. Diagnosis -->
+    <section id="diagnosis">
+      <h2>2. 现状诊断</h2>
+
+      <h3>2.1 已有优势（应保留并突出）</h3>
+      <table>
+        <thead>
+          <tr><th>模块</th><th>现状</th><th>评价</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>MCP Server</td>
+            <td><code>opentrons-lab</code> 覆盖仿真、预检、恢复、可选视觉、实盘控制</td>
+            <td class="matrix-dot matrix-high">能力强</td>
+          </tr>
+          <tr>
+            <td>Skills</td>
+            <td>7 个 Skill 覆盖意图审查 → 编写 → 验证 → 修复 → 运行 → 库检索 → LAN 回退</td>
+            <td class="matrix-dot matrix-high">覆盖完整</td>
+          </tr>
+          <tr>
+            <td>安全策略</td>
+            <td><code>policy/workflows.md</code> 为单一真相源；仿真门禁、实盘 opt-in、视觉仅观测</td>
+            <td class="matrix-dot matrix-high">设计成熟</td>
+          </tr>
+          <tr>
+            <td>编排 Skill</td>
+            <td><code>opentrons-experiment-run</code> 已定义完整状态机</td>
+            <td class="matrix-dot matrix-mid">存在但未成为默认入口</td>
+          </tr>
+          <tr>
+            <td>Codex manifest</td>
+            <td><code>defaultPrompt</code> 已提供 3 个开箱任务</td>
+            <td class="matrix-dot matrix-mid">仅 Codex 有</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>2.2 主要痛点</h3>
+      <div class="grid-2">
+        <div class="card">
+          <h4>上手门槛高</h4>
+          <ul>
+            <li>安装脚本仅 <code>npm install</code>，未引导 Python / Opentrons 仿真环境</li>
+            <li>仅 Bash 脚本，Windows 用户需 WSL 或手动配置</li>
+            <li>环境变量（<code>OPENTRONS_PYTHON</code> 等）无安装后自动检测</li>
+            <li>三端安装路径差异大，README 信息密度高但缺少「第一步」</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h4>入口不清晰</h4>
+          <ul>
+            <li>7 个 Skill 面向 Agent，用户不知道先说哪句话</li>
+            <li>MCP 40+ 工具无分层，新手易被工具列表淹没</li>
+            <li>协议库检索需手动跑 Python 脚本，未融入对话流</li>
+            <li>Claude Code 的 <code>plugin.json</code> 缺少 Codex 那样的 defaultPrompt</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h4>文档分散重复</h4>
+          <ul>
+            <li><code>README.md</code>、<code>AGENTS.md</code>、<code>policy/</code>、各 Skill 内嵌说明存在重叠</li>
+            <li>无 <code>docs/</code> 目录，缺少结构化用户指南</li>
+            <li>术语（deck truth、reconcile_state、live gate）无用户向解释</li>
+            <li>许可与引用要求必要但多处重复，增加阅读负担</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h4>实用场景缺口</h4>
+          <ul>
+            <li>无「Hello World」端到端示例（从意图到 simulate 通过）</li>
+            <li>故障排查散落在 policy 和 Skill 中，无统一 Runbook</li>
+            <li>成功/失败时 Agent 输出格式不统一，用户难以判断进度</li>
+            <li>实盘、视觉、探测等高级能力缺少明确的「何时启用」指引卡</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3. Principles -->
+    <section id="principles">
+      <h2>3. 设计原则</h2>
+      <ol>
+        <li><strong>仿真优先不变</strong> — 所有改进不得削弱 simulate 门禁和实盘 opt-in 安全边界。</li>
+        <li><strong>一个入口，多条路径</strong> — 默认走 <code>experiment-run</code> 编排；高级用户仍可直达单个 Skill 或 MCP 工具。</li>
+        <li><strong>文档单一真相源</strong> — 工作流只维护 <code>policy/workflows.md</code>；用户指南只维护 <code>docs/</code>；其余文件链接而非复制。</li>
+        <li><strong>失败可恢复</strong> — 每步输出统一状态块（<code>status</code>、<code>next_action</code>、<code>blocked_reason</code>），让用户始终知道「现在卡在哪」。</li>
+        <li><strong>平台差异收敛</strong> — 三端共享同一套 Skill / MCP / policy；仅在 manifest 层做平台适配。</li>
+        <li><strong>渐进式复杂度</strong> — 默认隐藏高级工具（视觉、probe、recovery），在用户明确需求或出错时再 surfaced。</li>
+      </ol>
+    </section>
+
+    <!-- 4. Phases -->
+    <section id="phases">
+      <h2>4. 分阶段改进计划</h2>
+
+      <h3>Phase 1：5 分钟上手 <span class="badge badge-p0">P0</span></h3>
+
+      <h4>4.1.1 新增 <code>docs/GETTING_STARTED.md</code>（三端合一，Tab 式）</h4>
+      <p>用一张决策树开头，帮用户 10 秒内选对路径：</p>
+      <div class="flow">
+        <span class="step">克隆仓库</span>
+        <span class="arrow">→</span>
+        <span class="step">运行安装脚本</span>
+        <span class="arrow">→</span>
+        <span class="step">环境自检</span>
+        <span class="arrow">→</span>
+        <span class="step">启用插件</span>
+        <span class="arrow">→</span>
+        <span class="step">发送第一条指令</span>
+        <span class="arrow">→</span>
+        <span class="step">simulate 通过</span>
+      </div>
+      <p>每个平台一节：Claude Code（marketplace 命令）、Codex（本地 plugin source）、Cursor（复制 <code>.cursor/</code> 配置）。附「常见失败 5 条」速查。</p>
+
+      <h4>4.1.2 安装脚本增强</h4>
+      <table>
+        <thead><tr><th>文件</th><th>改动</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>install-labscriptai-ot.sh</code></td>
+            <td>安装后自动调用 <code>health_check</code>；检测 Node、Python、opentrons 包；输出彩色诊断报告</td>
+          </tr>
+          <tr>
+            <td><code>install-labscriptai-ot.ps1</code>（新增）</td>
+            <td>Windows 原生 PowerShell 安装，等价功能</td>
+          </tr>
+          <tr>
+            <td><code>scripts/verify-setup.mjs</code>（新增）</td>
+            <td>独立验证脚本，可被安装脚本和三端文档引用</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h4>4.1.3 默认任务入口（三端 manifest 对齐）</h4>
+      <p>将 Codex 已有的 <code>defaultPrompt</code> 推广到 Claude Code 和 Cursor：</p>
+      <pre>推荐默认指令（用户复制即用）：
+1. "帮我从零开始设计一个 Flex 移液实验，先审查意图再写协议"
+2. "检查这份 Opentrons 协议能否安全仿真通过"
+3. "机器人现在什么状态？帮我做恢复前的安全检查"</pre>
+
+      <h4>4.1.4 术语速查卡 <code>docs/GLOSSARY.md</code></h4>
+      <p>用表格解释：deck truth、simulate gate、live readiness、reconcile_state、tip policy 等。Agent 和用户共用同一词汇表。</p>
+
+      <hr style="border:none;border-top:1px solid var(--border);margin:28px 0" />
+
+      <h3>Phase 2：任务导向重组 <span class="badge badge-p1">P1</span></h3>
+
+      <h4>4.2.1 确立「主 Skill」路由</h4>
+      <div class="callout">
+        在根目录新增轻量 <code>skills/labscriptai-ot-router/SKILL.md</code>（或增强 <code>AGENTS.md</code>），规则极简：
+        <ul style="margin-top:8px">
+          <li>新实验 / 全流程 → <code>opentrons-experiment-run</code></li>
+          <li>只审查意图 → <code>opentrons-experiment-intent-review</code></li>
+          <li>只写/改代码 → <code>opentrons-protocol-author</code></li>
+          <li>仿真失败 → <code>opentrons-simulation-repair</code></li>
+          <li>找参考协议 → <code>opentrons-protocol-library</code></li>
+          <li>机器人网络直连 → <code>opentrons-robot-lan</code></li>
+        </ul>
+      </div>
+
+      <h4>4.2.2 MCP 工具分层（描述 + 文档，不改 API）</h4>
+      <table>
+        <thead><tr><th>层级</th><th>工具组</th><th>默认暴露</th></tr></thead>
+        <tbody>
+          <tr><td>L0 入门</td><td>health_check, doctor_local_runtime, simulate_protocol, parse_simulation_output, validate_labware_name</td><td>是</td></tr>
+          <tr><td>L1 编写辅助</td><td>estimate_tip_budget, inspect_labware_definition, preflight_run_setup</td><td>是</td></tr>
+          <tr><td>L2 实盘只读</td><td>robot_status, module_status, reconcile_state, live_readiness_check</td><td>需机器人 IP</td></tr>
+          <tr><td>L3 实盘控制</td><td>run_protocol, create_run, control_run, probe_wells</td><td>需明确 opt-in</td></tr>
+          <tr><td>L4 恢复/视觉</td><td>parse_error, suggest_recovery_action, vision_check, camera_*</td><td>按需</td></tr>
+        </tbody>
+      </table>
+      <p>实现方式：在 MCP tool <code>description</code> 前缀加 <code>[L0]</code> 标签；在 <code>docs/MCP_TOOLS.md</code> 生成完整参考（可从 index.js 自动提取）。</p>
+
+      <h4>4.2.3 内置示例实验 <code>examples/</code></h4>
+      <pre>examples/
+  01-flex-serial-dilution/     # 完整：intent brief → protocol → simulate
+  02-ot2-normalization/        # OT-2 场景
+  03-simulation-failure-fix/     # 故意失败 + repair 演示
+  README.md                    # 每个示例的「用户该说什么」</pre>
+
+      <h4>4.2.4 统一 Agent 输出模板</h4>
+      <p>在 <code>policy/output-contract.md</code>（新增）定义每个阶段末尾必带的 JSON 块：</p>
+      <pre>{
+  "phase": "simulation",
+  "status": "passed | failed | blocked",
+  "summary": "一句话结论",
+  "next_action": "建议用户/Agent 的下一步",
+  "artifacts": ["protocol.py", "sim-log.txt"]
+}</pre>
+
+      <h4>4.2.5 故障排查 Runbook <code>docs/runbooks/</code></h4>
+      <ul>
+        <li><code>simulation-fails.md</code> — 最常见 10 种仿真错误</li>
+        <li><code>mcp-wont-start.md</code> — Node / 路径 / 环境变量</li>
+        <li><code>robot-connection.md</code> — IP、LAN fallback 与 MCP 互斥说明</li>
+        <li><code>after-reboot.md</code> — safe_next_action 流程</li>
+      </ul>
+
+      <hr style="border:none;border-top:1px solid var(--border);margin:28px 0" />
+
+      <h3>Phase 3：跨平台一致与发布质量 <span class="badge badge-p2">P2</span></h3>
+
+      <h4>4.3.1 Manifest 统一</h4>
+      <table>
+        <thead><tr><th>字段</th><th>Claude</th><th>Codex</th><th>Cursor</th><th>目标</th></tr></thead>
+        <tbody>
+          <tr><td>displayName / shortDescription</td><td>有</td><td>有</td><td>有</td><td>文案统一</td></tr>
+          <tr><td>defaultPrompt</td><td>缺</td><td>有</td><td>缺</td><td>三端补齐</td></tr>
+          <tr><td>postInstallMessage</td><td>缺</td><td>缺</td><td>缺</td><td>新增：指向 GETTING_STARTED</td></tr>
+          <tr><td>version</td><td>0.1.0</td><td>0.1.0</td><td>0.1.0</td><td>发布时同步 bump</td></tr>
+        </tbody>
+      </table>
+
+      <h4>4.3.2 README 瘦身</h4>
+      <p>README 只保留：一句话介绍、安装命令、链接到 <code>docs/GETTING_STARTED.md</code>、许可与引用。详细工作流、工具列表、安全策略全部外链。</p>
+
+      <h4>4.3.3 发布前验收流水线</h4>
+      <pre>package 前自动执行：
+  npm test
+  node scripts/verify-setup.mjs
+  node scripts/lint-manifests.mjs      # 三端 manifest 字段一致性
+  node scripts/generate-mcp-docs.mjs   # 刷新 MCP_TOOLS.md</pre>
+
+      <h4>4.3.4 可选中文用户文案</h4>
+      <p>Skill 保持英文（Agent 优化），但 <code>docs/zh-CN/</code> 提供用户向说明和默认指令翻译。是否做双语 manifest 待讨论。</p>
+    </section>
+
+    <!-- 5. Architecture -->
+    <section id="architecture">
+      <h2>5. 信息架构重组</h2>
+      <p>建议最终文档结构：</p>
+      <pre>labscriptai-ot/
+├── README.md                    # 极简入口（&lt; 80 行）
+├── AGENTS.md                    # Agent 行为契约（链接 policy，不重复工作流）
+├── docs/
+│   ├── GETTING_STARTED.md       # 用户第一文档
+│   ├── GLOSSARY.md
+│   ├── MCP_TOOLS.md             # 自动生成
+│   ├── plugin-improvement-plan.html
+│   ├── zh-CN/                   # 可选
+│   └── runbooks/
+├── examples/                    # 端到端可复现示例
+├── policy/                      # 单一真相源（工作流、安全、输出契约）
+├── skills/                      # Agent 执行层
+└── servers/opentrons-mcp/       # 工具实现层</pre>
+
+      <h3>用户心智模型（建议对外宣传）</h3>
+      <div class="flow">
+        <span class="step">说清楚实验</span>
+        <span class="arrow">→</span>
+        <span class="step">生成协议</span>
+        <span class="arrow">→</span>
+        <span class="step">本地仿真</span>
+        <span class="arrow">→</span>
+        <span class="step">确认安全</span>
+        <span class="arrow">→</span>
+        <span class="step">上机执行</span>
+      </div>
+      <p>技术层的 7 Skill + 40 MCP 工具折叠在这 5 步背后，用户只需记住一句话：<strong>「先仿真，后上机；不确定就问机器人状态。」</strong></p>
+    </section>
+
+    <!-- 6. Platform -->
+    <section id="platform">
+      <h2>6. 三端差异化体验</h2>
+      <table>
+        <thead>
+          <tr><th>平台</th><th>当前体验</th><th>改进后体验</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Claude Code</strong></td>
+            <td>Marketplace 安装；<code>/plugin install</code>；无默认 prompt</td>
+            <td>安装后显示 postInstall 指引；Skills 自动加载；推荐先输入 defaultPrompt #1</td>
+          </tr>
+          <tr>
+            <td><strong>Codex</strong></td>
+            <td>已有 defaultPrompt；本地 path 安装</td>
+            <td>保持优势；补齐 verify-setup 与 runbook 链接；manifest 增加 docs 入口</td>
+          </tr>
+          <tr>
+            <td><strong>Cursor</strong></td>
+            <td>需手动复制 <code>.cursor/mcp.json</code> 和 rules；路径易错</td>
+            <td>提供「复制配置」脚本；rules 增加「新用户首条消息」引导；考虑 Cursor plugin 一键安装路径</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="callout warn">
+        <strong>注意：</strong>Cursor 当前需手动调整 <code>mcp.json</code> 中的插件路径。Phase 1 应在 GETTING_STARTED 中用图示标明「你的插件克隆在哪 → 改哪个字段」，并提供路径检测脚本减少配置错误。
+      </div>
+    </section>
+
+    <!-- 7. Priority Matrix -->
+    <section id="priority">
+      <h2>7. 优先级矩阵</h2>
+      <table>
+        <thead>
+          <tr><th>改动项</th><th>用户价值</th><th>实现成本</th><th>优先级</th><th>阶段</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>GETTING_STARTED.md 三端合一</td><td class="matrix-high">极高</td><td class="matrix-high">低</td><td><span class="badge badge-p0">P0</span></td><td>Phase 1</td></tr>
+          <tr><td>verify-setup 安装自检</td><td class="matrix-high">极高</td><td class="matrix-mid">中</td><td><span class="badge badge-p0">P0</span></td><td>Phase 1</td></tr>
+          <tr><td>三端 defaultPrompt 对齐</td><td class="matrix-high">高</td><td class="matrix-high">低</td><td><span class="badge badge-p0">P0</span></td><td>Phase 1</td></tr>
+          <tr><td>术语表 GLOSSARY</td><td class="matrix-mid">中高</td><td class="matrix-high">低</td><td><span class="badge badge-p0">P0</span></td><td>Phase 1</td></tr>
+          <tr><td>experiment-run 作为默认路由</td><td class="matrix-high">高</td><td class="matrix-high">低</td><td><span class="badge badge-p1">P1</span></td><td>Phase 2</td></tr>
+          <tr><td>Hello World 示例 x3</td><td class="matrix-high">高</td><td class="matrix-mid">中</td><td><span class="badge badge-p1">P1</span></td><td>Phase 2</td></tr>
+          <tr><td>MCP 工具分层文档</td><td class="matrix-mid">中</td><td class="matrix-mid">中</td><td><span class="badge badge-p1">P1</span></td><td>Phase 2</td></tr>
+          <tr><td>输出契约 output-contract</td><td class="matrix-mid">中</td><td class="matrix-mid">中</td><td><span class="badge badge-p1">P1</span></td><td>Phase 2</td></tr>
+          <tr><td>Runbook 故障排查</td><td class="matrix-mid">中</td><td class="matrix-mid">中</td><td><span class="badge badge-p1">P1</span></td><td>Phase 2</td></tr>
+          <tr><td>Windows PowerShell 安装</td><td class="matrix-mid">中</td><td class="matrix-mid">中</td><td><span class="badge badge-p2">P2</span></td><td>Phase 3</td></tr>
+          <tr><td>中文用户文档</td><td class="matrix-mid">中</td><td class="matrix-mid">中</td><td><span class="badge badge-p2">P2</span></td><td>Phase 3</td></tr>
+          <tr><td>manifest lint + doc 生成</td><td class="matrix-low">中</td><td class="matrix-mid">中</td><td><span class="badge badge-p2">P2</span></td><td>Phase 3</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- 8. Discussion -->
+    <section id="discuss">
+      <h2>8. 待讨论决策点</h2>
+      <p>以下问题影响方案细节，建议先对齐再动手：</p>
+
+      <div class="discuss">
+        <h4>Q1：主入口放哪？</h4>
+        <p><strong>选项 A：</strong>增强现有 <code>opentrons-experiment-run</code>，在 AGENTS.md 声明为默认 Skill。<br />
+        <strong>选项 B：</strong>新增 <code>labscriptai-ot-router</code> 做显式路由。<br />
+        <strong>倾向：</strong>A 更简；若三端 manifest 支持「默认 Skill」字段则选 A，否则 B 更清晰。</p>
+      </div>
+
+      <div class="discuss">
+        <h4>Q2：文档语言策略？</h4>
+        <p><strong>选项 A：</strong>用户文档中英双语（<code>docs/</code> + <code>docs/zh-CN/</code>）。<br />
+        <strong>选项 B：</strong>仅中文用户文档，Skill / policy 保持英文。<br />
+        <strong>选项 C：</strong>全英文，靠 Agent 实时翻译。<br />
+        团队主要用户群决定此选择。</p>
+      </div>
+
+      <div class="discuss">
+        <h4>Q3：安装脚本是否捆绑 Python 环境？</h4>
+        <p><strong>轻量方案：</strong>只检测 + 打印安装指引（推荐，维护成本低）。<br />
+        <strong>重量方案：</strong>脚本内建 venv + pip install opentrons（体验好但跨平台维护难）。</p>
+      </div>
+
+      <div class="discuss">
+        <h4>Q4：MCP 工具是否物理分组（多个 MCP server）？</h4>
+        <p><strong>现状：</strong>单一 <code>opentrons-lab</code> server。<br />
+        <strong>方案：</strong>仅文档分层（推荐）vs 拆成 <code>opentrons-sim</code> + <code>opentrons-live</code> 两个 server（隔离更彻底但配置复杂）。</p>
+      </div>
+
+      <div class="discuss">
+        <h4>Q5：示例实验的仿真依赖？</h4>
+        <p>示例协议是否保证「零配置即可 simulate 通过」？若需特定 labware 版本，需在示例 README 标明最低 Opentrons 版本。</p>
+      </div>
+
+      <div class="discuss">
+        <h4>Q6：Phase 1 的范围边界？</h4>
+        <p>是否接受 Phase 1 <strong>只做文档和 manifest，不改 MCP 代码</strong>？这样 1–2 天可交付可感知改进；自检脚本可作为 Phase 1 唯一代码改动。</p>
+      </div>
+    </section>
+
+    <!-- 9. Roadmap -->
+    <section id="roadmap">
+      <h2>9. 建议排期</h2>
+      <table>
+        <thead>
+          <tr><th>时间</th><th>交付物</th><th>验收标准</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>第 1 周</td>
+            <td>GETTING_STARTED + GLOSSARY + defaultPrompt 三端对齐 + README 瘦身</td>
+            <td>新用户按文档可在 15 分钟内完成安装并发出第一条指令</td>
+          </tr>
+          <tr>
+            <td>第 2 周</td>
+            <td>verify-setup 脚本 + 示例 01 + runbook 前 2 篇</td>
+            <td><code>npm test</code> + verify-setup 全绿；示例 01 可端到端 simulate</td>
+          </tr>
+          <tr>
+            <td>第 3–4 周</td>
+            <td>路由 Skill、MCP 文档生成、输出契约、示例 02–03、PowerShell 安装</td>
+            <td>Agent 输出含统一 status 块；MCP_TOOLS.md 与代码同步</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="callout ok" style="margin-top:20px">
+        <strong>建议的 Phase 1 最小交付包（可立即开工）：</strong>
+        <ol style="margin-top:8px">
+          <li><code>docs/GETTING_STARTED.md</code></li>
+          <li><code>docs/GLOSSARY.md</code></li>
+          <li>三端 <code>defaultPrompt</code> / <code>postInstallMessage</code></li>
+          <li><code>scripts/verify-setup.mjs</code></li>
+          <li>README 瘦身 + AGENTS.md 指向新文档</li>
+        </ol>
+      </div>
+    </section>
+
+    <footer>
+      LabscriptAI OT · 插件改进讨论稿 · 基于仓库现状分析生成
+    </footer>
+  </div>
+</body>
+</html>
