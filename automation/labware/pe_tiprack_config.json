@@ -1,0 +1,27 @@
+{
+  "_comment": "Measure rack height (mm, bottom of box to top) with calipers, edit z_dimension_mm, then run: python automation/labware/build_pe_tipracks.py",
+  "rack_50ul": {
+    "catalog_id": "PE-50A-1-TS",
+    "load_name": "pe_50a_1_ts_96_tiprack_50ul",
+    "display_name": "PE-50A-1-TS 96 Tip Rack 50 µL",
+    "reference_load_name": "opentrons_flex_96_tiprack_50ul",
+    "z_dimension_mm": 85.0,
+    "well_z_mm": 1.5,
+    "top_clearance_mm": 0.5,
+    "tip_length_mm": 57.9,
+    "tip_overlap_mm": 10.5,
+    "grip_height_from_bottom_mm": 20.5
+  },
+  "rack_200ul": {
+    "catalog_id": "PE-200A-1-TS",
+    "load_name": "pe_200a_1_ts_96_tiprack_200ul",
+    "display_name": "PE-200A-1-TS 96 Tip Rack 200 µL",
+    "reference_load_name": "opentrons_flex_96_tiprack_200ul",
+    "z_dimension_mm": 85.0,
+    "well_z_mm": 1.5,
+    "top_clearance_mm": 0.5,
+    "tip_length_mm": 58.35,
+    "tip_overlap_mm": 10.5,
+    "grip_height_from_bottom_mm": 20.5
+  }
+}

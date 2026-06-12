@@ -16,6 +16,7 @@ Shared vocabulary for operators and agents. For workflow order, see [policy/work
 | **Preflight** | `preflight_run_setup` verifies reconciliation, robot readiness, and (Flex) declared protocol loads vs live deck before play. |
 | **Recovery branch** | Structured fix path from `suggest_recovery_action` (e.g. retry tip pickup). Only `auto_executable` branches may run via `execute_protocol_recovery` without human review. |
 | **Bundled library** | Small curated protocol set in `bundled-library/`. Set `OPENTRONS_PROTOCOL_LIBRARY_PATH` for a full external catalog. |
+| **Custom labware (`custom_beta`)** | Third-party consumables defined via Agent-generated JSON in `automation/labware/`. See [custom-labware-guide.md](custom-labware-guide.md). |
 | **PLUGIN_DATA** | Writable directory for session artifacts, logs, and captured images. Defaults to `.plugin-data` under the plugin root. |
 | **OPENTRONS_PLUGIN_ROOT** | Absolute path to this repository. Required for MCP path resolution when the server is not in the default layout. |
 | **OPENTRONS_PYTHON** | Python interpreter with `opentrons` simulation dependencies. Without it, simulate tools will warn or fail. |
@@ -36,5 +37,6 @@ MCP tools are grouped L0–L4 in [MCP_TOOLS.md](MCP_TOOLS.md):
 ## See also
 
 - [GETTING_STARTED.md](GETTING_STARTED.md) — install and first command
+- [custom-labware-guide.md](custom-labware-guide.md) — add and use third-party labware (e.g. PE tip racks)
 - [runbooks/simulation-fails.md](runbooks/simulation-fails.md) — common sim errors
 - [policy/output-contract.md](../policy/output-contract.md) — agent status JSON template

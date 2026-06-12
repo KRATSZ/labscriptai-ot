@@ -35,8 +35,8 @@ Gibson 组装与热激转化共享**温度程序控制**，合并进脚本 2。
 | `C1` | Temperature Module (4°C) | 酶 / 底物源板 | DNA / Gibson / 感受态 |
 | `D1` | Heater-Shaker (37°C) | 反应板孵育 | 复苏培养板 |
 | `C2` | 12-channel Reservoir | Buffer / quench | SOC（用水模拟） |
-| `A2` | 1000 µL tiprack (1-ch) | ✓ | ✓ |
-| `B2` | 1000 µL tiprack (8-ch) | ✓ | ✓ |
+| `A2` | 50 µL tiprack (1-ch, PE-50A-1-TS) | ✓ | ✓ |
+| `B2` | 200 µL tiprack (8-ch / 1-ch SOC, PE-200A-1-TS) | ✓ | ✓ |
 | `A3/B3` | backup tiprack | 可选 | 可选 |
 | Gripper | 机械臂 | 不用 | 可选：TC 板 -> D1 |
 
