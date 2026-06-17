@@ -1,0 +1,39 @@
+{
+  "question_id": "flex-gradient-dilution-001",
+  "experiment_type": "gradient_serial_dilution",
+  "robot": "Flex",
+  "deck_layout": {
+    "description": "Row A gradient: A1 stock (100%), A2 primed with 2×xfer buffer, A3–A8 serial 2-fold steps. Trash A3, diluent reservoir B3, plate C3, 50 µL tips D3.",
+    "slots_used": ["A3", "B3", "C3", "D3"]
+  },
+  "pipette_choice": {
+    "name": "flex_1channel_50",
+    "reason": "50 µL transfer volume fits P50 range (5–50 µL) with good accuracy; single-channel for row-wise serial steps"
+  },
+  "tip_strategy": {
+    "policy": "fresh_tip_per_serial_step",
+    "reason": "New tip for priming and each serial transfer prevents concentration carryover between gradient steps; 8 tips total fits one 96-tip rack"
+  },
+  "key_decisions": [
+    {
+      "decision": "2-fold geometric gradient via serial dilution",
+      "rationale": "A2 primed with 2× transfer volume; each step moves xfer µL from prior well into equal buffer volume → 50% dilution per well"
+    },
+    {
+      "decision": "7 gradient points (A1–A8)",
+      "rationale": "Standard dose-response span; yields ~128-fold range from stock to A8"
+    },
+    {
+      "decision": "50 µL transfer volume",
+      "rationale": "Within P50 accuracy band; final well volume stays ≤200 µL plate capacity"
+    },
+    {
+      "decision": "A1 holds stock only (no priming)",
+      "rationale": "Stock well remains undiluted reference; dilution chain starts A1→A2"
+    }
+  ],
+  "known_limitations": [
+    "Operator must manually load stock into A1 before run",
+    "Flat-bottom plate mixing may be less uniform than V-bottom for viscous samples"
+  ]
+}

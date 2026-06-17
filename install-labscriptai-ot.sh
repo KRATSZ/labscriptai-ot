@@ -7,7 +7,11 @@ MCP_ROOT="$PLUGIN_ROOT/servers/opentrons-mcp"
 cd "$MCP_ROOT"
 npm install
 
+export OPENTRONS_PLUGIN_ROOT="$PLUGIN_ROOT"
+node "$PLUGIN_ROOT/scripts/verify-setup.mjs" || VERIFY_EXIT=$?
+
 cat <<EOF
+
 LabscriptAI OT plugin is installed.
 
 Set these variables in your client if it does not inject them:
@@ -16,4 +20,8 @@ Set these variables in your client if it does not inject them:
 
 Optional writable state directory:
   PLUGIN_DATA=$PLUGIN_ROOT/.plugin-data
+
+Next steps: docs/GETTING_STARTED.md
 EOF
+
+exit "${VERIFY_EXIT:-0}"

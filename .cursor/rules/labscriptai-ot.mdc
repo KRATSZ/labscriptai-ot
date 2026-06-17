@@ -7,4 +7,6 @@ alwaysApply: false
 
 Use the bundled `opentrons-lab` MCP server and `skills/opentrons-*` skills for Opentrons protocol authoring, simulation, and safe runtime checks.
 
+For new experiments, start with `opentrons-experiment-run`. Setup: [docs/GETTING_STARTED.md](../../docs/GETTING_STARTED.md).
+
 Live robot actions are opt-in. Run simulation before unattended live execution, and treat vision as observation-only.

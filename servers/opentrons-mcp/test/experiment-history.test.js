@@ -103,6 +103,9 @@ function installSuccessfulRunFetch() {
         data: [{ id: "cmd-1", commandType: "comment", status: "succeeded" }],
       });
     }
+    if (method === "GET" && pathname === "/labwareOffsets") {
+      return jsonResponse({ data: [] });
+    }
     if (method === "GET" && pathname === "/health") {
       return jsonResponse({ name: "Flex", robot_model: "OT-3 Standard", robot_serial: "FLX-1" });
     }

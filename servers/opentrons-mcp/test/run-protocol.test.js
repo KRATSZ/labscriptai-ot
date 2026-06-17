@@ -99,6 +99,7 @@ test("run_protocol uploads, plays, and returns final run snapshot", async () => 
   );
 
   const originalFetch = global.fetch;
+  let runCreateBody = null;
   global.fetch = async (url, options = {}) => {
     const requestUrl = new URL(url);
     const pathname = requestUrl.pathname;
@@ -107,8 +108,38 @@ test("run_protocol uploads, plays, and returns final run snapshot", async () => 
     if (method === "POST" && pathname === "/protocols") {
       return jsonResponse({ data: { id: "protocol-1", files: [] } });
     }
+    if (method === "GET" && pathname === "/labwareOffsets") {
+      return jsonResponse({
+        data: [
+          {
+            id: "offset-1",
+            createdAt: "2026-06-09T07:40:47.905554Z",
+            definitionUri: "opentrons/nest_96_wellplate_200ul_flat/3",
+            locationSequence: "anyLocation",
+            vector: { x: 0, y: 0, z: 0 },
+          },
+          {
+            id: "offset-2",
+            createdAt: "2026-06-09T07:40:47.905554Z",
+            definitionUri: "opentrons/nest_96_wellplate_200ul_flat/3",
+            locationSequence: [
+              { kind: "onModule", moduleModel: "temperatureModuleV2" },
+              { kind: "onAddressableArea", addressableAreaName: "temperatureModuleV2C1" },
+            ],
+            vector: { x: 0, y: 0, z: 5 },
+          },
+        ],
+      });
+    }
     if (method === "POST" && pathname === "/runs") {
-      return jsonResponse({ data: { id: "run-1", status: "idle" } });
+      runCreateBody = JSON.parse(options.body || "{}");
+      return jsonResponse({
+        data: {
+          id: "run-1",
+          status: "idle",
+          labwareOffsets: runCreateBody?.data?.labwareOffsets ?? [],
+        },
+      });
     }
     if (method === "GET" && pathname === "/runs/run-1") {
       return jsonResponse({
@@ -165,6 +196,9 @@ test("run_protocol uploads, plays, and returns final run snapshot", async () => 
     assert.equal(result.data.simulation_gate.parsed.success, true);
     assert.equal(result.data.preflight_gate?.ok, true);
     assert.equal(result.data.final_run_history.run_id, "run-1");
+    assert.equal(runCreateBody?.data?.labwareOffsets?.length, 1);
+    assert.equal(runCreateBody.data.labwareOffsets[0].vector.z, 5);
+    assert.ok(Array.isArray(runCreateBody.data.labwareOffsets[0].locationSequence));
     assert.equal(result.hardwareSnapshot.run.data.id, "run-1");
     assert.equal(result.hardwareSnapshot.health.robot_serial, "FLX-1");
   } finally {
