@@ -19,6 +19,7 @@ Then enable the plugin in your client. **Start here:** [docs/GETTING_STARTED.md]
 ## What's included
 
 - MCP server (`servers/opentrons-mcp/`), seven agent skills, safety policy, curated protocol library
+- `automation/` — custom labware (e.g. third-party tip racks) and on-robot verification helpers; see [docs/custom-labware-guide.md](docs/custom-labware-guide.md)
 - Live robot actions are **opt-in**; simulation is the gate before unattended live use
 - Glossary: [docs/GLOSSARY.md](docs/GLOSSARY.md) · Workflows: [policy/workflows.md](policy/workflows.md)
 
