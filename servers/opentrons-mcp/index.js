@@ -96,6 +96,8 @@ import { buildHealthCheck, checkRobotHealth } from "./lib/health-check.js";
 import { runVisionCheck } from "./lib/vision-check.js";
 import { buildErrorTaxonomy, buildTaxonomyIssue } from "./lib/error-taxonomy.js";
 import { buildLiveReadinessReport } from "./lib/live-readiness.js";
+import { runtimeWatchPoll } from "./lib/runtime-watch/sentry-step.js";
+import { ackAlert, readAlerts, readLatest } from "./lib/runtime-watch/alert-store.js";
 import {
   buildDeckPhotoAnalysisPrompt,
   buildImageDataUrl,
@@ -975,6 +977,60 @@ const TOOL_DEFINITIONS = [
         page_length: { type: "integer", default: 20 },
       },
       required: ["run_id"],
+    },
+  },
+  {
+    name: "runtime_watch_poll",
+    description:
+      "Bounded runtime watch poll for a live protocol run. Polls run status, executes only narrow L0 self-fix branches, and returns only running/completed/needs_user/hard_stop/unreachable.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        robot_ip: { type: "string", description: "Robot IP or full base URL" },
+        run_id: { type: "string" },
+        session_id: { type: "string" },
+        max_block_ms: { type: "integer", default: 50000 },
+        poll_interval_ms: { type: "integer", default: 3000 },
+        timeout_ms: { type: "integer" },
+        page_length: { type: "integer", default: 20 },
+        tiprack_slots: {
+          type: "array",
+          items: { type: "string" },
+        },
+        module_wait_timeout_ms: { type: "integer" },
+        module_poll_interval_ms: { type: "integer", default: 1000 },
+        max_attempts_per_failed_command: { type: "integer", default: 3 },
+        unreachable_threshold: { type: "integer", default: 2 },
+      },
+      required: ["run_id"],
+    },
+  },
+  {
+    name: "runtime_get_alerts",
+    description:
+      "Read runtime watch alerts and latest watch state for a run. Intended for hook/insurance paths and current-dialog notification checks.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        run_id: { type: "string" },
+        limit: { type: "integer", default: 20 },
+        include_acked: { type: "boolean", default: false },
+      },
+      required: ["run_id"],
+    },
+  },
+  {
+    name: "runtime_ack_alert",
+    description: "Mark a runtime watch alert handled after the operator has supplied the requested decision.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        run_id: { type: "string" },
+        alert_id: { type: "string" },
+        note: { type: "string" },
+        selection: { type: ["string", "object", "null"] },
+      },
+      required: ["run_id", "alert_id"],
     },
   },
   {
@@ -1960,6 +2016,7 @@ async function finalizeProtocolRecovery({
   args,
   sessionId,
   executionResult = {},
+  waitForTerminal = true,
 } = {}) {
   const resumeAction = await requestRobotJson("POST", args.robot_ip, `/runs/${args.run_id}/actions`, {
     headers: { "Content-Type": "application/json" },
@@ -1970,12 +2027,14 @@ async function finalizeProtocolRecovery({
     }),
   });
 
-  await pollRunToTerminal({
-    robotIp: args.robot_ip,
-    runId: args.run_id,
-    timeoutMs: args.timeout_ms ?? 120000,
-    pollIntervalMs: args.poll_interval_ms ?? 500,
-  });
+  if (waitForTerminal) {
+    await pollRunToTerminal({
+      robotIp: args.robot_ip,
+      runId: args.run_id,
+      timeoutMs: args.timeout_ms ?? 120000,
+      pollIntervalMs: args.poll_interval_ms ?? 500,
+    });
+  }
 
   const snapshot = await collectRunExecutionSnapshot({
     robotIp: args.robot_ip,
@@ -2010,6 +2069,7 @@ async function finalizeProtocolRecovery({
       fixit_command: executionResult.fixitCommand || null,
       module_wait: executionResult.moduleWait || null,
       resume_action: resumeAction,
+      terminal_poll_skipped: !waitForTerminal,
       final_run_history: snapshot.runHistoryResult.data,
       parsed_error: postRecoveryGuidance?.parsedError || null,
       recovery: postRecoveryGuidance?.recovery || null,
@@ -2030,7 +2090,7 @@ async function finalizeProtocolRecovery({
   };
 }
 
-async function executeProtocolRecovery(args, { expectedAction = null } = {}) {
+async function executeProtocolRecovery(args, { expectedAction = null, watchMode = false } = {}) {
   const sessionId = args.session_id || args.run_id;
   const guidance = await readRunFailureGuidance(args, args.run_id, sessionId);
   const parsedError = guidance.parsedError || {};
@@ -2227,6 +2287,7 @@ async function executeProtocolRecovery(args, { expectedAction = null } = {}) {
     args,
     sessionId,
     executionResult,
+    waitForTerminal: !(watchMode || args.watch_mode === true || args.skip_terminal_poll === true),
   });
 }
 
@@ -4234,6 +4295,94 @@ const TOOL_HANDLERS = {
       },
     });
     return result;
+  },
+
+  async runtime_watch_poll(args) {
+    const result = await runtimeWatchPoll(args, {
+      readSnapshot: async stepArgs =>
+        collectRunExecutionSnapshot({
+          robotIp: stepArgs.robot_ip,
+          runId: stepArgs.run_id,
+          pageLength: stepArgs.page_length ?? 20,
+        }),
+      readGuidance: async stepArgs =>
+        readRunFailureGuidance(
+          stepArgs,
+          stepArgs.run_id,
+          stepArgs.session_id || stepArgs.run_id,
+        ),
+      executeRecovery: executeProtocolRecovery,
+    });
+    const alerts = ["completed", "needs_user", "hard_stop", "unreachable"].includes(result.status)
+      ? readAlerts(args.run_id, {
+          limit: 5,
+          includeAcked: false,
+          watchDir: args.watch_dir || null,
+        })
+      : [];
+    const payload = {
+      ...(result.data || {}),
+      status: result.status,
+      alerts,
+    };
+
+    if (result.status !== "running") {
+      recordToolResultLog({
+        toolName: "runtime_watch_poll",
+        eventKind: "runtime_watch",
+        args,
+        result: {
+          data: payload,
+          runId: args.run_id,
+          sessionId: args.session_id || args.run_id,
+        },
+        fallbackSessionId: args.session_id || args.run_id,
+        summary: `Runtime watch returned ${result.status}.`,
+        data: {
+          status: result.status,
+          reason: payload.reason || null,
+          alert_count: alerts.length,
+        },
+      });
+    }
+
+    return {
+      data: payload,
+      runId: args.run_id,
+      sessionId: args.session_id || args.run_id,
+    };
+  },
+
+  async runtime_get_alerts(args) {
+    return {
+      data: {
+        status: "ok",
+        latest: readLatest(args.run_id, { watchDir: args.watch_dir || null }),
+        alerts: readAlerts(args.run_id, {
+          limit: args.limit ?? 20,
+          includeAcked: args.include_acked === true,
+          watchDir: args.watch_dir || null,
+        }),
+      },
+      runId: args.run_id,
+      sessionId: args.session_id || args.run_id,
+    };
+  },
+
+  async runtime_ack_alert(args) {
+    const alert = ackAlert(args.run_id, args.alert_id, {
+      watchDir: args.watch_dir || null,
+      note: args.note || null,
+      selection: args.selection ?? null,
+    });
+    return {
+      data: {
+        status: "acked",
+        alert,
+      },
+      runId: args.run_id,
+      sessionId: args.session_id || args.run_id,
+    };
   },
 
   async recover_tip_pickup(args) {

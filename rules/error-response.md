@@ -44,12 +44,25 @@ Compatibility fields such as `error_category`, `hard_stop`, and `escalate_to_hum
 
 `execute_protocol_recovery` only accepts guidance with `auto_executable: true`.
 
-### Supported executable branches
+### Supported `execute_protocol_recovery` branches
 
 1. `retry_pick_up_tip_with_next_candidate`
-2. `suggest_new_destination_slot`
+2. `suggest_new_destination_slot` after explicit human confirmation and supplied `destination_slot`
 3. `wait_and_poll_module_status`
 4. `reconcile_state_first` when reconciliation diffs are module-blocker-only
+
+### Runtime watch autonomy
+
+`runtime_watch_poll` is narrower than `execute_protocol_recovery`. It may auto-execute only L0 branches, in this order:
+
+1. L4 hard stop: `hard_stop`, `HARDWARE_FAULT`, `DECK_COLLISION`, `ESTOP_ENGAGED`, `DOOR_OPEN`, or `UNKNOWN` -> write alert and stop.
+2. L3 human review: `escalate_to_human` or `requires_confirmation` -> write alert only.
+3. L0 self-fix: `auto_executable: true`, run status is `awaiting-recovery`, attempt queue allows it, and action is one of:
+   - `retry_pick_up_tip_with_next_candidate`
+   - `wait_and_poll_module_status`
+   - `reconcile_state_first` for module-blocker-only diffs
+
+`runtime_watch_poll` must not auto-execute `suggest_new_destination_slot`, even when candidates look high-confidence. Destination recovery remains human-reviewed.
 
 ### Manual-only examples
 

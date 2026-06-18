@@ -156,6 +156,18 @@ Get run state plus recent command history in an agent-friendly format.
 
 **Parameters:** `robot_ip` (optional), `run_id`, `page_length` (optional)
 
+### `runtime_ack_alert` [L2]
+
+Mark a runtime watch alert handled after the operator has supplied the requested decision.
+
+**Parameters:** `run_id`, `alert_id`, `note` (optional), `selection` (optional)
+
+### `runtime_get_alerts` [L2]
+
+Read runtime watch alerts and latest watch state for a run. Intended for hook/insurance paths and current-dialog notification checks.
+
+**Parameters:** `run_id`, `limit` (optional), `include_acked` (optional)
+
 ### `safe_next_action` [L2]
 
 Single-entry operator summary after MCP/host restart: same payload as restart_review plus safe_next_action (recommended_next_tool, operator_steps, tool_sequence). Prefer this when the user wants one call instead of reading the full guidance object. Atomic tools are unchanged.
@@ -202,13 +214,13 @@ Control Thermocycler block/lid temperature or lid state in an active context.
 
 ### `create_run` [L3]
 
-Create a run for a protocol already on the robot.
+Create a run for a protocol already on the robot. Automatically attaches stored labware offsets from the robot unless labware_offsets is provided.
 
-**Parameters:** `robot_ip` (optional), `protocol_id`, `run_time_parameters` (optional), `page_length` (optional)
+**Parameters:** `robot_ip` (optional), `protocol_id`, `run_time_parameters` (optional), `labware_offsets` (optional), `page_length` (optional)
 
 ### `create_run_context` [L3]
 
-Create either a protocol run context or a maintenance-run context before enqueueing commands.
+Create either a protocol run context or a maintenance-run context before enqueueing commands. Automatically attaches stored labware offsets unless labware_offsets is provided.
 
 **Parameters:** `robot_ip` (optional), `context_type` (optional), `protocol_id` (optional), `run_time_parameters` (optional), `labware_offsets` (optional), `session_id` (optional)
 
@@ -256,9 +268,15 @@ In protocol recovery state, enqueue a fixit pickUpTip on the next viable well an
 
 ### `run_protocol` [L3]
 
-Upload a protocol, create a run, optionally play it, then poll until the run reaches a terminal or intervention-required state.
+Upload a protocol, create a run (auto-attaching stored labware offsets), optionally play it, then poll until the run reaches a terminal or intervention-required state.
 
-**Parameters:** `robot_ip` (optional), `file_path`, `protocol_kind` (optional), `key` (optional), `run_time_parameters` (optional), `auto_play` (optional), `timeout_ms` (optional), `poll_interval_ms` (optional), `page_length` (optional), `session_id` (optional), `skip_preflight` (optional), `skip_preflight_deck_diff` (optional), `strict_preflight_labware_slots` (optional), `tiprack_slots` (optional)
+**Parameters:** `robot_ip` (optional), `file_path`, `protocol_kind` (optional), `key` (optional), `run_time_parameters` (optional), `labware_offsets` (optional), `auto_play` (optional), `timeout_ms` (optional), `poll_interval_ms` (optional), `page_length` (optional), `session_id` (optional), `skip_preflight` (optional), `skip_preflight_deck_diff` (optional), `strict_preflight_labware_slots` (optional), `tiprack_slots` (optional)
+
+### `runtime_watch_poll` [L3]
+
+Bounded runtime watch poll for a live protocol run. Polls run status, executes only narrow L0 self-fix branches, and returns only running/completed/needs_user/hard_stop/unreachable.
+
+**Parameters:** `robot_ip` (optional), `run_id`, `session_id` (optional), `max_block_ms` (optional), `poll_interval_ms` (optional), `timeout_ms` (optional), `page_length` (optional), `tiprack_slots` (optional), `module_wait_timeout_ms` (optional), `module_poll_interval_ms` (optional), `max_attempts_per_failed_command` (optional), `unreachable_threshold` (optional)
 
 ### `upload_protocol` [L3]
 
