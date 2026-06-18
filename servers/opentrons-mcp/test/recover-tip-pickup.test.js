@@ -242,6 +242,7 @@ test("execute_protocol_recovery can reissue moveLabware to a chosen alternative 
     onPostCommand(payload) {
       assert.equal(payload.data.commandType, "moveLabware");
       assert.equal(payload.data.intent, "fixit");
+      assert.equal(payload.data.key, "move-recovery:moveLabware");
       assert.equal(payload.data.params.labwareId, "plate-1");
       assert.equal(payload.data.params.newLocation.slotName, "D2");
     },
@@ -252,6 +253,7 @@ test("execute_protocol_recovery can reissue moveLabware to a chosen alternative 
       robot_ip: "10.31.2.149:31950",
       run_id: "run-1",
       session_id: "recover-move-test",
+      idempotency_key: "move-recovery",
       destination_slot: "D2",
       timeout_ms: 10,
       poll_interval_ms: 1,

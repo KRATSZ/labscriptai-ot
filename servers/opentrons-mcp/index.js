@@ -2208,6 +2208,7 @@ async function executeProtocolRecovery(args, { expectedAction = null, watchMode 
           pickUpOffset: readNested(failedCommand, [["params", "pickUpOffset"]], null),
           dropOffset: readNested(failedCommand, [["params", "dropOffset"]], null),
           intent: "fixit",
+          key: args.idempotency_key ? `${args.idempotency_key}:moveLabware` : null,
         }),
         timeoutMs: args.timeout_ms ?? 120000,
         pollIntervalMs: args.poll_interval_ms ?? 500,
