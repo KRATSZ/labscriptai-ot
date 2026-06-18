@@ -1,0 +1,1155 @@
+{
+  "phase": 2,
+  "generated_at": "2026-06-17T03:31:16.831697+00:00",
+  "conf_threshold": 0.2,
+  "images_evaluated": 5,
+  "aggregate_occupancy_accuracy": 0.3667,
+  "aggregate_label_accuracy": 0.3667,
+  "total_slots_compared": 60,
+  "results": [
+    {
+      "image": "1_empty_deck_20260616_111016_016_20260616_111336.jpg",
+      "scenario": "empty",
+      "occupancy_accuracy": 0.5,
+      "label_accuracy": 0.5,
+      "mismatches": [
+        {
+          "slot": "A1",
+          "expected": "module",
+          "vision_state": "uncertain",
+          "vision_label": null,
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "expected_layout_mismatch"
+          ]
+        },
+        {
+          "slot": "A3",
+          "expected": "trash_bin",
+          "vision_state": "uncertain",
+          "vision_label": null,
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "expected_layout_mismatch"
+          ]
+        },
+        {
+          "slot": "B1",
+          "expected": "module",
+          "vision_state": "uncertain",
+          "vision_label": null,
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "expected_layout_mismatch"
+          ]
+        },
+        {
+          "slot": "B3",
+          "expected": "tiprack",
+          "vision_state": "uncertain",
+          "vision_label": null,
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "expected_layout_mismatch"
+          ]
+        },
+        {
+          "slot": "C1",
+          "expected": "module",
+          "vision_state": "uncertain",
+          "vision_label": null,
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "expected_layout_mismatch"
+          ]
+        },
+        {
+          "slot": "D1",
+          "expected": "module",
+          "vision_state": "uncertain",
+          "vision_label": null,
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "expected_layout_mismatch"
+          ]
+        }
+      ],
+      "vision_summary": "6/12 slots confident; 0 slots use coverage mapping; 6 slots need review; 6 mismatches vs expected_layout.",
+      "needs_human_review": true,
+      "slot_mapping_method": "deck_homography",
+      "annotated_image_path": "C:\\Users\\zhangyu\\IdeaProjects\\labscriptai-ot\\automation\\photo\\phase2\\annotated\\1_empty_deck_20260616_111016_016_20260616_111336-vision-deck.jpg",
+      "per_slot": {
+        "A1": {
+          "expected": "module",
+          "vision_state": "uncertain",
+          "vision_label": null,
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "expected_layout_mismatch"
+          ]
+        },
+        "A2": {
+          "expected": "empty",
+          "vision_state": "empty",
+          "vision_label": null,
+          "vision_effective": "empty",
+          "occupancy_match": true,
+          "label_match": true,
+          "reasons": []
+        },
+        "A3": {
+          "expected": "trash_bin",
+          "vision_state": "uncertain",
+          "vision_label": null,
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "expected_layout_mismatch"
+          ]
+        },
+        "B1": {
+          "expected": "module",
+          "vision_state": "uncertain",
+          "vision_label": null,
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "expected_layout_mismatch"
+          ]
+        },
+        "B2": {
+          "expected": "empty",
+          "vision_state": "empty",
+          "vision_label": null,
+          "vision_effective": "empty",
+          "occupancy_match": true,
+          "label_match": true,
+          "reasons": []
+        },
+        "B3": {
+          "expected": "tiprack",
+          "vision_state": "uncertain",
+          "vision_label": null,
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "expected_layout_mismatch"
+          ]
+        },
+        "C1": {
+          "expected": "module",
+          "vision_state": "uncertain",
+          "vision_label": null,
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "expected_layout_mismatch"
+          ]
+        },
+        "C2": {
+          "expected": "empty",
+          "vision_state": "empty",
+          "vision_label": null,
+          "vision_effective": "empty",
+          "occupancy_match": true,
+          "label_match": true,
+          "reasons": []
+        },
+        "C3": {
+          "expected": "empty",
+          "vision_state": "empty",
+          "vision_label": null,
+          "vision_effective": "empty",
+          "occupancy_match": true,
+          "label_match": true,
+          "reasons": []
+        },
+        "D1": {
+          "expected": "module",
+          "vision_state": "uncertain",
+          "vision_label": null,
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "expected_layout_mismatch"
+          ]
+        },
+        "D2": {
+          "expected": "empty",
+          "vision_state": "empty",
+          "vision_label": null,
+          "vision_effective": "empty",
+          "occupancy_match": true,
+          "label_match": true,
+          "reasons": []
+        },
+        "D3": {
+          "expected": "empty",
+          "vision_state": "empty",
+          "vision_label": null,
+          "vision_effective": "empty",
+          "occupancy_match": true,
+          "label_match": true,
+          "reasons": []
+        }
+      }
+    },
+    {
+      "image": "2_normal_deck_20260616_110821_001_20260616_110821.jpg",
+      "scenario": "normal",
+      "occupancy_accuracy": 0.3333,
+      "label_accuracy": 0.3333,
+      "mismatches": [
+        {
+          "slot": "A1",
+          "expected": "module",
+          "vision_state": "uncertain",
+          "vision_label": null,
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "expected_layout_mismatch"
+          ]
+        },
+        {
+          "slot": "A2",
+          "expected": "tiprack",
+          "vision_state": "uncertain",
+          "vision_label": null,
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "expected_layout_mismatch"
+          ]
+        },
+        {
+          "slot": "A3",
+          "expected": "trash_bin",
+          "vision_state": "uncertain",
+          "vision_label": null,
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "expected_layout_mismatch"
+          ]
+        },
+        {
+          "slot": "B1",
+          "expected": "module",
+          "vision_state": "uncertain",
+          "vision_label": null,
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "expected_layout_mismatch"
+          ]
+        },
+        {
+          "slot": "B2",
+          "expected": "tiprack",
+          "vision_state": "uncertain",
+          "vision_label": null,
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "expected_layout_mismatch"
+          ]
+        },
+        {
+          "slot": "B3",
+          "expected": "tiprack",
+          "vision_state": "uncertain",
+          "vision_label": null,
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "expected_layout_mismatch"
+          ]
+        },
+        {
+          "slot": "C1",
+          "expected": "module",
+          "vision_state": "uncertain",
+          "vision_label": null,
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "expected_layout_mismatch"
+          ]
+        },
+        {
+          "slot": "D1",
+          "expected": "module",
+          "vision_state": "uncertain",
+          "vision_label": null,
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "expected_layout_mismatch"
+          ]
+        }
+      ],
+      "vision_summary": "4/12 slots confident; 0 slots use coverage mapping; 8 slots need review; 8 mismatches vs expected_layout.",
+      "needs_human_review": true,
+      "slot_mapping_method": "deck_homography",
+      "annotated_image_path": "C:\\Users\\zhangyu\\IdeaProjects\\labscriptai-ot\\automation\\photo\\phase2\\annotated\\2_normal_deck_20260616_110821_001_20260616_110821-vision-deck.jpg",
+      "per_slot": {
+        "A1": {
+          "expected": "module",
+          "vision_state": "uncertain",
+          "vision_label": null,
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "expected_layout_mismatch"
+          ]
+        },
+        "A2": {
+          "expected": "tiprack",
+          "vision_state": "uncertain",
+          "vision_label": null,
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "expected_layout_mismatch"
+          ]
+        },
+        "A3": {
+          "expected": "trash_bin",
+          "vision_state": "uncertain",
+          "vision_label": null,
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "expected_layout_mismatch"
+          ]
+        },
+        "B1": {
+          "expected": "module",
+          "vision_state": "uncertain",
+          "vision_label": null,
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "expected_layout_mismatch"
+          ]
+        },
+        "B2": {
+          "expected": "tiprack",
+          "vision_state": "uncertain",
+          "vision_label": null,
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "expected_layout_mismatch"
+          ]
+        },
+        "B3": {
+          "expected": "tiprack",
+          "vision_state": "uncertain",
+          "vision_label": null,
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "expected_layout_mismatch"
+          ]
+        },
+        "C1": {
+          "expected": "module",
+          "vision_state": "uncertain",
+          "vision_label": null,
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "expected_layout_mismatch"
+          ]
+        },
+        "C2": {
+          "expected": "empty",
+          "vision_state": "empty",
+          "vision_label": null,
+          "vision_effective": "empty",
+          "occupancy_match": true,
+          "label_match": true,
+          "reasons": []
+        },
+        "C3": {
+          "expected": "empty",
+          "vision_state": "empty",
+          "vision_label": null,
+          "vision_effective": "empty",
+          "occupancy_match": true,
+          "label_match": true,
+          "reasons": []
+        },
+        "D1": {
+          "expected": "module",
+          "vision_state": "uncertain",
+          "vision_label": null,
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "expected_layout_mismatch"
+          ]
+        },
+        "D2": {
+          "expected": "empty",
+          "vision_state": "empty",
+          "vision_label": null,
+          "vision_effective": "empty",
+          "occupancy_match": true,
+          "label_match": true,
+          "reasons": []
+        },
+        "D3": {
+          "expected": "empty",
+          "vision_state": "empty",
+          "vision_label": null,
+          "vision_effective": "empty",
+          "occupancy_match": true,
+          "label_match": true,
+          "reasons": []
+        }
+      }
+    },
+    {
+      "image": "3_more_deck_20260616_111016_010_20260616_111216.jpg",
+      "scenario": "more",
+      "occupancy_accuracy": 0.1667,
+      "label_accuracy": 0.1667,
+      "mismatches": [
+        {
+          "slot": "A1",
+          "expected": "module",
+          "vision_state": "uncertain",
+          "vision_label": null,
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "expected_layout_mismatch"
+          ]
+        },
+        {
+          "slot": "A3",
+          "expected": "trash_bin",
+          "vision_state": "uncertain",
+          "vision_label": null,
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "expected_layout_mismatch"
+          ]
+        },
+        {
+          "slot": "B1",
+          "expected": "module",
+          "vision_state": "uncertain",
+          "vision_label": null,
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "expected_layout_mismatch"
+          ]
+        },
+        {
+          "slot": "B2",
+          "expected": "reservoir",
+          "vision_state": "uncertain",
+          "vision_label": null,
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "expected_layout_mismatch"
+          ]
+        },
+        {
+          "slot": "B3",
+          "expected": "tiprack",
+          "vision_state": "uncertain",
+          "vision_label": null,
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "expected_layout_mismatch"
+          ]
+        },
+        {
+          "slot": "C1",
+          "expected": "module",
+          "vision_state": "uncertain",
+          "vision_label": null,
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "expected_layout_mismatch"
+          ]
+        },
+        {
+          "slot": "C2",
+          "expected": "tiprack",
+          "vision_state": "uncertain",
+          "vision_label": null,
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "expected_layout_mismatch"
+          ]
+        },
+        {
+          "slot": "C3",
+          "expected": "tiprack",
+          "vision_state": "uncertain",
+          "vision_label": null,
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "expected_layout_mismatch"
+          ]
+        },
+        {
+          "slot": "D1",
+          "expected": "module",
+          "vision_state": "uncertain",
+          "vision_label": null,
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "expected_layout_mismatch"
+          ]
+        },
+        {
+          "slot": "D3",
+          "expected": "tiprack",
+          "vision_state": "uncertain",
+          "vision_label": null,
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "expected_layout_mismatch"
+          ]
+        }
+      ],
+      "vision_summary": "2/12 slots confident; 0 slots use coverage mapping; 10 slots need review; 10 mismatches vs expected_layout.",
+      "needs_human_review": true,
+      "slot_mapping_method": "deck_homography",
+      "annotated_image_path": "C:\\Users\\zhangyu\\IdeaProjects\\labscriptai-ot\\automation\\photo\\phase2\\annotated\\3_more_deck_20260616_111016_010_20260616_111216-vision-deck.jpg",
+      "per_slot": {
+        "A1": {
+          "expected": "module",
+          "vision_state": "uncertain",
+          "vision_label": null,
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "expected_layout_mismatch"
+          ]
+        },
+        "A2": {
+          "expected": "empty",
+          "vision_state": "empty",
+          "vision_label": null,
+          "vision_effective": "empty",
+          "occupancy_match": true,
+          "label_match": true,
+          "reasons": []
+        },
+        "A3": {
+          "expected": "trash_bin",
+          "vision_state": "uncertain",
+          "vision_label": null,
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "expected_layout_mismatch"
+          ]
+        },
+        "B1": {
+          "expected": "module",
+          "vision_state": "uncertain",
+          "vision_label": null,
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "expected_layout_mismatch"
+          ]
+        },
+        "B2": {
+          "expected": "reservoir",
+          "vision_state": "uncertain",
+          "vision_label": null,
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "expected_layout_mismatch"
+          ]
+        },
+        "B3": {
+          "expected": "tiprack",
+          "vision_state": "uncertain",
+          "vision_label": null,
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "expected_layout_mismatch"
+          ]
+        },
+        "C1": {
+          "expected": "module",
+          "vision_state": "uncertain",
+          "vision_label": null,
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "expected_layout_mismatch"
+          ]
+        },
+        "C2": {
+          "expected": "tiprack",
+          "vision_state": "uncertain",
+          "vision_label": null,
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "expected_layout_mismatch"
+          ]
+        },
+        "C3": {
+          "expected": "tiprack",
+          "vision_state": "uncertain",
+          "vision_label": null,
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "expected_layout_mismatch"
+          ]
+        },
+        "D1": {
+          "expected": "module",
+          "vision_state": "uncertain",
+          "vision_label": null,
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "expected_layout_mismatch"
+          ]
+        },
+        "D2": {
+          "expected": "empty",
+          "vision_state": "empty",
+          "vision_label": null,
+          "vision_effective": "empty",
+          "occupancy_match": true,
+          "label_match": true,
+          "reasons": []
+        },
+        "D3": {
+          "expected": "tiprack",
+          "vision_state": "uncertain",
+          "vision_label": null,
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "expected_layout_mismatch"
+          ]
+        }
+      }
+    },
+    {
+      "image": "4_little_deck_20260616_111919_005_20260616_112012.jpg",
+      "scenario": "little",
+      "occupancy_accuracy": 0.5,
+      "label_accuracy": 0.5,
+      "mismatches": [
+        {
+          "slot": "A1",
+          "expected": "module",
+          "vision_state": "uncertain",
+          "vision_label": null,
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "expected_layout_mismatch"
+          ]
+        },
+        {
+          "slot": "A3",
+          "expected": "trash_bin",
+          "vision_state": "uncertain",
+          "vision_label": null,
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "expected_layout_mismatch"
+          ]
+        },
+        {
+          "slot": "B1",
+          "expected": "module",
+          "vision_state": "uncertain",
+          "vision_label": null,
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "expected_layout_mismatch"
+          ]
+        },
+        {
+          "slot": "C1",
+          "expected": "module",
+          "vision_state": "uncertain",
+          "vision_label": null,
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "expected_layout_mismatch"
+          ]
+        },
+        {
+          "slot": "C3",
+          "expected": "tiprack",
+          "vision_state": "uncertain",
+          "vision_label": null,
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "expected_layout_mismatch"
+          ]
+        },
+        {
+          "slot": "D1",
+          "expected": "module",
+          "vision_state": "uncertain",
+          "vision_label": null,
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "expected_layout_mismatch"
+          ]
+        }
+      ],
+      "vision_summary": "6/12 slots confident; 0 slots use coverage mapping; 6 slots need review; 6 mismatches vs expected_layout.",
+      "needs_human_review": true,
+      "slot_mapping_method": "deck_homography",
+      "annotated_image_path": "C:\\Users\\zhangyu\\IdeaProjects\\labscriptai-ot\\automation\\photo\\phase2\\annotated\\4_little_deck_20260616_111919_005_20260616_112012-vision-deck.jpg",
+      "per_slot": {
+        "A1": {
+          "expected": "module",
+          "vision_state": "uncertain",
+          "vision_label": null,
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "expected_layout_mismatch"
+          ]
+        },
+        "A2": {
+          "expected": "empty",
+          "vision_state": "empty",
+          "vision_label": null,
+          "vision_effective": "empty",
+          "occupancy_match": true,
+          "label_match": true,
+          "reasons": []
+        },
+        "A3": {
+          "expected": "trash_bin",
+          "vision_state": "uncertain",
+          "vision_label": null,
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "expected_layout_mismatch"
+          ]
+        },
+        "B1": {
+          "expected": "module",
+          "vision_state": "uncertain",
+          "vision_label": null,
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "expected_layout_mismatch"
+          ]
+        },
+        "B2": {
+          "expected": "empty",
+          "vision_state": "empty",
+          "vision_label": null,
+          "vision_effective": "empty",
+          "occupancy_match": true,
+          "label_match": true,
+          "reasons": []
+        },
+        "B3": {
+          "expected": "empty",
+          "vision_state": "empty",
+          "vision_label": null,
+          "vision_effective": "empty",
+          "occupancy_match": true,
+          "label_match": true,
+          "reasons": []
+        },
+        "C1": {
+          "expected": "module",
+          "vision_state": "uncertain",
+          "vision_label": null,
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "expected_layout_mismatch"
+          ]
+        },
+        "C2": {
+          "expected": "empty",
+          "vision_state": "empty",
+          "vision_label": null,
+          "vision_effective": "empty",
+          "occupancy_match": true,
+          "label_match": true,
+          "reasons": []
+        },
+        "C3": {
+          "expected": "tiprack",
+          "vision_state": "uncertain",
+          "vision_label": null,
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "expected_layout_mismatch"
+          ]
+        },
+        "D1": {
+          "expected": "module",
+          "vision_state": "uncertain",
+          "vision_label": null,
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "expected_layout_mismatch"
+          ]
+        },
+        "D2": {
+          "expected": "empty",
+          "vision_state": "empty",
+          "vision_label": null,
+          "vision_effective": "empty",
+          "occupancy_match": true,
+          "label_match": true,
+          "reasons": []
+        },
+        "D3": {
+          "expected": "empty",
+          "vision_state": "empty",
+          "vision_label": null,
+          "vision_effective": "empty",
+          "occupancy_match": true,
+          "label_match": true,
+          "reasons": []
+        }
+      }
+    },
+    {
+      "image": "5_little_deck_20260616_111016_014_20260616_111309.jpg",
+      "scenario": "little",
+      "occupancy_accuracy": 0.3333,
+      "label_accuracy": 0.3333,
+      "mismatches": [
+        {
+          "slot": "A1",
+          "expected": "module",
+          "vision_state": "uncertain",
+          "vision_label": null,
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "expected_layout_mismatch"
+          ]
+        },
+        {
+          "slot": "A2",
+          "expected": "tiprack",
+          "vision_state": "uncertain",
+          "vision_label": null,
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "expected_layout_mismatch"
+          ]
+        },
+        {
+          "slot": "A3",
+          "expected": "trash_bin",
+          "vision_state": "uncertain",
+          "vision_label": null,
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "expected_layout_mismatch"
+          ]
+        },
+        {
+          "slot": "B1",
+          "expected": "module",
+          "vision_state": "uncertain",
+          "vision_label": "module",
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "low_confidence_detection",
+            "expected_layout_mismatch"
+          ]
+        },
+        {
+          "slot": "B2",
+          "expected": "reservoir",
+          "vision_state": "uncertain",
+          "vision_label": null,
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "expected_layout_mismatch"
+          ]
+        },
+        {
+          "slot": "B3",
+          "expected": "tiprack",
+          "vision_state": "uncertain",
+          "vision_label": null,
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "expected_layout_mismatch"
+          ]
+        },
+        {
+          "slot": "C1",
+          "expected": "module",
+          "vision_state": "uncertain",
+          "vision_label": null,
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "expected_layout_mismatch"
+          ]
+        },
+        {
+          "slot": "D1",
+          "expected": "module",
+          "vision_state": "uncertain",
+          "vision_label": null,
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "expected_layout_mismatch"
+          ]
+        }
+      ],
+      "vision_summary": "4/12 slots confident; 0 slots use coverage mapping; 8 slots need review; 8 mismatches vs expected_layout.",
+      "needs_human_review": true,
+      "slot_mapping_method": "deck_homography",
+      "annotated_image_path": "C:\\Users\\zhangyu\\IdeaProjects\\labscriptai-ot\\automation\\photo\\phase2\\annotated\\5_little_deck_20260616_111016_014_20260616_111309-vision-deck.jpg",
+      "per_slot": {
+        "A1": {
+          "expected": "module",
+          "vision_state": "uncertain",
+          "vision_label": null,
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "expected_layout_mismatch"
+          ]
+        },
+        "A2": {
+          "expected": "tiprack",
+          "vision_state": "uncertain",
+          "vision_label": null,
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "expected_layout_mismatch"
+          ]
+        },
+        "A3": {
+          "expected": "trash_bin",
+          "vision_state": "uncertain",
+          "vision_label": null,
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "expected_layout_mismatch"
+          ]
+        },
+        "B1": {
+          "expected": "module",
+          "vision_state": "uncertain",
+          "vision_label": "module",
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "low_confidence_detection",
+            "expected_layout_mismatch"
+          ]
+        },
+        "B2": {
+          "expected": "reservoir",
+          "vision_state": "uncertain",
+          "vision_label": null,
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "expected_layout_mismatch"
+          ]
+        },
+        "B3": {
+          "expected": "tiprack",
+          "vision_state": "uncertain",
+          "vision_label": null,
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "expected_layout_mismatch"
+          ]
+        },
+        "C1": {
+          "expected": "module",
+          "vision_state": "uncertain",
+          "vision_label": null,
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "expected_layout_mismatch"
+          ]
+        },
+        "C2": {
+          "expected": "empty",
+          "vision_state": "empty",
+          "vision_label": null,
+          "vision_effective": "empty",
+          "occupancy_match": true,
+          "label_match": true,
+          "reasons": []
+        },
+        "C3": {
+          "expected": "empty",
+          "vision_state": "empty",
+          "vision_label": null,
+          "vision_effective": "empty",
+          "occupancy_match": true,
+          "label_match": true,
+          "reasons": []
+        },
+        "D1": {
+          "expected": "module",
+          "vision_state": "uncertain",
+          "vision_label": null,
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "expected_layout_mismatch"
+          ]
+        },
+        "D2": {
+          "expected": "empty",
+          "vision_state": "empty",
+          "vision_label": null,
+          "vision_effective": "empty",
+          "occupancy_match": true,
+          "label_match": true,
+          "reasons": []
+        },
+        "D3": {
+          "expected": "empty",
+          "vision_state": "empty",
+          "vision_label": null,
+          "vision_effective": "empty",
+          "occupancy_match": true,
+          "label_match": true,
+          "reasons": []
+        }
+      }
+    }
+  ]
+}

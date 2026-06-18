@@ -1,0 +1,54 @@
+{
+  "image_file": "deck_20260616_111016_004_20260616_111056.jpg",
+  "phase3_scenario": "layout",
+  "classes": [
+    "tiprack_50",
+    "tiprack_200",
+    "tiprack_1000",
+    "reservoir",
+    "plate"
+  ],
+  "boxes": [
+    {
+      "class": "tiprack_1000",
+      "bbox_norm": [
+        0.501042,
+        0.423148,
+        0.571875,
+        0.532407
+      ]
+    },
+    {
+      "class": "tiprack_1000",
+      "bbox_norm": [
+        0.559896,
+        0.372222,
+        0.626042,
+        0.461111
+      ]
+    },
+    {
+      "class": "tiprack_50",
+      "bbox_norm": [
+        0.566146,
+        0.443519,
+        0.629687,
+        0.543519
+      ]
+    },
+    {
+      "class": "reservoir",
+      "bbox_norm": [
+        0.498437,
+        0.522222,
+        0.567187,
+        0.612037
+      ]
+    }
+  ],
+  "notes": "",
+  "image_size": {
+    "width": 1920,
+    "height": 1080
+  }
+}

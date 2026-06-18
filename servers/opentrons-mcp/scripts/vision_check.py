@@ -453,6 +453,150 @@ def _load_sidecar_deck_corners(image_path: Path) -> list[list[float]] | None:
     return _pick_ordered_deck_corners(out)
 
 
+def _parse_slot_centers_norm(raw: Any) -> dict[str, list[float]] | None:
+    if not isinstance(raw, dict):
+        return None
+    out: dict[str, list[float]] = {}
+    for slot in FLEX_SLOTS:
+        pt = raw.get(slot)
+        if not isinstance(pt, (list, tuple)) or len(pt) < 2:
+            return None
+        out[slot] = [float(pt[0]), float(pt[1])]
+    return out
+
+
+def _mean_or_none(values: list[float]) -> float | None:
+    return sum(values) / len(values) if values else None
+
+
+def _extrapolate_outer(low_center: float, inner_boundary: float) -> float:
+    return 2.0 * low_center - inner_boundary
+
+
+def _slot_name_from_indices(row: int, col: int) -> str:
+    return f"{chr(ord('A') + row)}{col + 1}"
+
+
+def _build_slot_polygons_from_centers_norm(
+    centers: dict[str, list[float]],
+) -> dict[str, list[list[float]]]:
+    col_x: list[float | None] = [None, None, None, None]
+    for boundary in (1, 2):
+        xs: list[float] = []
+        for row in range(4):
+            left = centers.get(_slot_name_from_indices(row, boundary - 1))
+            right = centers.get(_slot_name_from_indices(row, boundary))
+            if left and right:
+                xs.append((float(left[0]) + float(right[0])) / 2.0)
+        col_x[boundary] = _mean_or_none(xs)
+
+    row_y: list[float | None] = [None, None, None, None, None]
+    for boundary in (1, 2, 3):
+        ys: list[float] = []
+        for col in range(3):
+            up = centers.get(_slot_name_from_indices(boundary - 1, col))
+            down = centers.get(_slot_name_from_indices(boundary, col))
+            if up and down:
+                ys.append((float(up[1]) + float(down[1])) / 2.0)
+        row_y[boundary] = _mean_or_none(ys)
+
+    if col_x[1] is None or col_x[2] is None or row_y[1] is None or row_y[3] is None:
+        raise ValueError("slot_centers_norm does not span enough of the deck grid")
+
+    col_x[0] = _mean_or_none(
+        [_extrapolate_outer(float(centers[_slot_name_from_indices(r, 0)][0]), col_x[1]) for r in range(4)]
+    )
+    col_x[3] = _mean_or_none(
+        [_extrapolate_outer(float(centers[_slot_name_from_indices(r, 2)][0]), col_x[2]) for r in range(4)]
+    )
+    row_y[0] = _mean_or_none(
+        [_extrapolate_outer(float(centers[_slot_name_from_indices(0, c)][1]), row_y[1]) for c in range(3)]
+    )
+    row_y[4] = _mean_or_none(
+        [_extrapolate_outer(float(centers[_slot_name_from_indices(3, c)][1]), row_y[3]) for c in range(3)]
+    )
+
+    polys: dict[str, list[list[float]]] = {}
+    for slot in FLEX_SLOTS:
+        row = ord(slot[0]) - ord("A")
+        col = int(slot[1]) - 1
+        polys[slot] = [
+            [col_x[col], row_y[row]],
+            [col_x[col + 1], row_y[row]],
+            [col_x[col + 1], row_y[row + 1]],
+            [col_x[col], row_y[row + 1]],
+        ]
+    return polys
+
+
+def _load_sidecar_slot_centers(image_path: Path) -> dict[str, list[float]] | None:
+    sidecar = image_path.parent / "labels" / f"{image_path.stem}.labels.json"
+    if not sidecar.is_file():
+        return None
+    try:
+        data = json.loads(sidecar.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if str(data.get("calibration_method") or "") != "slot_centers_v1":
+        return None
+    return _parse_slot_centers_norm(data.get("slot_centers_norm"))
+
+
+def _point_in_polygon_norm(px: float, py: float, polygon: list[list[float]]) -> bool:
+    inside = False
+    n = len(polygon)
+    for i in range(n):
+        x1, y1 = polygon[i]
+        x2, y2 = polygon[(i + 1) % n]
+        if ((y1 > py) != (y2 > py)) and (px < (x2 - x1) * (py - y1) / (y2 - y1 + 1e-12) + x1):
+            inside = not inside
+    return inside
+
+
+def _slot_mesh_rect(slot: str, slot_polygons: dict[str, list[list[float]]]) -> tuple[float, float, float, float]:
+    poly = slot_polygons[slot]
+    xs = [float(p[0]) for p in poly]
+    ys = [float(p[1]) for p in poly]
+    return min(xs), min(ys), max(xs), max(ys)
+
+
+def _slot_overlap_scores_mesh(
+    polygon: list[list[float]],
+    slot_polygons: dict[str, list[list[float]]],
+) -> dict[str, float]:
+    return {
+        slot: _polygon_area(_clip_polygon_to_rect(polygon, _slot_mesh_rect(slot, slot_polygons)))
+        for slot in FLEX_SLOTS
+    }
+
+
+def _map_center_to_slot_mesh(
+    nx: float,
+    ny: float,
+    slot_polygons: dict[str, list[list[float]]],
+    slot_centers: dict[str, list[float]] | None = None,
+) -> tuple[str, list[str], dict[str, Any] | None]:
+    hits = [slot for slot in FLEX_SLOTS if _point_in_polygon_norm(nx, ny, slot_polygons[slot])]
+    notes: list[str] = []
+    if len(hits) == 1:
+        return hits[0], notes, None
+    if len(hits) > 1:
+        notes.append("point_in_multiple_slot_polygons")
+        if slot_centers:
+            best = min(hits, key=lambda s: (nx - slot_centers[s][0]) ** 2 + (ny - slot_centers[s][1]) ** 2)
+            return best, notes, None
+        return hits[0], notes, None
+    if slot_centers:
+        best = min(
+            FLEX_SLOTS,
+            key=lambda s: (nx - slot_centers[s][0]) ** 2 + (ny - slot_centers[s][1]) ** 2,
+        )
+        notes.append("nearest_slot_center_fallback")
+        return best, notes, None
+    slot, grid_notes = _grid_cell(nx, ny)
+    return slot, notes + grid_notes + ["slot_mesh_miss_fell_back_to_image_grid"], None
+
+
 def _resolve_yoloe_prompt_lists(
     class_prompts: list[str] | None,
     canonical_labels: list[str] | None,
@@ -729,20 +873,38 @@ def _build_slot_coverage(
     h: int,
     hmat: Any | None,
     label: str | None = None,
+    slot_polygons_mesh: dict[str, list[list[float]]] | None = None,
+    slot_centers_mesh: dict[str, list[float]] | None = None,
 ) -> dict[str, Any]:
     cx = (x1 + x2) / 2.0
     cy = (y1 + y2) / 2.0
     nx = max(0.0, min(1.0, cx / w))
     ny = max(0.0, min(1.0, cy / h))
-    center_slot, center_notes, deck_extra = _map_center_to_slot(nx, ny, w, h, hmat)
-    polygon, polygon_notes = _project_bbox_polygon(x1, y1, x2, y2, w, h, hmat)
-    overlap_scores = _slot_overlap_scores(polygon)
+    deck_extra: dict[str, Any] | None = None
+    if slot_polygons_mesh is not None:
+        center_slot, center_notes, deck_extra = _map_center_to_slot_mesh(
+            nx, ny, slot_polygons_mesh, slot_centers_mesh
+        )
+        polygon = _normalize_polygon(
+            [
+                [x1 / w, y1 / h],
+                [x2 / w, y1 / h],
+                [x2 / w, y2 / h],
+                [x1 / w, y2 / h],
+            ]
+        )
+        polygon_notes: list[str] = ["slot_centers_mesh"]
+        overlap_scores = _slot_overlap_scores_mesh(polygon, slot_polygons_mesh)
+    else:
+        center_slot, center_notes, deck_extra = _map_center_to_slot(nx, ny, w, h, hmat)
+        polygon, polygon_notes = _project_bbox_polygon(x1, y1, x2, y2, w, h, hmat)
+        overlap_scores = _slot_overlap_scores(polygon)
     positive_scores = {slot: score for slot, score in overlap_scores.items() if score > 1e-6}
     max_slot = max(positive_scores, key=positive_scores.get, default=center_slot)
     max_overlap = positive_scores.get(max_slot, 0.0)
     poly_area = max(_polygon_area(polygon), 1e-6)
     assignable_to_slots = True
-    if hmat is not None and max_overlap < 0.005:
+    if (hmat is not None or slot_polygons_mesh is not None) and max_overlap < 0.005:
         assignable_to_slots = False
         covered_slots = []
     else:
@@ -797,7 +959,7 @@ def _should_promote_reviewable_slot(
     slot_mapping_method: str,
     coco_untrusted: bool,
 ) -> bool:
-    if slot_mapping_method != "deck_homography" or coco_untrusted or not dets:
+    if slot_mapping_method not in {"deck_homography", "slot_centers_mesh"} or coco_untrusted or not dets:
         return False
 
     allowed_reasons = {"low_confidence_detection", "coverage_spans_multiple_slots", "near_slot_boundary"}
@@ -841,7 +1003,7 @@ def _build_slot_observations(
         dets = slot_to_detections.get(slot, [])
         if not dets:
             reasons: list[str] = []
-            if slot_mapping_method != "deck_homography":
+            if slot_mapping_method not in {"deck_homography", "slot_centers_mesh"}:
                 reasons.append("uniform_grid_fallback")
             if coco_untrusted:
                 reasons.append("coco_fallback_not_labware_tuned")
@@ -884,7 +1046,7 @@ def _build_slot_observations(
                 state = "uncertain"
                 if coco_untrusted:
                     reasons = _unique(reasons + ["coco_fallback_not_labware_tuned"])
-        elif slot_mapping_method != "deck_homography":
+        elif slot_mapping_method not in {"deck_homography", "slot_centers_mesh"}:
             state = "uncertain"
             reasons = _unique(reasons + ["uniform_grid_fallback"])
 
@@ -1210,6 +1372,7 @@ def run_deck(
     annotated_path: Path | None,
     use_text_prompts: bool | None = None,
     deck_corners_norm: list[Any] | None = None,
+    slot_centers_norm: dict[str, Any] | None = None,
     load_labels_sidecar: bool = True,
     class_prompts: list[str] | None = None,
     canonical_labels: list[str] | None = None,
@@ -1252,22 +1415,51 @@ def run_deck(
 
     corners_src: list[Any] | None = deck_corners_norm
     corners_from: str | None = None
+    centers_src: dict[str, list[float]] | None = None
+    centers_from: str | None = None
+    if slot_centers_norm is not None:
+        parsed = _parse_slot_centers_norm(slot_centers_norm)
+        if parsed is not None:
+            centers_src = parsed
+            centers_from = "payload"
+    if centers_src is None and load_labels_sidecar:
+        loaded_centers = _load_sidecar_slot_centers(image_path)
+        if loaded_centers is not None:
+            centers_src = loaded_centers
+            centers_from = "labels_sidecar"
+
     if corners_src is None and load_labels_sidecar:
         loaded = _load_sidecar_deck_corners(image_path)
         if loaded is not None:
             corners_src = loaded
             corners_from = "labels_sidecar"
-    elif corners_src is not None:
+    elif corners_src is not None and corners_from is None:
         corners_from = "payload"
 
     hmat: Any | None = None
+    slot_polygons_mesh: dict[str, list[list[float]]] | None = None
     slot_mapping_meta: dict[str, Any] = {
         "method": "uniform_image_grid",
         "corner_order_doc": DECK_CORNER_ORDER_DOC,
         "deck_corners_norm": None,
         "corners_source": None,
+        "slot_centers_norm": None,
+        "centers_source": None,
     }
-    if corners_src is not None:
+    if centers_src is not None:
+        try:
+            slot_polygons_mesh = _build_slot_polygons_from_centers_norm(centers_src)
+            slot_mapping_meta["method"] = "slot_centers_mesh"
+            slot_mapping_meta["slot_centers_norm"] = centers_src
+            slot_mapping_meta["centers_source"] = centers_from
+            if corners_src is not None:
+                slot_mapping_meta["deck_corners_norm"] = corners_src
+                slot_mapping_meta["corners_source"] = corners_from
+        except ValueError as exc:
+            uncertainties_preflight.append(f"slot_centers_mesh_failed:{exc}")
+            slot_polygons_mesh = None
+
+    if slot_polygons_mesh is None and corners_src is not None:
         hmat, homog_notes = _build_homography_from_corners_norm(corners_src, w, h)
         uncertainties_preflight.extend(homog_notes)
         if hmat is not None:
@@ -1311,7 +1503,18 @@ def run_deck(
                     label, name_raw = _label_from_coco_name(raw_name)
                     evidence = "coco_checkpoint_mapping"
 
-            coverage = _build_slot_coverage(x1, y1, x2, y2, w, h, hmat, label=label)
+            coverage = _build_slot_coverage(
+                x1,
+                y1,
+                x2,
+                y2,
+                w,
+                h,
+                hmat,
+                label=label,
+                slot_polygons_mesh=slot_polygons_mesh,
+                slot_centers_mesh=centers_src,
+            )
             item_reasons = list(coverage["coverage_notes"])
             if conf < LOW_CONFIDENCE_THRESHOLD:
                 item_reasons.append("low_confidence_detection")
@@ -1632,6 +1835,10 @@ def main() -> None:
     if deck_corners is not None and not isinstance(deck_corners, list):
         deck_corners = None
 
+    slot_centers = payload.get("slot_centers_norm")
+    if slot_centers is not None and not isinstance(slot_centers, dict):
+        slot_centers = None
+
     load_labels_sidecar = payload.get("load_labels_sidecar")
     if load_labels_sidecar is None:
         load_labels_sidecar = True
@@ -1675,6 +1882,7 @@ def main() -> None:
             annotated_path=annotated_path,
             use_text_prompts=use_text_prompts,
             deck_corners_norm=deck_corners,
+            slot_centers_norm=slot_centers,
             load_labels_sidecar=load_labels_sidecar,
             class_prompts=class_prompts,
             canonical_labels=canonical_labels,

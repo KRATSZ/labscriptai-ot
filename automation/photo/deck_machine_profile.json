@@ -1,0 +1,46 @@
+{
+  "robot_note": "Silabrobot001 / 192.168.66.102 Flex deck layout",
+  "fixed_slots": {
+    "A1": {
+      "role": "pcr_thermocycler",
+      "canonical": "module",
+      "detect": false
+    },
+    "B1": {
+      "role": "pcr_thermocycler",
+      "canonical": "module",
+      "detect": false
+    },
+    "C1": {
+      "role": "temperature_module",
+      "canonical": "module",
+      "detect": false
+    },
+    "D1": {
+      "role": "heater_shaker",
+      "canonical": "module",
+      "detect": false
+    },
+    "A3": {
+      "role": "trash_bin",
+      "canonical": "trash_bin",
+      "detect": false
+    }
+  },
+  "detection_classes": [
+    "tiprack_50",
+    "tiprack_200",
+    "tiprack_1000",
+    "reservoir",
+    "plate"
+  ],
+  "detectable_slots": [
+    "A2",
+    "B2",
+    "B3",
+    "C2",
+    "C3",
+    "D2",
+    "D3"
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "robot": "http://192.168.66.102:31950",
+  "calibration_method": "deck_corners_v1",
+  "corner_order": "A1_A3_D3_D1_clockwise_deck_view",
+  "reference_image": "preview_capture.jpg",
+  "image_size": {
+    "width": 1920,
+    "height": 1080
+  },
+  "optional_deck_corners_norm": [
+    [
+      0.44375,
+      0.25463
+    ],
+    [
+      0.622917,
+      0.339815
+    ],
+    [
+      0.635417,
+      0.599074
+    ],
+    [
+      0.432812,
+      0.59537
+    ]
+  ],
+  "calibrated_at": "2026-06-17T03:09:45.812394+00:00",
+  "notes": "Normalized image coordinates for vision_check homography. Reuse for all photos from the same robot camera settings."
+}

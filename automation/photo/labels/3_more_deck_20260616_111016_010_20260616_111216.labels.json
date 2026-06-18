@@ -1,0 +1,39 @@
+{
+  "image_file": "3_more_deck_20260616_111016_010_20260616_111216.jpg",
+  "phase1_scenario": "more",
+  "phase1_hint": "Heavily populated; many tip racks and plates across columns.",
+  "slots": {
+    "A1": "module",
+    "A2": "empty",
+    "A3": "trash_bin",
+    "B1": "module",
+    "B2": "reservoir",
+    "B3": "tiprack",
+    "C1": "module",
+    "C2": "tiprack",
+    "C3": "tiprack",
+    "D1": "module",
+    "D2": "empty",
+    "D3": "tiprack"
+  },
+  "notes": "",
+  "optional_deck_corners_norm": [
+    [
+      0.44375,
+      0.25463
+    ],
+    [
+      0.622917,
+      0.339815
+    ],
+    [
+      0.635417,
+      0.599074
+    ],
+    [
+      0.432812,
+      0.59537
+    ]
+  ],
+  "calibration_method": "deck_corners_v1"
+}

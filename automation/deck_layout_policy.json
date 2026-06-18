@@ -1,0 +1,41 @@
+{
+  "description": "Machine-specific Flex deck layout for Silabrobot001 (192.168.66.102). Fixed modules/trash are not vision targets.",
+  "fixed_slots": {
+    "A1": {
+      "role": "pcr_thermocycler",
+      "note": "PCR 热循环模块（固定）"
+    },
+    "B1": {
+      "role": "pcr_thermocycler",
+      "note": "PCR 热循环模块（固定，与 A1 同模块）"
+    },
+    "C1": {
+      "role": "temperature_module",
+      "note": "温控模块（固定）"
+    },
+    "D1": {
+      "role": "heater_shaker",
+      "note": "震荡模块（固定）"
+    },
+    "A3": {
+      "role": "trash_bin",
+      "note": "垃圾桶（固定）"
+    }
+  },
+  "detection_classes": [
+    "tiprack_50",
+    "tiprack_200",
+    "tiprack_1000",
+    "reservoir",
+    "plate"
+  ],
+  "detection_slots": [
+    "A2",
+    "B2",
+    "B3",
+    "C2",
+    "C3",
+    "D2",
+    "D3"
+  ]
+}

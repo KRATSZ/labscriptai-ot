@@ -1,0 +1,440 @@
+{
+  "phase": 2,
+  "generated_at": "2026-06-18T07:31:44.331331+00:00",
+  "detection_slots": [
+    "A2",
+    "B2",
+    "B3",
+    "C2",
+    "C3",
+    "D2",
+    "D3"
+  ],
+  "fixed_slots": [
+    "A1",
+    "A3",
+    "B1",
+    "C1",
+    "D1"
+  ],
+  "layout_policy": "deck_layout_policy.json",
+  "conf_threshold": 0.2,
+  "images_evaluated": 5,
+  "aggregate_occupancy_accuracy": 0.9429,
+  "aggregate_label_accuracy": 0.9429,
+  "total_slots_compared": 35,
+  "results": [
+    {
+      "image": "1_empty_deck_20260616_111016_016_20260616_111336.jpg",
+      "scenario": "empty",
+      "occupancy_accuracy": 0.8571,
+      "label_accuracy": 0.8571,
+      "mismatches": [
+        {
+          "slot": "C3",
+          "expected": "empty",
+          "vision_state": "uncertain",
+          "vision_label": "tiprack",
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "low_confidence_detection",
+            "expected_layout_mismatch"
+          ]
+        }
+      ],
+      "vision_summary": "6/12 slots confident; 0 slots use coverage mapping; 6 slots need review; 6 mismatches vs expected_layout.",
+      "needs_human_review": true,
+      "slot_mapping_method": "deck_homography",
+      "annotated_image_path": "C:\\Users\\zhangyu\\IdeaProjects\\labscriptai-ot\\automation\\photo\\phase2_trained\\annotated\\1_empty_deck_20260616_111016_016_20260616_111336-vision-deck.jpg",
+      "per_slot": {
+        "A2": {
+          "expected": "empty",
+          "vision_state": "empty",
+          "vision_label": null,
+          "vision_effective": "empty",
+          "occupancy_match": true,
+          "label_match": true,
+          "reasons": []
+        },
+        "B2": {
+          "expected": "empty",
+          "vision_state": "empty",
+          "vision_label": null,
+          "vision_effective": "empty",
+          "occupancy_match": true,
+          "label_match": true,
+          "reasons": []
+        },
+        "B3": {
+          "expected": "tiprack",
+          "vision_state": "occupied",
+          "vision_label": "tiprack",
+          "vision_effective": "tiprack",
+          "occupancy_match": true,
+          "label_match": true,
+          "reasons": []
+        },
+        "C2": {
+          "expected": "empty",
+          "vision_state": "empty",
+          "vision_label": null,
+          "vision_effective": "empty",
+          "occupancy_match": true,
+          "label_match": true,
+          "reasons": []
+        },
+        "C3": {
+          "expected": "empty",
+          "vision_state": "uncertain",
+          "vision_label": "tiprack",
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "low_confidence_detection",
+            "expected_layout_mismatch"
+          ]
+        },
+        "D2": {
+          "expected": "empty",
+          "vision_state": "empty",
+          "vision_label": null,
+          "vision_effective": "empty",
+          "occupancy_match": true,
+          "label_match": true,
+          "reasons": []
+        },
+        "D3": {
+          "expected": "empty",
+          "vision_state": "empty",
+          "vision_label": null,
+          "vision_effective": "empty",
+          "occupancy_match": true,
+          "label_match": true,
+          "reasons": []
+        }
+      }
+    },
+    {
+      "image": "2_normal_deck_20260616_110821_001_20260616_110821.jpg",
+      "scenario": "normal",
+      "occupancy_accuracy": 0.8571,
+      "label_accuracy": 0.8571,
+      "mismatches": [
+        {
+          "slot": "D2",
+          "expected": "empty",
+          "vision_state": "uncertain",
+          "vision_label": "reservoir",
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "expected_layout_mismatch"
+          ]
+        }
+      ],
+      "vision_summary": "6/12 slots confident; 0 slots use coverage mapping; 6 slots need review; 6 mismatches vs expected_layout.",
+      "needs_human_review": true,
+      "slot_mapping_method": "deck_homography",
+      "annotated_image_path": "C:\\Users\\zhangyu\\IdeaProjects\\labscriptai-ot\\automation\\photo\\phase2_trained\\annotated\\2_normal_deck_20260616_110821_001_20260616_110821-vision-deck.jpg",
+      "per_slot": {
+        "A2": {
+          "expected": "tiprack",
+          "vision_state": "occupied",
+          "vision_label": "tiprack",
+          "vision_effective": "tiprack",
+          "occupancy_match": true,
+          "label_match": true,
+          "reasons": []
+        },
+        "B2": {
+          "expected": "tiprack",
+          "vision_state": "occupied",
+          "vision_label": "tiprack",
+          "vision_effective": "tiprack",
+          "occupancy_match": true,
+          "label_match": true,
+          "reasons": []
+        },
+        "B3": {
+          "expected": "tiprack",
+          "vision_state": "occupied",
+          "vision_label": "tiprack",
+          "vision_effective": "tiprack",
+          "occupancy_match": true,
+          "label_match": true,
+          "reasons": []
+        },
+        "C2": {
+          "expected": "empty",
+          "vision_state": "empty",
+          "vision_label": null,
+          "vision_effective": "empty",
+          "occupancy_match": true,
+          "label_match": true,
+          "reasons": []
+        },
+        "C3": {
+          "expected": "empty",
+          "vision_state": "empty",
+          "vision_label": null,
+          "vision_effective": "empty",
+          "occupancy_match": true,
+          "label_match": true,
+          "reasons": []
+        },
+        "D2": {
+          "expected": "empty",
+          "vision_state": "uncertain",
+          "vision_label": "reservoir",
+          "vision_effective": "uncertain",
+          "occupancy_match": false,
+          "label_match": false,
+          "reasons": [
+            "expected_layout_mismatch"
+          ]
+        },
+        "D3": {
+          "expected": "empty",
+          "vision_state": "empty",
+          "vision_label": null,
+          "vision_effective": "empty",
+          "occupancy_match": true,
+          "label_match": true,
+          "reasons": []
+        }
+      }
+    },
+    {
+      "image": "3_more_deck_20260616_111016_010_20260616_111216.jpg",
+      "scenario": "more",
+      "occupancy_accuracy": 1.0,
+      "label_accuracy": 1.0,
+      "mismatches": [],
+      "vision_summary": "7/12 slots confident; 0 slots use coverage mapping; 5 slots need review; 5 mismatches vs expected_layout.",
+      "needs_human_review": true,
+      "slot_mapping_method": "deck_homography",
+      "annotated_image_path": "C:\\Users\\zhangyu\\IdeaProjects\\labscriptai-ot\\automation\\photo\\phase2_trained\\annotated\\3_more_deck_20260616_111016_010_20260616_111216-vision-deck.jpg",
+      "per_slot": {
+        "A2": {
+          "expected": "empty",
+          "vision_state": "empty",
+          "vision_label": null,
+          "vision_effective": "empty",
+          "occupancy_match": true,
+          "label_match": true,
+          "reasons": []
+        },
+        "B2": {
+          "expected": "reservoir",
+          "vision_state": "occupied",
+          "vision_label": "reservoir",
+          "vision_effective": "reservoir",
+          "occupancy_match": true,
+          "label_match": true,
+          "reasons": []
+        },
+        "B3": {
+          "expected": "tiprack",
+          "vision_state": "occupied",
+          "vision_label": "tiprack",
+          "vision_effective": "tiprack",
+          "occupancy_match": true,
+          "label_match": true,
+          "reasons": []
+        },
+        "C2": {
+          "expected": "tiprack",
+          "vision_state": "occupied",
+          "vision_label": "tiprack",
+          "vision_effective": "tiprack",
+          "occupancy_match": true,
+          "label_match": true,
+          "reasons": []
+        },
+        "C3": {
+          "expected": "tiprack",
+          "vision_state": "occupied",
+          "vision_label": "tiprack",
+          "vision_effective": "tiprack",
+          "occupancy_match": true,
+          "label_match": true,
+          "reasons": []
+        },
+        "D2": {
+          "expected": "empty",
+          "vision_state": "empty",
+          "vision_label": null,
+          "vision_effective": "empty",
+          "occupancy_match": true,
+          "label_match": true,
+          "reasons": []
+        },
+        "D3": {
+          "expected": "tiprack",
+          "vision_state": "occupied",
+          "vision_label": "tiprack",
+          "vision_effective": "tiprack",
+          "occupancy_match": true,
+          "label_match": true,
+          "reasons": []
+        }
+      }
+    },
+    {
+      "image": "4_little_deck_20260616_111919_005_20260616_112012.jpg",
+      "scenario": "little",
+      "occupancy_accuracy": 1.0,
+      "label_accuracy": 1.0,
+      "mismatches": [],
+      "vision_summary": "7/12 slots confident; 0 slots use coverage mapping; 5 slots need review; 5 mismatches vs expected_layout.",
+      "needs_human_review": true,
+      "slot_mapping_method": "deck_homography",
+      "annotated_image_path": "C:\\Users\\zhangyu\\IdeaProjects\\labscriptai-ot\\automation\\photo\\phase2_trained\\annotated\\4_little_deck_20260616_111919_005_20260616_112012-vision-deck.jpg",
+      "per_slot": {
+        "A2": {
+          "expected": "empty",
+          "vision_state": "empty",
+          "vision_label": null,
+          "vision_effective": "empty",
+          "occupancy_match": true,
+          "label_match": true,
+          "reasons": []
+        },
+        "B2": {
+          "expected": "empty",
+          "vision_state": "empty",
+          "vision_label": null,
+          "vision_effective": "empty",
+          "occupancy_match": true,
+          "label_match": true,
+          "reasons": []
+        },
+        "B3": {
+          "expected": "empty",
+          "vision_state": "empty",
+          "vision_label": null,
+          "vision_effective": "empty",
+          "occupancy_match": true,
+          "label_match": true,
+          "reasons": []
+        },
+        "C2": {
+          "expected": "empty",
+          "vision_state": "empty",
+          "vision_label": null,
+          "vision_effective": "empty",
+          "occupancy_match": true,
+          "label_match": true,
+          "reasons": []
+        },
+        "C3": {
+          "expected": "tiprack",
+          "vision_state": "occupied",
+          "vision_label": "tiprack",
+          "vision_effective": "tiprack",
+          "occupancy_match": true,
+          "label_match": true,
+          "reasons": []
+        },
+        "D2": {
+          "expected": "empty",
+          "vision_state": "empty",
+          "vision_label": null,
+          "vision_effective": "empty",
+          "occupancy_match": true,
+          "label_match": true,
+          "reasons": []
+        },
+        "D3": {
+          "expected": "empty",
+          "vision_state": "empty",
+          "vision_label": null,
+          "vision_effective": "empty",
+          "occupancy_match": true,
+          "label_match": true,
+          "reasons": []
+        }
+      }
+    },
+    {
+      "image": "5_little_deck_20260616_111016_014_20260616_111309.jpg",
+      "scenario": "little",
+      "occupancy_accuracy": 1.0,
+      "label_accuracy": 1.0,
+      "mismatches": [],
+      "vision_summary": "7/12 slots confident; 0 slots use coverage mapping; 5 slots need review; 5 mismatches vs expected_layout.",
+      "needs_human_review": true,
+      "slot_mapping_method": "deck_homography",
+      "annotated_image_path": "C:\\Users\\zhangyu\\IdeaProjects\\labscriptai-ot\\automation\\photo\\phase2_trained\\annotated\\5_little_deck_20260616_111016_014_20260616_111309-vision-deck.jpg",
+      "per_slot": {
+        "A2": {
+          "expected": "tiprack",
+          "vision_state": "occupied",
+          "vision_label": "tiprack",
+          "vision_effective": "tiprack",
+          "occupancy_match": true,
+          "label_match": true,
+          "reasons": []
+        },
+        "B2": {
+          "expected": "reservoir",
+          "vision_state": "occupied",
+          "vision_label": "reservoir",
+          "vision_effective": "reservoir",
+          "occupancy_match": true,
+          "label_match": true,
+          "reasons": []
+        },
+        "B3": {
+          "expected": "tiprack",
+          "vision_state": "occupied",
+          "vision_label": "tiprack",
+          "vision_effective": "tiprack",
+          "occupancy_match": true,
+          "label_match": true,
+          "reasons": []
+        },
+        "C2": {
+          "expected": "empty",
+          "vision_state": "empty",
+          "vision_label": null,
+          "vision_effective": "empty",
+          "occupancy_match": true,
+          "label_match": true,
+          "reasons": []
+        },
+        "C3": {
+          "expected": "empty",
+          "vision_state": "empty",
+          "vision_label": null,
+          "vision_effective": "empty",
+          "occupancy_match": true,
+          "label_match": true,
+          "reasons": []
+        },
+        "D2": {
+          "expected": "empty",
+          "vision_state": "empty",
+          "vision_label": null,
+          "vision_effective": "empty",
+          "occupancy_match": true,
+          "label_match": true,
+          "reasons": []
+        },
+        "D3": {
+          "expected": "empty",
+          "vision_state": "empty",
+          "vision_label": null,
+          "vision_effective": "empty",
+          "occupancy_match": true,
+          "label_match": true,
+          "reasons": []
+        }
+      }
+    }
+  ]
+}

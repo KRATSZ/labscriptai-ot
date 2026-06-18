@@ -1,0 +1,436 @@
+{
+  "weights": "C:\\Users\\zhangyu\\IdeaProjects\\labscriptai-ot\\vision\\models\\weights\\deck_v2_best.pt",
+  "detection_slots": [
+    "A2",
+    "B2",
+    "B3",
+    "C2",
+    "C3",
+    "D2",
+    "D3"
+  ],
+  "fixed_slots": [
+    "A1",
+    "A3",
+    "B1",
+    "C1",
+    "D1"
+  ],
+  "images": [
+    {
+      "file": "test_20260618_154045_001_20260618_154045.jpg",
+      "summary": "12/12 slots confident; 0 slots use coverage mapping; 0 slots need review.",
+      "detection_slots": {
+        "A2": {
+          "state": "occupied",
+          "source": "trained_yolo",
+          "label": "tiprack",
+          "labels": null,
+          "confidence": 0.952,
+          "confidence_band": "high",
+          "reasons": [],
+          "covered_by": [
+            1
+          ],
+          "detection_count": 1
+        },
+        "B2": {
+          "state": "occupied",
+          "source": "trained_yolo",
+          "label": "tiprack",
+          "labels": null,
+          "confidence": 0.9398,
+          "confidence_band": "high",
+          "reasons": [],
+          "covered_by": [
+            2
+          ],
+          "detection_count": 1
+        },
+        "B3": {
+          "state": "occupied",
+          "source": "trained_yolo",
+          "label": "tiprack",
+          "labels": null,
+          "confidence": 0.837,
+          "confidence_band": "high",
+          "reasons": [],
+          "covered_by": [
+            3
+          ],
+          "detection_count": 1
+        },
+        "C2": {
+          "state": "occupied",
+          "source": "trained_yolo",
+          "label": "reservoir",
+          "labels": null,
+          "confidence": 0.8278,
+          "confidence_band": "high",
+          "reasons": [],
+          "covered_by": [
+            4
+          ],
+          "detection_count": 1
+        },
+        "C3": {
+          "state": "empty",
+          "source": "grid_geometry",
+          "label": null,
+          "confidence_band": "high",
+          "reasons": [],
+          "covered_by": []
+        },
+        "D2": {
+          "state": "empty",
+          "source": "grid_geometry",
+          "label": null,
+          "confidence_band": "high",
+          "reasons": [],
+          "covered_by": []
+        },
+        "D3": {
+          "state": "empty",
+          "source": "grid_geometry",
+          "label": null,
+          "confidence_band": "high",
+          "reasons": [],
+          "covered_by": []
+        }
+      },
+      "annotated_image_path": "C:\\Users\\zhangyu\\IdeaProjects\\labscriptai-ot\\automation\\photo\\test\\vision\\annotated\\test_20260618_154045_001_20260618_154045-vision-deck.jpg"
+    },
+    {
+      "file": "test_20260618_154045_002_20260618_154058.jpg",
+      "summary": "12/12 slots confident; 0 slots use coverage mapping; 0 slots need review.",
+      "detection_slots": {
+        "A2": {
+          "state": "occupied",
+          "source": "trained_yolo",
+          "label": "tiprack",
+          "labels": null,
+          "confidence": 0.9573,
+          "confidence_band": "high",
+          "reasons": [],
+          "covered_by": [
+            2
+          ],
+          "detection_count": 1
+        },
+        "B2": {
+          "state": "occupied",
+          "source": "trained_yolo",
+          "label": "tiprack",
+          "labels": null,
+          "confidence": 0.9644,
+          "confidence_band": "high",
+          "reasons": [],
+          "covered_by": [
+            1
+          ],
+          "detection_count": 1
+        },
+        "B3": {
+          "state": "occupied",
+          "source": "trained_yolo",
+          "label": "tiprack",
+          "labels": null,
+          "confidence": 0.8641,
+          "confidence_band": "high",
+          "reasons": [],
+          "covered_by": [
+            4
+          ],
+          "detection_count": 1
+        },
+        "C2": {
+          "state": "empty",
+          "source": "grid_geometry",
+          "label": null,
+          "confidence_band": "high",
+          "reasons": [],
+          "covered_by": []
+        },
+        "C3": {
+          "state": "occupied",
+          "source": "trained_yolo",
+          "label": "tiprack",
+          "labels": null,
+          "confidence": 0.8037,
+          "confidence_band": "high",
+          "reasons": [],
+          "covered_by": [
+            5
+          ],
+          "detection_count": 1
+        },
+        "D2": {
+          "state": "empty",
+          "source": "grid_geometry",
+          "label": null,
+          "confidence_band": "high",
+          "reasons": [],
+          "covered_by": []
+        },
+        "D3": {
+          "state": "occupied",
+          "source": "trained_yolo",
+          "label": "reservoir",
+          "labels": null,
+          "confidence": 0.8706,
+          "confidence_band": "high",
+          "reasons": [],
+          "covered_by": [
+            3
+          ],
+          "detection_count": 1
+        }
+      },
+      "annotated_image_path": "C:\\Users\\zhangyu\\IdeaProjects\\labscriptai-ot\\automation\\photo\\test\\vision\\annotated\\test_20260618_154045_002_20260618_154058-vision-deck.jpg"
+    },
+    {
+      "file": "test_20260618_154045_003_20260618_154111.jpg",
+      "summary": "12/12 slots confident; 0 slots use coverage mapping; 0 slots need review.",
+      "detection_slots": {
+        "A2": {
+          "state": "occupied",
+          "source": "trained_yolo",
+          "label": "tiprack",
+          "labels": null,
+          "confidence": 0.9663,
+          "confidence_band": "high",
+          "reasons": [],
+          "covered_by": [
+            1
+          ],
+          "detection_count": 1
+        },
+        "B2": {
+          "state": "occupied",
+          "source": "trained_yolo",
+          "label": "tiprack",
+          "labels": null,
+          "confidence": 0.8088,
+          "confidence_band": "high",
+          "reasons": [],
+          "covered_by": [
+            4
+          ],
+          "detection_count": 1
+        },
+        "B3": {
+          "state": "empty",
+          "source": "grid_geometry",
+          "label": null,
+          "confidence_band": "high",
+          "reasons": [],
+          "covered_by": []
+        },
+        "C2": {
+          "state": "occupied",
+          "source": "trained_yolo",
+          "label": "tiprack",
+          "labels": null,
+          "confidence": 0.9139,
+          "confidence_band": "high",
+          "reasons": [],
+          "covered_by": [
+            2
+          ],
+          "detection_count": 1
+        },
+        "C3": {
+          "state": "empty",
+          "source": "grid_geometry",
+          "label": null,
+          "confidence_band": "high",
+          "reasons": [],
+          "covered_by": []
+        },
+        "D2": {
+          "state": "empty",
+          "source": "grid_geometry",
+          "label": null,
+          "confidence_band": "high",
+          "reasons": [],
+          "covered_by": []
+        },
+        "D3": {
+          "state": "occupied",
+          "source": "trained_yolo",
+          "label": "reservoir",
+          "labels": null,
+          "confidence": 0.8989,
+          "confidence_band": "high",
+          "reasons": [],
+          "covered_by": [
+            3
+          ],
+          "detection_count": 1
+        }
+      },
+      "annotated_image_path": "C:\\Users\\zhangyu\\IdeaProjects\\labscriptai-ot\\automation\\photo\\test\\vision\\annotated\\test_20260618_154045_003_20260618_154111-vision-deck.jpg"
+    },
+    {
+      "file": "test_20260618_154045_004_20260618_154125.jpg",
+      "summary": "12/12 slots confident; 0 slots use coverage mapping; 0 slots need review.",
+      "detection_slots": {
+        "A2": {
+          "state": "occupied",
+          "source": "trained_yolo",
+          "label": "tiprack",
+          "labels": null,
+          "confidence": 0.9744,
+          "confidence_band": "high",
+          "reasons": [],
+          "covered_by": [
+            1
+          ],
+          "detection_count": 1
+        },
+        "B2": {
+          "state": "occupied",
+          "source": "trained_yolo",
+          "label": "tiprack",
+          "labels": null,
+          "confidence": 0.8488,
+          "confidence_band": "high",
+          "reasons": [],
+          "covered_by": [
+            2
+          ],
+          "detection_count": 1
+        },
+        "B3": {
+          "state": "empty",
+          "source": "grid_geometry",
+          "label": null,
+          "confidence_band": "high",
+          "reasons": [],
+          "covered_by": []
+        },
+        "C2": {
+          "state": "empty",
+          "source": "grid_geometry",
+          "label": null,
+          "confidence_band": "high",
+          "reasons": [],
+          "covered_by": []
+        },
+        "C3": {
+          "state": "empty",
+          "source": "grid_geometry",
+          "label": null,
+          "confidence_band": "high",
+          "reasons": [],
+          "covered_by": []
+        },
+        "D2": {
+          "state": "occupied",
+          "source": "trained_yolo",
+          "label": "reservoir",
+          "labels": null,
+          "confidence": 0.7983,
+          "confidence_band": "medium",
+          "reasons": [],
+          "covered_by": [
+            3
+          ],
+          "detection_count": 1
+        },
+        "D3": {
+          "state": "empty",
+          "source": "grid_geometry",
+          "label": null,
+          "confidence_band": "high",
+          "reasons": [],
+          "covered_by": []
+        }
+      },
+      "annotated_image_path": "C:\\Users\\zhangyu\\IdeaProjects\\labscriptai-ot\\automation\\photo\\test\\vision\\annotated\\test_20260618_154045_004_20260618_154125-vision-deck.jpg"
+    },
+    {
+      "file": "test_20260618_154045_005_20260618_154138.jpg",
+      "summary": "12/12 slots confident; 0 slots use coverage mapping; 0 slots need review.",
+      "detection_slots": {
+        "A2": {
+          "state": "occupied",
+          "source": "trained_yolo",
+          "label": "tiprack",
+          "labels": null,
+          "confidence": 0.9879,
+          "confidence_band": "high",
+          "reasons": [],
+          "covered_by": [
+            1
+          ],
+          "detection_count": 1
+        },
+        "B2": {
+          "state": "empty",
+          "source": "grid_geometry",
+          "label": null,
+          "confidence_band": "high",
+          "reasons": [],
+          "covered_by": []
+        },
+        "B3": {
+          "state": "occupied",
+          "source": "trained_yolo",
+          "label": "tiprack",
+          "labels": null,
+          "confidence": 0.9243,
+          "confidence_band": "high",
+          "reasons": [],
+          "covered_by": [
+            3
+          ],
+          "detection_count": 1
+        },
+        "C2": {
+          "state": "empty",
+          "source": "grid_geometry",
+          "label": null,
+          "confidence_band": "high",
+          "reasons": [],
+          "covered_by": []
+        },
+        "C3": {
+          "state": "occupied",
+          "source": "trained_yolo",
+          "label": "tiprack",
+          "labels": null,
+          "confidence": 0.9515,
+          "confidence_band": "high",
+          "reasons": [],
+          "covered_by": [
+            2
+          ],
+          "detection_count": 1
+        },
+        "D2": {
+          "state": "occupied",
+          "source": "trained_yolo",
+          "label": "reservoir",
+          "labels": null,
+          "confidence": 0.8961,
+          "confidence_band": "high",
+          "reasons": [],
+          "covered_by": [
+            4
+          ],
+          "detection_count": 1
+        },
+        "D3": {
+          "state": "empty",
+          "source": "grid_geometry",
+          "label": null,
+          "confidence_band": "high",
+          "reasons": [],
+          "covered_by": []
+        }
+      },
+      "annotated_image_path": "C:\\Users\\zhangyu\\IdeaProjects\\labscriptai-ot\\automation\\photo\\test\\vision\\annotated\\test_20260618_154045_005_20260618_154138-vision-deck.jpg"
+    }
+  ]
+}

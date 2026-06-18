@@ -1,0 +1,149 @@
+{
+  "phase": 3,
+  "description": "Bounding-box annotations for movable labware only (fixed modules/trash excluded).",
+  "layout_policy": "deck_layout_policy.json",
+  "calibration": "deck_calibration.json",
+  "bbox_labels_dir": "bbox_labels",
+  "classes": [
+    "tiprack_50",
+    "tiprack_200",
+    "tiprack_1000",
+    "reservoir",
+    "plate"
+  ],
+  "detection_slots": [
+    "A2",
+    "B2",
+    "B3",
+    "C2",
+    "C3",
+    "D2",
+    "D3"
+  ],
+  "images": [
+    {
+      "file": "1_empty_deck_20260616_111016_016_20260616_111336.jpg",
+      "scenario": "empty"
+    },
+    {
+      "file": "2_normal_deck_20260616_110821_001_20260616_110821.jpg",
+      "scenario": "normal"
+    },
+    {
+      "file": "3_more_deck_20260616_111016_010_20260616_111216.jpg",
+      "scenario": "more"
+    },
+    {
+      "file": "4_little_deck_20260616_111919_005_20260616_112012.jpg",
+      "scenario": "little"
+    },
+    {
+      "file": "5_little_deck_20260616_111016_014_20260616_111309.jpg",
+      "scenario": "little"
+    },
+    {
+      "file": "deck_20260616_111016_001_20260616_111016.jpg",
+      "scenario": "layout"
+    },
+    {
+      "file": "deck_20260616_111016_002_20260616_111029.jpg",
+      "scenario": "layout"
+    },
+    {
+      "file": "deck_20260616_111016_003_20260616_111043.jpg",
+      "scenario": "layout"
+    },
+    {
+      "file": "deck_20260616_111016_004_20260616_111056.jpg",
+      "scenario": "layout"
+    },
+    {
+      "file": "deck_20260616_111016_006_20260616_111123.jpg",
+      "scenario": "layout"
+    },
+    {
+      "file": "deck_20260616_111016_007_20260616_111136.jpg",
+      "scenario": "layout"
+    },
+    {
+      "file": "deck_20260616_111016_008_20260616_111149.jpg",
+      "scenario": "layout"
+    },
+    {
+      "file": "deck_20260616_111016_009_20260616_111203.jpg",
+      "scenario": "layout"
+    },
+    {
+      "file": "deck_20260616_111016_011_20260616_111229.jpg",
+      "scenario": "layout"
+    },
+    {
+      "file": "deck_20260616_111016_012_20260616_111242.jpg",
+      "scenario": "layout"
+    },
+    {
+      "file": "deck_20260616_111016_013_20260616_111256.jpg",
+      "scenario": "layout"
+    },
+    {
+      "file": "deck_20260616_111016_019_20260616_111416.jpg",
+      "scenario": "layout"
+    },
+    {
+      "file": "deck_20260616_111016_020_20260616_111429.jpg",
+      "scenario": "layout"
+    },
+    {
+      "file": "deck_20260616_111016_023_20260616_111509.jpg",
+      "scenario": "layout"
+    },
+    {
+      "file": "deck_20260616_111016_024_20260616_111523.jpg",
+      "scenario": "layout"
+    },
+    {
+      "file": "deck_20260616_111016_025_20260616_111536.jpg",
+      "scenario": "layout"
+    },
+    {
+      "file": "deck_20260616_111919_001_20260616_111919.jpg",
+      "scenario": "layout"
+    },
+    {
+      "file": "deck_20260616_111919_002_20260616_111932.jpg",
+      "scenario": "layout"
+    },
+    {
+      "file": "deck_20260616_111919_003_20260616_111945.jpg",
+      "scenario": "layout"
+    },
+    {
+      "file": "deck_20260616_111919_004_20260616_111959.jpg",
+      "scenario": "layout"
+    },
+    {
+      "file": "preview_capture.jpg",
+      "scenario": "calibration_ref"
+    },
+    {
+      "file": "plate/plate_20260618_155051_001_20260618_155051.jpg",
+      "scenario": "plate"
+    },
+    {
+      "file": "plate/plate_20260618_155051_002_20260618_155105.jpg",
+      "scenario": "plate"
+    },
+    {
+      "file": "plate/plate_20260618_155051_003_20260618_155118.jpg",
+      "scenario": "plate"
+    },
+    {
+      "file": "plate/plate_20260618_155051_004_20260618_155132.jpg",
+      "scenario": "plate"
+    },
+    {
+      "file": "plate/plate_20260618_155051_005_20260618_155145.jpg",
+      "scenario": "plate"
+    }
+  ]
+}

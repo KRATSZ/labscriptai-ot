@@ -1,0 +1,54 @@
+{
+  "image_file": "preview_capture.jpg",
+  "phase3_scenario": "calibration_ref",
+  "classes": [
+    "tiprack_50",
+    "tiprack_200",
+    "tiprack_1000",
+    "reservoir",
+    "plate"
+  ],
+  "boxes": [
+    {
+      "class": "tiprack_1000",
+      "bbox_norm": [
+        0.502083,
+        0.268519,
+        0.573438,
+        0.366667
+      ]
+    },
+    {
+      "class": "tiprack_1000",
+      "bbox_norm": [
+        0.499479,
+        0.361111,
+        0.569792,
+        0.441667
+      ]
+    },
+    {
+      "class": "tiprack_50",
+      "bbox_norm": [
+        0.564063,
+        0.386111,
+        0.625,
+        0.458333
+      ]
+    },
+    {
+      "class": "reservoir",
+      "bbox_norm": [
+        0.501042,
+        0.440741,
+        0.568229,
+        0.52037
+      ]
+    }
+  ],
+  "notes": "",
+  "image_size": {
+    "width": 1920,
+    "height": 1080
+  }
+}

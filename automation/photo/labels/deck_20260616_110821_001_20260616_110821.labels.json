@@ -1,0 +1,19 @@
+{
+  "image_file": "deck_20260616_110821_001_20260616_110821.jpg",
+  "slots": {
+    "A1": "PCR",
+    "A2": "1000ul_tiprack",
+    "A3": "trash",
+    "B1": "PCR",
+    "B2": "1000ul_tiprack",
+    "B3": "50ul_tiprack",
+    "C1": "200ul_flat",
+    "C2": "12_Well_Reservoir",
+    "C3": "empty",
+    "D1": "Deep_Well_Plate",
+    "D2": "empty",
+    "D3": "empty"
+  },
+  "notes": "",
+  "optional_deck_corners_norm": null
+}
