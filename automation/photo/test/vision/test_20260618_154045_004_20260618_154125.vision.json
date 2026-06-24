@@ -1,6 +1,32 @@
 {
   "mode": "deck",
-  "summary": "12/12 slots confident; 0 slots use coverage mapping; 0 slots need review.",
+  "summary": "7/7 detection slots confident; 0 slots use coverage mapping; 0 detection slots need review; 5 fixed slots from layout policy.",
+  "layout_policy": {
+    "path": "deck_layout_policy.json",
+    "fixed_slots": [
+      "A1",
+      "A3",
+      "B1",
+      "C1",
+      "D1"
+    ],
+    "detection_slots": [
+      "A2",
+      "B2",
+      "B3",
+      "C2",
+      "C3",
+      "D2",
+      "D3"
+    ],
+    "detection_classes": [
+      "tiprack_50",
+      "tiprack_200",
+      "tiprack_1000",
+      "reservoir",
+      "plate"
+    ]
+  },
   "slot_mapping": {
     "method": "deck_homography",
     "corner_order_doc": "A1_A3_D3_D1_clockwise_deck_view",
@@ -192,11 +218,15 @@
   ],
   "slot_observations": {
     "A1": {
-      "state": "empty",
-      "source": "grid_geometry",
-      "label": null,
+      "state": "fixed",
+      "source": "layout_policy",
+      "label": "pcr_thermocycler",
+      "role": "pcr_thermocycler",
+      "note": "PCR 热循环模块（固定）",
       "confidence_band": "high",
-      "reasons": [],
+      "reasons": [
+        "fixed_hardware"
+      ],
       "covered_by": []
     },
     "A2": {
@@ -213,19 +243,27 @@
       "detection_count": 1
     },
     "A3": {
-      "state": "empty",
-      "source": "grid_geometry",
-      "label": null,
+      "state": "fixed",
+      "source": "layout_policy",
+      "label": "trash_bin",
+      "role": "trash_bin",
+      "note": "垃圾桶（固定）",
       "confidence_band": "high",
-      "reasons": [],
+      "reasons": [
+        "fixed_hardware"
+      ],
       "covered_by": []
     },
     "B1": {
-      "state": "empty",
-      "source": "grid_geometry",
-      "label": null,
+      "state": "fixed",
+      "source": "layout_policy",
+      "label": "pcr_thermocycler",
+      "role": "pcr_thermocycler",
+      "note": "PCR 热循环模块（固定，与 A1 同模块）",
       "confidence_band": "high",
-      "reasons": [],
+      "reasons": [
+        "fixed_hardware"
+      ],
       "covered_by": []
     },
     "B2": {
@@ -250,11 +288,15 @@
       "covered_by": []
     },
     "C1": {
-      "state": "empty",
-      "source": "grid_geometry",
-      "label": null,
+      "state": "fixed",
+      "source": "layout_policy",
+      "label": "temperature_module",
+      "role": "temperature_module",
+      "note": "温控模块（固定）",
       "confidence_band": "high",
-      "reasons": [],
+      "reasons": [
+        "fixed_hardware"
+      ],
       "covered_by": []
     },
     "C2": {
@@ -274,11 +316,15 @@
       "covered_by": []
     },
     "D1": {
-      "state": "empty",
-      "source": "grid_geometry",
-      "label": null,
+      "state": "fixed",
+      "source": "layout_policy",
+      "label": "heater_shaker",
+      "role": "heater_shaker",
+      "note": "震荡模块（固定）",
       "confidence_band": "high",
-      "reasons": [],
+      "reasons": [
+        "fixed_hardware"
+      ],
       "covered_by": []
     },
     "D2": {

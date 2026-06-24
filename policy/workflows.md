@@ -72,8 +72,10 @@ Use this **only when the operator explicitly asks** for a visual deck check, cam
 
 **Setup (once per machine):**
 
-- Python: `uv sync --extra vision` from the repo root (Ultralytics / optional YOLOE extras).
-- Weights: vision is optional in the plugin. Set `OPENTRONS_DECK_YOLO_WEIGHTS` / `OPENTRONS_YOLOE_WEIGHTS` to explicit local files when needed.
+- Python: `pip install ultralytics opencv-python-headless pillow` in `OPENTRONS_PYTHON` (see [GETTING_STARTED.md](../docs/GETTING_STARTED.md#deck-vision-setup)).
+- Calibration: `python automation/click_deck_corners.py` → `automation/photo/deck_calibration.json` (auto-loaded by `vision_check`).
+- Layout policy: `automation/deck_layout_policy.json` (fixed modules/trash + detection slots/classes).
+- Weights: bundled `vision/models/weights/deck_v2_best.pt` or set `OPENTRONS_DECK_YOLO_WEIGHTS`.
 
 **Tool sequence (MCP `opentrons-lab-mcp`):**
 

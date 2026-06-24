@@ -36,6 +36,100 @@ _REPO_ROOT = Path(os.environ.get("OPENTRONS_PLUGIN_ROOT", Path(__file__).resolve
 _VISION_ROOT = _REPO_ROOT / "vision"
 _VISION_WEIGHTS_DIR = _VISION_ROOT / "models" / "weights"
 _VISION_RUNS_DIR = _VISION_ROOT / "runs" / "detect"
+_DEFAULT_LAYOUT_POLICY_PATH = _REPO_ROOT / "automation" / "deck_layout_policy.json"
+_DEFAULT_CALIBRATION_PATH = _REPO_ROOT / "automation" / "photo" / "deck_calibration.json"
+
+
+def _layout_policy_path() -> Path:
+    env = os.environ.get("OPENTRONS_DECK_LAYOUT_POLICY")
+    if env:
+        return Path(env).expanduser().resolve()
+    return _DEFAULT_LAYOUT_POLICY_PATH
+
+
+def _load_deck_layout_policy() -> dict[str, Any] | None:
+    path = _layout_policy_path()
+    if not path.is_file():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def _fixed_slot_names(policy: dict[str, Any] | None) -> set[str]:
+    if not policy:
+        return set()
+    fixed = policy.get("fixed_slots") or {}
+    return {str(slot).upper() for slot in fixed}
+
+
+def _detection_slot_names(policy: dict[str, Any] | None) -> list[str]:
+    if not policy:
+        return list(FLEX_SLOTS)
+    slots = policy.get("detection_slots")
+    if isinstance(slots, list) and slots:
+        return [str(slot).upper() for slot in slots]
+    fixed = _fixed_slot_names(policy)
+    return [slot for slot in FLEX_SLOTS if slot not in fixed]
+
+
+def _detection_class_names(policy: dict[str, Any] | None) -> list[str]:
+    if not policy:
+        return []
+    classes = policy.get("detection_classes")
+    if isinstance(classes, list) and classes:
+        return [str(name) for name in classes]
+    return []
+
+
+def _load_default_deck_calibration() -> dict[str, Any]:
+    path = _DEFAULT_CALIBRATION_PATH
+    env = os.environ.get("OPENTRONS_DECK_CALIBRATION")
+    if env:
+        path = Path(env).expanduser().resolve()
+    if not path.is_file():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def _apply_layout_policy(
+    slot_observations: dict[str, dict[str, Any]],
+    policy: dict[str, Any] | None,
+) -> dict[str, Any]:
+    meta: dict[str, Any] = {
+        "path": None,
+        "fixed_slots": [],
+        "detection_slots": list(FLEX_SLOTS),
+        "detection_classes": [],
+    }
+    if not policy:
+        return meta
+
+    meta["path"] = str(_layout_policy_path().name)
+    meta["fixed_slots"] = sorted(_fixed_slot_names(policy))
+    meta["detection_slots"] = _detection_slot_names(policy)
+    meta["detection_classes"] = _detection_class_names(policy)
+
+    fixed_entries = policy.get("fixed_slots") or {}
+    for slot in meta["fixed_slots"]:
+        entry = fixed_entries.get(slot) or {}
+        role = entry.get("role") if isinstance(entry, dict) else str(entry)
+        note = entry.get("note") if isinstance(entry, dict) else None
+        slot_observations[slot] = {
+            "state": "fixed",
+            "source": "layout_policy",
+            "label": role or "fixed",
+            "role": role,
+            "note": note,
+            "confidence_band": "high",
+            "reasons": ["fixed_hardware"],
+            "covered_by": [],
+        }
+    return meta
 
 
 def _default_weights_chain() -> str:
@@ -1068,17 +1162,23 @@ def _build_slot_observations(
 def _compute_mismatches(
     expected_layout: dict[str, Any] | None,
     slot_observations: dict[str, dict[str, Any]],
+    *,
+    detection_slots: list[str] | None = None,
 ) -> list[dict[str, Any]]:
     mismatches: list[dict[str, Any]] = []
     if not expected_layout:
         return mismatches
 
+    eval_slots = set(detection_slots or FLEX_SLOTS)
+
     for raw_slot, raw_exp in expected_layout.items():
         slot = _norm_expected_key(raw_slot)
-        if slot not in FLEX_SLOTS:
+        if slot not in FLEX_SLOTS or slot not in eval_slots:
+            continue
+        obs = slot_observations.get(slot, _build_empty_slot_observation())
+        if obs.get("state") == "fixed":
             continue
         exp = _norm_expected_value(str(raw_exp))
-        obs = slot_observations.get(slot, _build_empty_slot_observation())
         st = obs.get("state")
         obs_label = obs.get("label")
         obs_labels = obs.get("labels") or ([obs_label] if obs_label else [])
@@ -1151,17 +1251,28 @@ def _apply_mismatch_flags(
 def _build_summary(
     slot_observations: dict[str, dict[str, Any]],
     mismatches: list[dict[str, Any]],
+    *,
+    detection_slots: list[str] | None = None,
 ) -> str:
-    confident_slots = sum(1 for obs in slot_observations.values() if obs.get("state") in {"occupied", "empty"})
-    uncertain_slots = sum(1 for obs in slot_observations.values() if obs.get("state") == "uncertain")
-    coverage_slots = sum(
-        1 for obs in slot_observations.values() if "coverage_spans_multiple_slots" in (obs.get("reasons") or [])
+    slots = detection_slots or list(FLEX_SLOTS)
+    relevant = {slot: slot_observations.get(slot, {}) for slot in slots}
+    confident_slots = sum(
+        1 for obs in relevant.values() if obs.get("state") in {"occupied", "empty"}
     )
+    uncertain_slots = sum(1 for obs in relevant.values() if obs.get("state") == "uncertain")
+    coverage_slots = sum(
+        1
+        for obs in relevant.values()
+        if "coverage_spans_multiple_slots" in (obs.get("reasons") or [])
+    )
+    fixed_slots = sum(1 for obs in slot_observations.values() if obs.get("state") == "fixed")
     parts = [
-        f"{confident_slots}/12 slots confident",
+        f"{confident_slots}/{len(slots)} detection slots confident",
         f"{coverage_slots} slots use coverage mapping",
-        f"{uncertain_slots} slots need review",
+        f"{uncertain_slots} detection slots need review",
     ]
+    if fixed_slots:
+        parts.append(f"{fixed_slots} fixed slots from layout policy")
     if mismatches:
         parts.append(f"{len(mismatches)} mismatches vs expected_layout")
     return "; ".join(parts) + "."
@@ -1377,6 +1488,11 @@ def run_deck(
     class_prompts: list[str] | None = None,
     canonical_labels: list[str] | None = None,
 ) -> dict[str, Any]:
+    layout_policy = _load_deck_layout_policy()
+    fixed_slots = _fixed_slot_names(layout_policy)
+    detection_slots = _detection_slot_names(layout_policy)
+    detection_classes = _detection_class_names(layout_policy)
+
     prompts_eff, canon_eff, prompt_err = _resolve_yoloe_prompt_lists(class_prompts, canonical_labels)
     if prompt_err is not None:
         return prompt_err
@@ -1435,6 +1551,13 @@ def run_deck(
             corners_from = "labels_sidecar"
     elif corners_src is not None and corners_from is None:
         corners_from = "payload"
+
+    if corners_src is None:
+        default_cal = _load_default_deck_calibration()
+        loaded_corners = default_cal.get("optional_deck_corners_norm")
+        if isinstance(loaded_corners, list) and len(loaded_corners) == 4:
+            corners_src = loaded_corners
+            corners_from = "deck_calibration.json"
 
     hmat: Any | None = None
     slot_polygons_mesh: dict[str, list[list[float]]] | None = None
@@ -1496,6 +1619,8 @@ def run_deck(
                     raw_name = str(names.get(cls_id, "") or "")
                 elif isinstance(names, (list, tuple)) and 0 <= cls_id < len(names):
                     raw_name = str(names[cls_id] or "")
+                if lab_tuned and detection_classes and raw_name and raw_name not in detection_classes:
+                    continue
                 if lab_tuned:
                     label, name_raw = _label_from_lab_class_name(raw_name)
                     evidence = "trained_yolo_detection"
@@ -1560,6 +1685,8 @@ def run_deck(
             observed_items.append(item)
             if coverage["assignable_to_slots"]:
                 for slot in coverage["covered_slots"]:
+                    if slot in fixed_slots:
+                        continue
                     slot_to_detections[slot].append(item)
 
     slot_observations, uncertainties_global = _build_slot_observations(
@@ -1568,9 +1695,14 @@ def run_deck(
         obs_source=obs_source,
         coco_untrusted=coco_untrusted,
     )
+    layout_policy_meta = _apply_layout_policy(slot_observations, layout_policy)
     uncertainties_global = _unique(uncertainties_preflight + uncertainties_global)
 
-    mismatches = _compute_mismatches(expected_layout, slot_observations)
+    mismatches = _compute_mismatches(
+        expected_layout,
+        slot_observations,
+        detection_slots=detection_slots,
+    )
     _apply_mismatch_flags(slot_observations, mismatches)
     if mismatches:
         uncertainties_global = _unique(uncertainties_global + ["expected_layout_mismatch"])
@@ -1605,7 +1737,11 @@ def run_deck(
             ),
         }
     )
-    summary = _build_summary(slot_observations, mismatches)
+    summary = _build_summary(
+        slot_observations,
+        mismatches,
+        detection_slots=detection_slots,
+    )
 
     annotated_out: str | None = None
     if annotated_path:
@@ -1631,6 +1767,7 @@ def run_deck(
     return {
         "mode": "deck",
         "summary": summary,
+        "layout_policy": layout_policy_meta,
         "slot_mapping": slot_mapping_meta,
         "model": model_meta,
         "observed_items": observed_items,
