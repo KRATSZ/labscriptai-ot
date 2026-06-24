@@ -70,12 +70,7 @@ robot_status → module_status → reconcile_state (if anything looks wrong)
 
 Use this **only when the operator explicitly asks** for a visual deck check, camera preview, or image-based confirmation. Vision does **not** replace committed deck truth — compare results with **`reconcile_state`** and robot APIs (see `policy/safety-policy.md`).
 
-**Setup (once per machine):**
-
-- Python: `pip install ultralytics opencv-python-headless pillow` in `OPENTRONS_PYTHON` (see [GETTING_STARTED.md](../docs/GETTING_STARTED.md#deck-vision-setup)).
-- Calibration: `python automation/click_deck_corners.py` → `automation/photo/deck_calibration.json` (auto-loaded by `vision_check`).
-- Layout policy: `automation/deck_layout_policy.json` (fixed modules/trash + detection slots/classes).
-- Weights: bundled `vision/models/weights/deck_v2_best.pt` or set `OPENTRONS_DECK_YOLO_WEIGHTS`.
+**Setup (once per machine):** See [docs/deck-vision.md](../docs/deck-vision.md).
 
 **Tool sequence (MCP `opentrons-lab-mcp`):**
 
@@ -84,7 +79,7 @@ camera_status → capture_preview_image → vision_check (image_path = path retu
 ```
 
 - If the camera API is unavailable on a given Flex build, `camera_status` / capture may fail — surface the error; do not silently skip.
-- For offline validation without a robot, call `vision_check` with a local image path only (see checklist A in `docs/runbooks/vision-acceptance.md`).
+- For offline validation without a robot, call `vision_check` with a local image path only (see [docs/deck-vision.md](../docs/deck-vision.md)).
 
 ## Protocol Reference Library
 

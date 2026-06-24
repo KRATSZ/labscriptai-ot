@@ -141,54 +141,11 @@ These map to the `opentrons-experiment-run` orchestration skill. See [examples/0
 
 ---
 
-## Deck vision setup
+## Deck vision
 
-Lab-trained deck vision is **observation-only** — compare results with `reconcile_state`, never treat vision as committed deck truth. Full workflow: [policy/workflows.md](../policy/workflows.md) (*Optional deck vision*).
+Lab-trained deck vision (camera → YOLO → slot layout) is documented in **[docs/deck-vision.md](deck-vision.md)** — setup, daily MCP/CLI use, machine layout, maintenance, and troubleshooting.
 
-### One-time machine setup
-
-1. **Python vision deps** (in the same env as `OPENTRONS_PYTHON`):
-
-   ```powershell
-   .venv\Scripts\pip install ultralytics opencv-python-headless pillow
-   ```
-
-2. **Calibrate camera homography** (once per robot camera angle):
-
-   ```powershell
-   .venv\Scripts\python.exe automation\click_deck_corners.py --show
-   ```
-
-   Writes `automation/photo/deck_calibration.json`. `vision_check` loads these corners automatically.
-
-3. **Machine layout policy** — edit `automation/deck_layout_policy.json` for fixed modules (PCR, trash, etc.) and which slots/classes to detect.
-
-4. **Train or ship weights** — after bbox labeling:
-
-   ```powershell
-   .venv\Scripts\python.exe automation\export_yolo_dataset.py
-   .venv\Scripts\python.exe automation\train_deck_yolo.py
-   ```
-
-   Produces `vision/models/weights/deck_v2_best.pt`.
-
-### Runtime environment (optional overrides)
-
-```powershell
-$env:OPENTRONS_DECK_YOLO_WEIGHTS = "$PWD\vision\models\weights\deck_v2_best.pt"
-$env:OPENTRONS_DECK_LAYOUT_POLICY = "$PWD\automation\deck_layout_policy.json"
-$env:OPENTRONS_DECK_CALIBRATION = "$PWD\automation\photo\deck_calibration.json"
-```
-
-### Live MCP sequence
-
-```
-camera_status → capture_preview_image → vision_check
-```
-
-Ask the agent explicitly, e.g. *"Capture a deck photo and run vision_check; compare detection slots with reconcile_state."*
-
-Verify install: `node scripts/verify-setup.mjs` (checks policy, calibration, weights, Python deps).
+Quick verify: `node scripts/verify-setup.mjs`
 
 ---
 
@@ -221,6 +178,7 @@ Full runbooks: [docs/runbooks/](runbooks/).
 ## Next steps
 
 - [GLOSSARY.md](GLOSSARY.md) — deck truth, simulate gate, reconcile_state
+- [deck-vision.md](deck-vision.md) — lab-trained deck vision setup and daily use
 - [MCP_TOOLS.md](MCP_TOOLS.md) — tool reference by tier (L0–L4)
 - [policy/workflows.md](../policy/workflows.md) — canonical workflow sequences
 - [examples/](../examples/) — end-to-end example prompts

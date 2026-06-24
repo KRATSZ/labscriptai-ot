@@ -16,4 +16,4 @@ Operational artifacts from live Flex work — not part of the plugin core.
 | `deck_layout_policy.json` | Fixed modules/trash + movable labware detection scope |
 | `../vision/models/weights/deck_v2_best.pt` | Trained deck detector checkpoint |
 
-See [docs/custom-labware-guide.md](../docs/custom-labware-guide.md). Deck vision setup: [docs/GETTING_STARTED.md#deck-vision-setup](../docs/GETTING_STARTED.md#deck-vision-setup). Offset helper: `node scripts/verify-c1-offset-run.mjs`.
+See [docs/custom-labware-guide.md](../docs/custom-labware-guide.md). **Deck vision (full guide):** [docs/deck-vision.md](../docs/deck-vision.md). Offset helper: `node scripts/verify-c1-offset-run.mjs`.
