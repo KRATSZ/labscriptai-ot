@@ -7,6 +7,9 @@ mcp_tools:
   - module_status
   - reconcile_state
   - run_protocol
+  - runtime_watch_poll
+  - runtime_get_alerts
+  - runtime_ack_alert
   - parse_error
   - suggest_recovery_action
   - execute_protocol_recovery
@@ -75,11 +78,15 @@ not wait for the user to explicitly ask for simulate.
 
 - `run_protocol` (file_path, robot_ip, session_id).
 - Simulation gate also runs inside this tool.
+- After a successful `run_protocol` call that returns a `run_id`, immediately call `runtime_watch_poll` for that run.
+- If `runtime_watch_poll.status == "running"`, immediately call `runtime_watch_poll` again and do not emit user-facing text between poll windows.
+- Only report when `runtime_watch_poll` returns `completed`, `needs_user`, `hard_stop`, or `unreachable`.
 - Before this phase, give the operator a short ready-state summary rather than a
   long internal trace.
 
 ### Phase 5 — Failure / Recovery
 
+- Default path after `run_protocol` is the bounded `runtime_watch_poll` loop above.
 - `run_history` -> `parse_error` -> `suggest_recovery_action`.
 - Execute only branches that come back with `auto_executable: true`: `execute_protocol_recovery` / `recover_tip_pickup`.
 - Hard stops and DESTINATION_OCCUPIED human-review rules per `policy/safety-policy.md` and `policy/error-response.md`.

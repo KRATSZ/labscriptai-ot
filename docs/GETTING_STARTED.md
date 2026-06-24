@@ -128,13 +128,13 @@ Re-run `node scripts/verify-setup.mjs` until Opentrons imports cleanly.
 
 Copy one of these as your first message:
 
-1. **New Flex experiment (full flow):**  
+1. **New Flex experiment (full flow):**
    *"Help me design a Flex serial dilution experiment from scratch — review intent first, then write and simulate the protocol."*
 
-2. **Validate existing protocol:**  
+2. **Validate existing protocol:**
    *"Check whether this Opentrons protocol can pass local simulation safely."*
 
-3. **Robot status / recovery prep:**  
+3. **Robot status / recovery prep:**
    *"What state is the robot in? Run safety checks before any recovery action."*
 
 These map to the `opentrons-experiment-run` orchestration skill. See [examples/01-flex-serial-dilution](../examples/01-flex-serial-dilution/README.md) for a guided walkthrough.

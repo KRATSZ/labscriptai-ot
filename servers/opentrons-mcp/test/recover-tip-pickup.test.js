@@ -16,6 +16,7 @@ function installCommonRecoveryFetch({
   commands,
   modules = [],
   labware = [],
+  resumedRunStatus = "succeeded",
   onPostCommand,
   onRunAction,
 } = {}) {
@@ -62,7 +63,7 @@ function installCommonRecoveryFetch({
         data: {
           id: "run-1",
           protocolId: "protocol-1",
-          status: resumed ? "succeeded" : "awaiting-recovery",
+          status: resumed ? resumedRunStatus : "awaiting-recovery",
           currentlyRecoveringFrom: resumed ? null : "cmd-failed",
           hasEverEnteredErrorRecovery: true,
           labware,
@@ -159,6 +160,54 @@ test("execute_protocol_recovery retries pickUpTip with fixit and resumes the run
     assert.equal(result.data.final_run_history.status, "succeeded");
     assert.equal(result.data.resume_action.data.actionType, "resume-from-recovery");
     assert.equal(result.runId, "run-1");
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("execute_protocol_recovery watch_mode skips terminal run polling after resume", async () => {
+  const originalFetch = global.fetch;
+  installCommonRecoveryFetch({
+    resumedRunStatus: "running",
+    commands: [
+      {
+        id: "cmd-failed",
+        commandType: "pickUpTip",
+        status: "failed",
+        params: {
+          pipetteId: "pipette-left-1",
+          labwareId: "tiprack-1",
+          wellName: "A1",
+        },
+        error: {
+          errorType: "tipPhysicallyMissing",
+          detail: "No Tip Detected",
+        },
+      },
+    ],
+    labware: [
+      {
+        id: "tiprack-1",
+        loadName: "opentrons_flex_96_tiprack_1000ul",
+        location: { slotName: "C2" },
+      },
+    ],
+  });
+
+  try {
+    const result = await TOOL_HANDLERS.execute_protocol_recovery({
+      robot_ip: "10.31.2.149:31950",
+      run_id: "run-1",
+      session_id: "recover-tip-watch-mode",
+      tiprack_slots: ["C2"],
+      watch_mode: true,
+      timeout_ms: 10,
+      poll_interval_ms: 1,
+    });
+
+    assert.equal(result.data.executed_action, "retry_pick_up_tip_with_next_candidate");
+    assert.equal(result.data.terminal_poll_skipped, true);
+    assert.equal(result.data.final_run_history.status, "running");
   } finally {
     global.fetch = originalFetch;
   }

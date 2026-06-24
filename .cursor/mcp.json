@@ -1,15 +1,14 @@
-{
-  "mcpServers": {
-    "opentrons-lab": {
-      "command": "node",
-      "args": ["${workspaceFolder}/servers/opentrons-mcp/index.js"],
-      "env": {
-        "OPENTRONS_PLUGIN_ROOT": "${workspaceFolder}",
-        "OPENTRONS_PROTOCOL_LIBRARY_PATH": "${workspaceFolder}/bundled-library",
-        "PLUGIN_DATA": "${workspaceFolder}/.plugin-data",
-        "OPENTRONS_PYTHON": "${workspaceFolder}/.venv/Scripts/python.exe"
-      }
-    }
-  }
-}
-
+{
+  "mcpServers": {
+    "opentrons-lab": {
+      "command": "node",
+      "args": ["${workspaceFolder}/servers/opentrons-mcp/index.js"],
+      "env": {
+        "OPENTRONS_PLUGIN_ROOT": "${workspaceFolder}",
+        "OPENTRONS_PROTOCOL_LIBRARY_PATH": "${workspaceFolder}/bundled-library",
+        "PLUGIN_DATA": "${workspaceFolder}/.plugin-data",
+        "OPENTRONS_PYTHON": "${workspaceFolder}/.venv/Scripts/python.exe"
+      }
+    }
+  }
+}
