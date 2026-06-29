@@ -1,0 +1,53 @@
+{
+  "image_file": "plate_20260618_155051_003_20260618_155118.jpg",
+  "classes": [
+    "tiprack_50",
+    "tiprack_200",
+    "tiprack_1000",
+    "reservoir",
+    "plate"
+  ],
+  "boxes": [
+    {
+      "class": "plate",
+      "bbox_norm": [
+        0.559896,
+        0.534259,
+        0.609896,
+        0.611111
+      ]
+    },
+    {
+      "class": "plate",
+      "bbox_norm": [
+        0.561979,
+        0.39537,
+        0.6125,
+        0.468519
+      ]
+    },
+    {
+      "class": "tiprack_1000",
+      "bbox_norm": [
+        0.503125,
+        0.346296,
+        0.571875,
+        0.440741
+      ]
+    },
+    {
+      "class": "tiprack_50",
+      "bbox_norm": [
+        0.502604,
+        0.441667,
+        0.570312,
+        0.525926
+      ]
+    }
+  ],
+  "notes": "",
+  "image_size": {
+    "width": 1920,
+    "height": 1080
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "image_file": "deck_20260616_111919_003_20260616_111945.jpg",
+  "phase3_scenario": "layout",
+  "classes": [
+    "tiprack_50",
+    "tiprack_200",
+    "tiprack_1000",
+    "reservoir",
+    "plate"
+  ],
+  "boxes": [
+    {
+      "class": "tiprack_200",
+      "bbox_norm": [
+        0.499479,
+        0.275,
+        0.563542,
+        0.386111
+      ]
+    },
+    {
+      "class": "tiprack_200",
+      "bbox_norm": [
+        0.560937,
+        0.521296,
+        0.620313,
+        0.603704
+      ]
+    }
+  ],
+  "notes": "",
+  "image_size": {
+    "width": 1920,
+    "height": 1080
+  }
+}

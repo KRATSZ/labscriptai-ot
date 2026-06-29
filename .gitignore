@@ -1,2 +1,13 @@
 node_modules/
 .plugin-data/
+.venv/
+__pycache__/
+*.py[cod]
+automation/.env
+vision/runs/
+vision/data/deck_phase3/images/
+vision/data/deck_phase3/labels/*.cache
+yolo11n.pt
+yoloe-26s-seg.pt
+mobileclip2_b.ts
+automation/photo/photo.zip

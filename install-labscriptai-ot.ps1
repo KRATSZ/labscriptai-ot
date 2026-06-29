@@ -30,7 +30,10 @@ Write-Host ""
 Write-Host "Optional writable state directory:"
 Write-Host "  PLUGIN_DATA=$(Join-Path $PluginRoot '.plugin-data')"
 Write-Host ""
-Write-Host "Next steps: docs/GETTING_STARTED.md"
+Write-Host "Optional deck vision (lab-trained YOLO):"
+Write-Host "  pip install ultralytics opencv-python-headless pillow"
+Write-Host "  Weights: vision/models/weights/deck_v2_best.pt"
+Write-Host "  Setup: docs/GETTING_STARTED.md#deck-vision-setup"
 Write-Host ""
 
 exit $VerifyExit

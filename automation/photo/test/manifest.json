@@ -1,0 +1,41 @@
+{
+  "robot": "http://192.168.66.102:31950",
+  "captured_at": "2026-06-18T07:41:42.402244+00:00",
+  "files": [
+    {
+      "index": 1,
+      "saved_to": "C:\\Users\\zhangyu\\IdeaProjects\\labscriptai-ot\\automation\\photo\\test\\test_20260618_154045_001_20260618_154045.jpg",
+      "bytes": 88307,
+      "content_type": "image/jpeg",
+      "captured_at": "2026-06-18T07:40:48.552235+00:00"
+    },
+    {
+      "index": 2,
+      "saved_to": "C:\\Users\\zhangyu\\IdeaProjects\\labscriptai-ot\\automation\\photo\\test\\test_20260618_154045_002_20260618_154058.jpg",
+      "bytes": 88583,
+      "content_type": "image/jpeg",
+      "captured_at": "2026-06-18T07:41:01.966566+00:00"
+    },
+    {
+      "index": 3,
+      "saved_to": "C:\\Users\\zhangyu\\IdeaProjects\\labscriptai-ot\\automation\\photo\\test\\test_20260618_154045_003_20260618_154111.jpg",
+      "bytes": 87542,
+      "content_type": "image/jpeg",
+      "captured_at": "2026-06-18T07:41:15.413470+00:00"
+    },
+    {
+      "index": 4,
+      "saved_to": "C:\\Users\\zhangyu\\IdeaProjects\\labscriptai-ot\\automation\\photo\\test\\test_20260618_154045_004_20260618_154125.jpg",
+      "bytes": 88464,
+      "content_type": "image/jpeg",
+      "captured_at": "2026-06-18T07:41:28.919437+00:00"
+    },
+    {
+      "index": 5,
+      "saved_to": "C:\\Users\\zhangyu\\IdeaProjects\\labscriptai-ot\\automation\\photo\\test\\test_20260618_154045_005_20260618_154138.jpg",
+      "bytes": 88862,
+      "content_type": "image/jpeg",
+      "captured_at": "2026-06-18T07:41:42.402244+00:00"
+    }
+  ]
+}

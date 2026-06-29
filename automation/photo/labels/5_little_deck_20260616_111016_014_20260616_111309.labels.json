@@ -1,0 +1,39 @@
+{
+  "image_file": "5_little_deck_20260616_111016_014_20260616_111309.jpg",
+  "phase1_scenario": "little",
+  "phase1_hint": "Sparse variant: modules on A column, partial tip/plate fill elsewhere.",
+  "slots": {
+    "A1": "module",
+    "A2": "tiprack",
+    "A3": "trash_bin",
+    "B1": "module",
+    "B2": "reservoir",
+    "B3": "tiprack",
+    "C1": "module",
+    "C2": "empty",
+    "C3": "empty",
+    "D1": "module",
+    "D2": "empty",
+    "D3": "empty"
+  },
+  "notes": "",
+  "optional_deck_corners_norm": [
+    [
+      0.44375,
+      0.25463
+    ],
+    [
+      0.622917,
+      0.339815
+    ],
+    [
+      0.635417,
+      0.599074
+    ],
+    [
+      0.432812,
+      0.59537
+    ]
+  ],
+  "calibration_method": "deck_corners_v1"
+}

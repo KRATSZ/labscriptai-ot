@@ -1,0 +1,418 @@
+{
+  "mode": "deck",
+  "summary": "6/12 slots confident; 0 slots use coverage mapping; 6 slots need review; 6 mismatches vs expected_layout.",
+  "slot_mapping": {
+    "method": "deck_homography",
+    "corner_order_doc": "A1_A3_D3_D1_clockwise_deck_view",
+    "deck_corners_norm": [
+      [
+        0.44375,
+        0.25463
+      ],
+      [
+        0.622917,
+        0.339815
+      ],
+      [
+        0.635417,
+        0.599074
+      ],
+      [
+        0.432812,
+        0.59537
+      ]
+    ],
+    "corners_source": "payload",
+    "slot_centers_norm": null,
+    "centers_source": null
+  },
+  "model": {
+    "family": "YOLO",
+    "weights_requested": "C:\\Users\\zhangyu\\IdeaProjects\\labscriptai-ot\\vision\\models\\weights\\deck_v2_best.pt",
+    "weights_effective": "C:\\Users\\zhangyu\\IdeaProjects\\labscriptai-ot\\vision\\models\\weights\\deck_v2_best.pt",
+    "lab_tuned": true
+  },
+  "observed_items": [
+    {
+      "detection_id": 1,
+      "slot": "D2",
+      "primary_slot": "D2",
+      "covered_slots": [
+        "D2"
+      ],
+      "covered_slot_overlaps": {
+        "D2": 0.0621
+      },
+      "label": "reservoir",
+      "confidence": 0.9604,
+      "confidence_band": "high",
+      "bbox_xyxy": [
+        955.26,
+        557.35,
+        1085.84,
+        661.54
+      ],
+      "center_norm": [
+        0.5315,
+        0.5643
+      ],
+      "evidence": "trained_yolo_detection",
+      "reasons": [],
+      "mapping_notes": [],
+      "needs_human_review": false,
+      "assignable_to_slots": true,
+      "deck_plane_norm": [
+        0.4115,
+        0.9028
+      ],
+      "coverage_polygon_norm": [
+        [
+          0.2535,
+          0.7695
+        ],
+        [
+          0.591,
+          0.7394
+        ],
+        [
+          0.5801,
+          1.0
+        ],
+        [
+          0.2562,
+          1.0
+        ]
+      ],
+      "class_name_raw": "reservoir"
+    },
+    {
+      "detection_id": 2,
+      "slot": "A2",
+      "primary_slot": "A2",
+      "covered_slots": [
+        "A2"
+      ],
+      "covered_slot_overlaps": {
+        "A2": 0.0706
+      },
+      "label": "tiprack",
+      "confidence": 0.8575,
+      "confidence_band": "high",
+      "bbox_xyxy": [
+        963.25,
+        289.26,
+        1093.06,
+        393.62
+      ],
+      "center_norm": [
+        0.5355,
+        0.3162
+      ],
+      "evidence": "trained_yolo_detection",
+      "reasons": [],
+      "mapping_notes": [],
+      "needs_human_review": false,
+      "assignable_to_slots": true,
+      "deck_plane_norm": [
+        0.4427,
+        0.0677
+      ],
+      "coverage_polygon_norm": [
+        [
+          0.266,
+          0.0
+        ],
+        [
+          0.6475,
+          0.0
+        ],
+        [
+          0.6326,
+          0.1967
+        ],
+        [
+          0.2685,
+          0.2877
+        ]
+      ],
+      "class_name_raw": "tiprack_1000"
+    },
+    {
+      "detection_id": 3,
+      "slot": "B3",
+      "primary_slot": "B3",
+      "covered_slots": [
+        "B3"
+      ],
+      "covered_slot_overlaps": {
+        "B3": 0.0768
+      },
+      "label": "tiprack",
+      "confidence": 0.8489,
+      "confidence_band": "high",
+      "bbox_xyxy": [
+        1078.81,
+        416.54,
+        1198.23,
+        496.55
+      ],
+      "center_norm": [
+        0.593,
+        0.4227
+      ],
+      "evidence": "trained_yolo_detection",
+      "reasons": [],
+      "mapping_notes": [],
+      "needs_human_review": false,
+      "assignable_to_slots": true,
+      "deck_plane_norm": [
+        0.7691,
+        0.3867
+      ],
+      "coverage_polygon_norm": [
+        [
+          0.5858,
+          0.287
+        ],
+        [
+          0.9923,
+          0.195
+        ],
+        [
+          0.9673,
+          0.4945
+        ],
+        [
+          0.5771,
+          0.5517
+        ]
+      ],
+      "class_name_raw": "tiprack_50"
+    },
+    {
+      "detection_id": 4,
+      "slot": "B2",
+      "primary_slot": "B2",
+      "covered_slots": [
+        "B2"
+      ],
+      "covered_slot_overlaps": {
+        "B2": 0.0732
+      },
+      "label": "tiprack",
+      "confidence": 0.7707,
+      "confidence_band": "medium",
+      "bbox_xyxy": [
+        964.04,
+        385.36,
+        1093.58,
+        479.57
+      ],
+      "center_norm": [
+        0.5358,
+        0.4004
+      ],
+      "evidence": "trained_yolo_detection",
+      "reasons": [],
+      "mapping_notes": [],
+      "needs_human_review": false,
+      "assignable_to_slots": true,
+      "deck_plane_norm": [
+        0.4401,
+        0.3713
+      ],
+      "coverage_polygon_norm": [
+        [
+          0.2703,
+          0.2613
+        ],
+        [
+          0.6354,
+          0.1669
+        ],
+        [
+          0.623,
+          0.4898
+        ],
+        [
+          0.2724,
+          0.547
+        ]
+      ],
+      "class_name_raw": "tiprack_1000"
+    }
+  ],
+  "slot_observations": {
+    "A1": {
+      "state": "uncertain",
+      "source": "grid_geometry",
+      "label": null,
+      "confidence_band": "low",
+      "reasons": [
+        "expected_layout_mismatch"
+      ],
+      "covered_by": []
+    },
+    "A2": {
+      "state": "occupied",
+      "source": "trained_yolo",
+      "label": "tiprack",
+      "labels": null,
+      "confidence": 0.8575,
+      "confidence_band": "high",
+      "reasons": [],
+      "covered_by": [
+        2
+      ],
+      "detection_count": 1
+    },
+    "A3": {
+      "state": "uncertain",
+      "source": "grid_geometry",
+      "label": null,
+      "confidence_band": "low",
+      "reasons": [
+        "expected_layout_mismatch"
+      ],
+      "covered_by": []
+    },
+    "B1": {
+      "state": "uncertain",
+      "source": "grid_geometry",
+      "label": null,
+      "confidence_band": "low",
+      "reasons": [
+        "expected_layout_mismatch"
+      ],
+      "covered_by": []
+    },
+    "B2": {
+      "state": "occupied",
+      "source": "trained_yolo",
+      "label": "tiprack",
+      "labels": null,
+      "confidence": 0.7707,
+      "confidence_band": "medium",
+      "reasons": [],
+      "covered_by": [
+        4
+      ],
+      "detection_count": 1
+    },
+    "B3": {
+      "state": "occupied",
+      "source": "trained_yolo",
+      "label": "tiprack",
+      "labels": null,
+      "confidence": 0.8489,
+      "confidence_band": "high",
+      "reasons": [],
+      "covered_by": [
+        3
+      ],
+      "detection_count": 1
+    },
+    "C1": {
+      "state": "uncertain",
+      "source": "grid_geometry",
+      "label": null,
+      "confidence_band": "low",
+      "reasons": [
+        "expected_layout_mismatch"
+      ],
+      "covered_by": []
+    },
+    "C2": {
+      "state": "empty",
+      "source": "grid_geometry",
+      "label": null,
+      "confidence_band": "high",
+      "reasons": [],
+      "covered_by": []
+    },
+    "C3": {
+      "state": "empty",
+      "source": "grid_geometry",
+      "label": null,
+      "confidence_band": "high",
+      "reasons": [],
+      "covered_by": []
+    },
+    "D1": {
+      "state": "uncertain",
+      "source": "grid_geometry",
+      "label": null,
+      "confidence_band": "low",
+      "reasons": [
+        "expected_layout_mismatch"
+      ],
+      "covered_by": []
+    },
+    "D2": {
+      "state": "uncertain",
+      "source": "trained_yolo",
+      "label": "reservoir",
+      "labels": null,
+      "confidence": 0.9604,
+      "confidence_band": "low",
+      "reasons": [
+        "expected_layout_mismatch"
+      ],
+      "covered_by": [
+        1
+      ],
+      "detection_count": 1
+    },
+    "D3": {
+      "state": "empty",
+      "source": "grid_geometry",
+      "label": null,
+      "confidence_band": "high",
+      "reasons": [],
+      "covered_by": []
+    }
+  },
+  "mismatches": [
+    {
+      "slot": "A1",
+      "expected": "module",
+      "observed": null,
+      "reason": "expected_occupied_but_empty"
+    },
+    {
+      "slot": "A3",
+      "expected": "trash_bin",
+      "observed": null,
+      "reason": "expected_occupied_but_empty"
+    },
+    {
+      "slot": "B1",
+      "expected": "module",
+      "observed": null,
+      "reason": "expected_occupied_but_empty"
+    },
+    {
+      "slot": "C1",
+      "expected": "module",
+      "observed": null,
+      "reason": "expected_occupied_but_empty"
+    },
+    {
+      "slot": "D1",
+      "expected": "module",
+      "observed": null,
+      "reason": "expected_occupied_but_empty"
+    },
+    {
+      "slot": "D2",
+      "expected": "empty",
+      "observed": "reservoir",
+      "reason": "expected_empty_but_occupied"
+    }
+  ],
+  "uncertainties": [
+    "expected_layout_mismatch"
+  ],
+  "needs_human_review": true,
+  "annotated_image_path": "C:\\Users\\zhangyu\\IdeaProjects\\labscriptai-ot\\automation\\photo\\phase2_trained\\annotated\\2_normal_deck_20260616_110821_001_20260616_110821-vision-deck.jpg"
+}

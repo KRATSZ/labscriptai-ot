@@ -1,0 +1,309 @@
+{
+  "mode": "deck",
+  "summary": "6/12 slots confident; 0 slots use coverage mapping; 6 slots need review; 6 mismatches vs expected_layout.",
+  "slot_mapping": {
+    "method": "deck_homography",
+    "corner_order_doc": "A1_A3_D3_D1_clockwise_deck_view",
+    "deck_corners_norm": [
+      [
+        0.44375,
+        0.25463
+      ],
+      [
+        0.622917,
+        0.339815
+      ],
+      [
+        0.635417,
+        0.599074
+      ],
+      [
+        0.432812,
+        0.59537
+      ]
+    ],
+    "corners_source": "payload",
+    "slot_centers_norm": null,
+    "centers_source": null
+  },
+  "model": {
+    "family": "YOLO",
+    "weights_requested": "C:\\Users\\zhangyu\\IdeaProjects\\labscriptai-ot\\vision\\models\\weights\\deck_v2_best.pt",
+    "weights_effective": "C:\\Users\\zhangyu\\IdeaProjects\\labscriptai-ot\\vision\\models\\weights\\deck_v2_best.pt",
+    "lab_tuned": true
+  },
+  "observed_items": [
+    {
+      "detection_id": 1,
+      "slot": "B3",
+      "primary_slot": "B3",
+      "covered_slots": [
+        "B3"
+      ],
+      "covered_slot_overlaps": {
+        "B3": 0.0708
+      },
+      "label": "tiprack",
+      "confidence": 0.7445,
+      "confidence_band": "medium",
+      "bbox_xyxy": [
+        1069.39,
+        420.09,
+        1193.19,
+        496.0
+      ],
+      "center_norm": [
+        0.5892,
+        0.4241
+      ],
+      "evidence": "trained_yolo_detection",
+      "reasons": [],
+      "mapping_notes": [],
+      "needs_human_review": false,
+      "assignable_to_slots": true,
+      "deck_plane_norm": [
+        0.745,
+        0.3964
+      ],
+      "coverage_polygon_norm": [
+        [
+          0.5571,
+          0.3054
+        ],
+        [
+          0.972,
+          0.213
+        ],
+        [
+          0.9491,
+          0.4952
+        ],
+        [
+          0.5499,
+          0.5539
+        ]
+      ],
+      "class_name_raw": "tiprack_200"
+    },
+    {
+      "detection_id": 2,
+      "slot": "C3",
+      "primary_slot": "C3",
+      "covered_slots": [
+        "C3"
+      ],
+      "covered_slot_overlaps": {
+        "C3": 0.0303
+      },
+      "label": "tiprack",
+      "confidence": 0.2564,
+      "confidence_band": "low",
+      "bbox_xyxy": [
+        1173.78,
+        490.39,
+        1274.15,
+        568.45
+      ],
+      "center_norm": [
+        0.6375,
+        0.4902
+      ],
+      "evidence": "trained_yolo_detection",
+      "reasons": [
+        "low_confidence_detection"
+      ],
+      "mapping_notes": [],
+      "needs_human_review": true,
+      "assignable_to_slots": true,
+      "deck_plane_norm": [
+        1.0,
+        0.6002
+      ],
+      "coverage_polygon_norm": [
+        [
+          0.8816,
+          0.4856
+        ],
+        [
+          1.0,
+          0.4263
+        ],
+        [
+          1.0,
+          0.7223
+        ],
+        [
+          0.8624,
+          0.7517
+        ]
+      ],
+      "class_name_raw": "tiprack_50"
+    }
+  ],
+  "slot_observations": {
+    "A1": {
+      "state": "uncertain",
+      "source": "grid_geometry",
+      "label": null,
+      "confidence_band": "low",
+      "reasons": [
+        "expected_layout_mismatch"
+      ],
+      "covered_by": []
+    },
+    "A2": {
+      "state": "empty",
+      "source": "grid_geometry",
+      "label": null,
+      "confidence_band": "high",
+      "reasons": [],
+      "covered_by": []
+    },
+    "A3": {
+      "state": "uncertain",
+      "source": "grid_geometry",
+      "label": null,
+      "confidence_band": "low",
+      "reasons": [
+        "expected_layout_mismatch"
+      ],
+      "covered_by": []
+    },
+    "B1": {
+      "state": "uncertain",
+      "source": "grid_geometry",
+      "label": null,
+      "confidence_band": "low",
+      "reasons": [
+        "expected_layout_mismatch"
+      ],
+      "covered_by": []
+    },
+    "B2": {
+      "state": "empty",
+      "source": "grid_geometry",
+      "label": null,
+      "confidence_band": "high",
+      "reasons": [],
+      "covered_by": []
+    },
+    "B3": {
+      "state": "occupied",
+      "source": "trained_yolo",
+      "label": "tiprack",
+      "labels": null,
+      "confidence": 0.7445,
+      "confidence_band": "medium",
+      "reasons": [],
+      "covered_by": [
+        1
+      ],
+      "detection_count": 1
+    },
+    "C1": {
+      "state": "uncertain",
+      "source": "grid_geometry",
+      "label": null,
+      "confidence_band": "low",
+      "reasons": [
+        "expected_layout_mismatch"
+      ],
+      "covered_by": []
+    },
+    "C2": {
+      "state": "empty",
+      "source": "grid_geometry",
+      "label": null,
+      "confidence_band": "high",
+      "reasons": [],
+      "covered_by": []
+    },
+    "C3": {
+      "state": "uncertain",
+      "source": "trained_yolo",
+      "label": "tiprack",
+      "labels": null,
+      "confidence": 0.2564,
+      "confidence_band": "low",
+      "reasons": [
+        "low_confidence_detection",
+        "expected_layout_mismatch"
+      ],
+      "covered_by": [
+        2
+      ],
+      "detection_count": 1
+    },
+    "D1": {
+      "state": "uncertain",
+      "source": "grid_geometry",
+      "label": null,
+      "confidence_band": "low",
+      "reasons": [
+        "expected_layout_mismatch"
+      ],
+      "covered_by": []
+    },
+    "D2": {
+      "state": "empty",
+      "source": "grid_geometry",
+      "label": null,
+      "confidence_band": "high",
+      "reasons": [],
+      "covered_by": []
+    },
+    "D3": {
+      "state": "empty",
+      "source": "grid_geometry",
+      "label": null,
+      "confidence_band": "high",
+      "reasons": [],
+      "covered_by": []
+    }
+  },
+  "mismatches": [
+    {
+      "slot": "A1",
+      "expected": "module",
+      "observed": null,
+      "reason": "expected_occupied_but_empty"
+    },
+    {
+      "slot": "A3",
+      "expected": "trash_bin",
+      "observed": null,
+      "reason": "expected_occupied_but_empty"
+    },
+    {
+      "slot": "B1",
+      "expected": "module",
+      "observed": null,
+      "reason": "expected_occupied_but_empty"
+    },
+    {
+      "slot": "C1",
+      "expected": "module",
+      "observed": null,
+      "reason": "expected_occupied_but_empty"
+    },
+    {
+      "slot": "C3",
+      "expected": "empty",
+      "observed": [
+        "tiprack"
+      ],
+      "reason": "expected_empty_but_uncertain"
+    },
+    {
+      "slot": "D1",
+      "expected": "module",
+      "observed": null,
+      "reason": "expected_occupied_but_empty"
+    }
+  ],
+  "uncertainties": [
+    "expected_layout_mismatch"
+  ],
+  "needs_human_review": true,
+  "annotated_image_path": "C:\\Users\\zhangyu\\IdeaProjects\\labscriptai-ot\\automation\\photo\\phase2_trained\\annotated\\1_empty_deck_20260616_111016_016_20260616_111336-vision-deck.jpg"
+}

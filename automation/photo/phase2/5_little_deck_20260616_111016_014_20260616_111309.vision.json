@@ -1,0 +1,288 @@
+{
+  "mode": "deck",
+  "summary": "4/12 slots confident; 0 slots use coverage mapping; 8 slots need review; 8 mismatches vs expected_layout.",
+  "slot_mapping": {
+    "method": "deck_homography",
+    "corner_order_doc": "A1_A3_D3_D1_clockwise_deck_view",
+    "deck_corners_norm": [
+      [
+        0.44375,
+        0.25463
+      ],
+      [
+        0.622917,
+        0.339815
+      ],
+      [
+        0.635417,
+        0.599074
+      ],
+      [
+        0.432812,
+        0.59537
+      ]
+    ],
+    "corners_source": "payload",
+    "slot_centers_norm": null,
+    "centers_source": null
+  },
+  "model": {
+    "family": "YOLOE",
+    "weights_requested": "C:\\Users\\zhangyu\\IdeaProjects\\labscriptai-ot\\yoloe-26s-seg.pt",
+    "weights_effective": "C:\\Users\\zhangyu\\IdeaProjects\\labscriptai-ot\\yoloe-26s-seg.pt",
+    "class_prompts": [
+      "yellow pipette tip rack on lab robot deck",
+      "teal or blue pipette tip rack on lab robot deck",
+      "white or clear plastic 96-well microplate",
+      "black plastic 96-well microplate",
+      "plastic liquid reservoir trough on deck",
+      "PCR thermocycler module with open lid and red heating block",
+      "black heater shaker module with microplate on top",
+      "dark rectangular laboratory trash bin opening on robot deck"
+    ],
+    "canonical_labels": [
+      "tiprack",
+      "tiprack",
+      "plate",
+      "plate",
+      "reservoir",
+      "module",
+      "module",
+      "trash_bin"
+    ]
+  },
+  "observed_items": [
+    {
+      "detection_id": 1,
+      "slot": "B1",
+      "primary_slot": "B1",
+      "covered_slots": [
+        "B1"
+      ],
+      "covered_slot_overlaps": {
+        "B1": 0.0453
+      },
+      "label": "module",
+      "confidence": 0.2614,
+      "confidence_band": "low",
+      "bbox_xyxy": [
+        798.39,
+        384.61,
+        950.84,
+        466.46
+      ],
+      "center_norm": [
+        0.4555,
+        0.394
+      ],
+      "evidence": "yoloe_text_prompt_detection",
+      "reasons": [
+        "low_confidence_detection"
+      ],
+      "mapping_notes": [],
+      "needs_human_review": true,
+      "assignable_to_slots": true,
+      "prompt_index": 5,
+      "prompt_text": "PCR thermocycler module with open lid and red heating block",
+      "deck_plane_norm": [
+        0.0653,
+        0.4304
+      ],
+      "coverage_polygon_norm": [
+        [
+          0.0,
+          0.3537
+        ],
+        [
+          0.2375,
+          0.2675
+        ],
+        [
+          0.2403,
+          0.5141
+        ],
+        [
+          0.0,
+          0.571
+        ]
+      ]
+    }
+  ],
+  "slot_observations": {
+    "A1": {
+      "state": "uncertain",
+      "source": "grid_geometry",
+      "label": null,
+      "confidence_band": "low",
+      "reasons": [
+        "expected_layout_mismatch"
+      ],
+      "covered_by": []
+    },
+    "A2": {
+      "state": "uncertain",
+      "source": "grid_geometry",
+      "label": null,
+      "confidence_band": "low",
+      "reasons": [
+        "expected_layout_mismatch"
+      ],
+      "covered_by": []
+    },
+    "A3": {
+      "state": "uncertain",
+      "source": "grid_geometry",
+      "label": null,
+      "confidence_band": "low",
+      "reasons": [
+        "expected_layout_mismatch"
+      ],
+      "covered_by": []
+    },
+    "B1": {
+      "state": "uncertain",
+      "source": "yoloe",
+      "label": "module",
+      "labels": null,
+      "confidence": 0.2614,
+      "confidence_band": "low",
+      "reasons": [
+        "low_confidence_detection",
+        "expected_layout_mismatch"
+      ],
+      "covered_by": [
+        1
+      ],
+      "detection_count": 1
+    },
+    "B2": {
+      "state": "uncertain",
+      "source": "grid_geometry",
+      "label": null,
+      "confidence_band": "low",
+      "reasons": [
+        "expected_layout_mismatch"
+      ],
+      "covered_by": []
+    },
+    "B3": {
+      "state": "uncertain",
+      "source": "grid_geometry",
+      "label": null,
+      "confidence_band": "low",
+      "reasons": [
+        "expected_layout_mismatch"
+      ],
+      "covered_by": []
+    },
+    "C1": {
+      "state": "uncertain",
+      "source": "grid_geometry",
+      "label": null,
+      "confidence_band": "low",
+      "reasons": [
+        "expected_layout_mismatch"
+      ],
+      "covered_by": []
+    },
+    "C2": {
+      "state": "empty",
+      "source": "grid_geometry",
+      "label": null,
+      "confidence_band": "high",
+      "reasons": [],
+      "covered_by": []
+    },
+    "C3": {
+      "state": "empty",
+      "source": "grid_geometry",
+      "label": null,
+      "confidence_band": "high",
+      "reasons": [],
+      "covered_by": []
+    },
+    "D1": {
+      "state": "uncertain",
+      "source": "grid_geometry",
+      "label": null,
+      "confidence_band": "low",
+      "reasons": [
+        "expected_layout_mismatch"
+      ],
+      "covered_by": []
+    },
+    "D2": {
+      "state": "empty",
+      "source": "grid_geometry",
+      "label": null,
+      "confidence_band": "high",
+      "reasons": [],
+      "covered_by": []
+    },
+    "D3": {
+      "state": "empty",
+      "source": "grid_geometry",
+      "label": null,
+      "confidence_band": "high",
+      "reasons": [],
+      "covered_by": []
+    }
+  },
+  "mismatches": [
+    {
+      "slot": "A1",
+      "expected": "module",
+      "observed": null,
+      "reason": "expected_occupied_but_empty"
+    },
+    {
+      "slot": "A2",
+      "expected": "tiprack",
+      "observed": null,
+      "reason": "expected_occupied_but_empty"
+    },
+    {
+      "slot": "A3",
+      "expected": "trash_bin",
+      "observed": null,
+      "reason": "expected_occupied_but_empty"
+    },
+    {
+      "slot": "B1",
+      "expected": "module",
+      "observed": [
+        "module"
+      ],
+      "reason": "uncertain_slot"
+    },
+    {
+      "slot": "B2",
+      "expected": "reservoir",
+      "observed": null,
+      "reason": "expected_occupied_but_empty"
+    },
+    {
+      "slot": "B3",
+      "expected": "tiprack",
+      "observed": null,
+      "reason": "expected_occupied_but_empty"
+    },
+    {
+      "slot": "C1",
+      "expected": "module",
+      "observed": null,
+      "reason": "expected_occupied_but_empty"
+    },
+    {
+      "slot": "D1",
+      "expected": "module",
+      "observed": null,
+      "reason": "expected_occupied_but_empty"
+    }
+  ],
+  "uncertainties": [
+    "expected_layout_mismatch"
+  ],
+  "needs_human_review": true,
+  "annotated_image_path": "C:\\Users\\zhangyu\\IdeaProjects\\labscriptai-ot\\automation\\photo\\phase2\\annotated\\5_little_deck_20260616_111016_014_20260616_111309-vision-deck.jpg"
+}

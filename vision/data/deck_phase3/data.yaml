@@ -1,0 +1,10 @@
+path: C:/Users/zhangyu/IdeaProjects/labscriptai-ot/vision/data/deck_phase3
+train: images/train
+val: images/train
+nc: 5
+names:
+  0: tiprack_50
+  1: tiprack_200
+  2: tiprack_1000
+  3: reservoir
+  4: plate

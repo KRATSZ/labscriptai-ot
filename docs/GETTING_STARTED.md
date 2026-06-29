@@ -143,6 +143,14 @@ These map to the `opentrons-experiment-run` orchestration skill. See [examples/0
 
 ---
 
+## Deck vision
+
+Lab-trained deck vision (camera → YOLO → slot layout) is documented in **[docs/deck-vision.md](deck-vision.md)** — setup, daily MCP/CLI use, machine layout, maintenance, and troubleshooting.
+
+Quick verify: `node scripts/verify-setup.mjs`
+
+---
+
 ## Quick verification (manual)
 
 ```bash
@@ -526,6 +534,7 @@ Full runbooks: [docs/runbooks/](runbooks/).
 ## Next steps
 
 - [GLOSSARY.md](GLOSSARY.md) — deck truth, simulate gate, reconcile_state
+- [deck-vision.md](deck-vision.md) — lab-trained deck vision setup and daily use
 - [MCP_TOOLS.md](MCP_TOOLS.md) — tool reference by tier (L0–L4)
 - [policy/workflows.md](../policy/workflows.md) — canonical workflow sequences
 - [examples/](../examples/) — end-to-end example prompts

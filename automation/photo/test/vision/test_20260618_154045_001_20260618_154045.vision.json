@@ -1,0 +1,413 @@
+{
+  "mode": "deck",
+  "summary": "7/7 detection slots confident; 0 slots use coverage mapping; 0 detection slots need review; 5 fixed slots from layout policy.",
+  "layout_policy": {
+    "path": "deck_layout_policy.json",
+    "fixed_slots": [
+      "A1",
+      "A3",
+      "B1",
+      "C1",
+      "D1"
+    ],
+    "detection_slots": [
+      "A2",
+      "B2",
+      "B3",
+      "C2",
+      "C3",
+      "D2",
+      "D3"
+    ],
+    "detection_classes": [
+      "tiprack_50",
+      "tiprack_200",
+      "tiprack_1000",
+      "reservoir",
+      "plate"
+    ]
+  },
+  "slot_mapping": {
+    "method": "deck_homography",
+    "corner_order_doc": "A1_A3_D3_D1_clockwise_deck_view",
+    "deck_corners_norm": [
+      [
+        0.44375,
+        0.25463
+      ],
+      [
+        0.622917,
+        0.339815
+      ],
+      [
+        0.635417,
+        0.599074
+      ],
+      [
+        0.432812,
+        0.59537
+      ]
+    ],
+    "corners_source": "payload",
+    "slot_centers_norm": null,
+    "centers_source": null
+  },
+  "model": {
+    "family": "YOLO",
+    "weights_requested": "C:\\Users\\zhangyu\\IdeaProjects\\labscriptai-ot\\vision\\models\\weights\\deck_v2_best.pt",
+    "weights_effective": "C:\\Users\\zhangyu\\IdeaProjects\\labscriptai-ot\\vision\\models\\weights\\deck_v2_best.pt",
+    "lab_tuned": true
+  },
+  "observed_items": [
+    {
+      "detection_id": 1,
+      "slot": "A2",
+      "primary_slot": "A2",
+      "covered_slots": [
+        "A2"
+      ],
+      "covered_slot_overlaps": {
+        "A2": 0.0704
+      },
+      "label": "tiprack",
+      "confidence": 0.952,
+      "confidence_band": "high",
+      "bbox_xyxy": [
+        965.35,
+        289.32,
+        1092.82,
+        393.54
+      ],
+      "center_norm": [
+        0.536,
+        0.3161
+      ],
+      "evidence": "trained_yolo_detection",
+      "reasons": [],
+      "mapping_notes": [],
+      "needs_human_review": false,
+      "assignable_to_slots": true,
+      "deck_plane_norm": [
+        0.4453,
+        0.0668
+      ],
+      "coverage_polygon_norm": [
+        [
+          0.2715,
+          0.0
+        ],
+        [
+          0.6467,
+          0.0
+        ],
+        [
+          0.6319,
+          0.1966
+        ],
+        [
+          0.2738,
+          0.2861
+        ]
+      ],
+      "class_name_raw": "tiprack_1000"
+    },
+    {
+      "detection_id": 2,
+      "slot": "B2",
+      "primary_slot": "B2",
+      "covered_slots": [
+        "B2"
+      ],
+      "covered_slot_overlaps": {
+        "B2": 0.0751
+      },
+      "label": "tiprack",
+      "confidence": 0.9398,
+      "confidence_band": "high",
+      "bbox_xyxy": [
+        963.71,
+        383.0,
+        1096.47,
+        478.78
+      ],
+      "center_norm": [
+        0.5365,
+        0.399
+      ],
+      "evidence": "trained_yolo_detection",
+      "reasons": [],
+      "mapping_notes": [],
+      "needs_human_review": false,
+      "assignable_to_slots": true,
+      "deck_plane_norm": [
+        0.4437,
+        0.3655
+      ],
+      "coverage_polygon_norm": [
+        [
+          0.2695,
+          0.2541
+        ],
+        [
+          0.6449,
+          0.156
+        ],
+        [
+          0.6318,
+          0.4858
+        ],
+        [
+          0.2716,
+          0.5448
+        ]
+      ],
+      "class_name_raw": "tiprack_1000"
+    },
+    {
+      "detection_id": 3,
+      "slot": "B3",
+      "primary_slot": "B3",
+      "covered_slots": [
+        "B3"
+      ],
+      "covered_slot_overlaps": {
+        "B3": 0.0771
+      },
+      "label": "tiprack",
+      "confidence": 0.837,
+      "confidence_band": "high",
+      "bbox_xyxy": [
+        1081.58,
+        415.09,
+        1200.16,
+        491.67
+      ],
+      "center_norm": [
+        0.5942,
+        0.4198
+      ],
+      "evidence": "trained_yolo_detection",
+      "reasons": [],
+      "mapping_notes": [],
+      "needs_human_review": false,
+      "assignable_to_slots": true,
+      "deck_plane_norm": [
+        0.7776,
+        0.3741
+      ],
+      "coverage_polygon_norm": [
+        [
+          0.5944,
+          0.2801
+        ],
+        [
+          1.0,
+          0.1877
+        ],
+        [
+          0.9758,
+          0.4758
+        ],
+        [
+          0.5858,
+          0.5348
+        ]
+      ],
+      "class_name_raw": "tiprack_50"
+    },
+    {
+      "detection_id": 4,
+      "slot": "C2",
+      "primary_slot": "C2",
+      "covered_slots": [
+        "C2"
+      ],
+      "covered_slot_overlaps": {
+        "C2": 0.0651
+      },
+      "label": "reservoir",
+      "confidence": 0.8278,
+      "confidence_band": "high",
+      "bbox_xyxy": [
+        957.76,
+        472.53,
+        1086.36,
+        568.13
+      ],
+      "center_norm": [
+        0.5323,
+        0.4818
+      ],
+      "evidence": "trained_yolo_detection",
+      "reasons": [],
+      "mapping_notes": [],
+      "needs_human_review": false,
+      "assignable_to_slots": true,
+      "deck_plane_norm": [
+        0.4184,
+        0.6463
+      ],
+      "coverage_polygon_norm": [
+        [
+          0.2571,
+          0.5289
+        ],
+        [
+          0.6021,
+          0.4703
+        ],
+        [
+          0.5913,
+          0.7722
+        ],
+        [
+          0.2596,
+          0.7985
+        ]
+      ],
+      "class_name_raw": "reservoir"
+    }
+  ],
+  "slot_observations": {
+    "A1": {
+      "state": "fixed",
+      "source": "layout_policy",
+      "label": "pcr_thermocycler",
+      "role": "pcr_thermocycler",
+      "note": "PCR 热循环模块（固定）",
+      "confidence_band": "high",
+      "reasons": [
+        "fixed_hardware"
+      ],
+      "covered_by": []
+    },
+    "A2": {
+      "state": "occupied",
+      "source": "trained_yolo",
+      "label": "tiprack",
+      "labels": null,
+      "confidence": 0.952,
+      "confidence_band": "high",
+      "reasons": [],
+      "covered_by": [
+        1
+      ],
+      "detection_count": 1
+    },
+    "A3": {
+      "state": "fixed",
+      "source": "layout_policy",
+      "label": "trash_bin",
+      "role": "trash_bin",
+      "note": "垃圾桶（固定）",
+      "confidence_band": "high",
+      "reasons": [
+        "fixed_hardware"
+      ],
+      "covered_by": []
+    },
+    "B1": {
+      "state": "fixed",
+      "source": "layout_policy",
+      "label": "pcr_thermocycler",
+      "role": "pcr_thermocycler",
+      "note": "PCR 热循环模块（固定，与 A1 同模块）",
+      "confidence_band": "high",
+      "reasons": [
+        "fixed_hardware"
+      ],
+      "covered_by": []
+    },
+    "B2": {
+      "state": "occupied",
+      "source": "trained_yolo",
+      "label": "tiprack",
+      "labels": null,
+      "confidence": 0.9398,
+      "confidence_band": "high",
+      "reasons": [],
+      "covered_by": [
+        2
+      ],
+      "detection_count": 1
+    },
+    "B3": {
+      "state": "occupied",
+      "source": "trained_yolo",
+      "label": "tiprack",
+      "labels": null,
+      "confidence": 0.837,
+      "confidence_band": "high",
+      "reasons": [],
+      "covered_by": [
+        3
+      ],
+      "detection_count": 1
+    },
+    "C1": {
+      "state": "fixed",
+      "source": "layout_policy",
+      "label": "temperature_module",
+      "role": "temperature_module",
+      "note": "温控模块（固定）",
+      "confidence_band": "high",
+      "reasons": [
+        "fixed_hardware"
+      ],
+      "covered_by": []
+    },
+    "C2": {
+      "state": "occupied",
+      "source": "trained_yolo",
+      "label": "reservoir",
+      "labels": null,
+      "confidence": 0.8278,
+      "confidence_band": "high",
+      "reasons": [],
+      "covered_by": [
+        4
+      ],
+      "detection_count": 1
+    },
+    "C3": {
+      "state": "empty",
+      "source": "grid_geometry",
+      "label": null,
+      "confidence_band": "high",
+      "reasons": [],
+      "covered_by": []
+    },
+    "D1": {
+      "state": "fixed",
+      "source": "layout_policy",
+      "label": "heater_shaker",
+      "role": "heater_shaker",
+      "note": "震荡模块（固定）",
+      "confidence_band": "high",
+      "reasons": [
+        "fixed_hardware"
+      ],
+      "covered_by": []
+    },
+    "D2": {
+      "state": "empty",
+      "source": "grid_geometry",
+      "label": null,
+      "confidence_band": "high",
+      "reasons": [],
+      "covered_by": []
+    },
+    "D3": {
+      "state": "empty",
+      "source": "grid_geometry",
+      "label": null,
+      "confidence_band": "high",
+      "reasons": [],
+      "covered_by": []
+    }
+  },
+  "mismatches": [],
+  "uncertainties": [],
+  "needs_human_review": false,
+  "annotated_image_path": "C:\\Users\\zhangyu\\IdeaProjects\\labscriptai-ot\\automation\\photo\\test\\vision\\annotated\\test_20260618_154045_001_20260618_154045-vision-deck.jpg"
+}

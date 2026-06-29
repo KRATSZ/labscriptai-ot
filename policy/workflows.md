@@ -120,10 +120,7 @@ robot_status → module_status → reconcile_state (if anything looks wrong)
 
 Use this **only when the operator explicitly asks** for a visual deck check, camera preview, or image-based confirmation. Vision does **not** replace committed deck truth — compare results with **`reconcile_state`** and robot APIs (see `policy/safety-policy.md`).
 
-**Setup (once per machine):**
-
-- Python: `uv sync --extra vision` from the repo root (Ultralytics / optional YOLOE extras).
-- Weights: vision is optional in the plugin. Set `OPENTRONS_DECK_YOLO_WEIGHTS` / `OPENTRONS_YOLOE_WEIGHTS` to explicit local files when needed.
+**Setup (once per machine):** See [docs/deck-vision.md](../docs/deck-vision.md).
 
 **Tool sequence (MCP `opentrons-lab-mcp`):**
 
@@ -132,7 +129,7 @@ camera_status → capture_preview_image → vision_check (image_path = path retu
 ```
 
 - If the camera API is unavailable on a given Flex build, `camera_status` / capture may fail — surface the error; do not silently skip.
-- For offline validation without a robot, call `vision_check` with a local image path only (see checklist A in `docs/runbooks/vision-acceptance.md`).
+- For offline validation without a robot, call `vision_check` with a local image path only (see [docs/deck-vision.md](../docs/deck-vision.md)).
 
 ## Protocol Reference Library
 

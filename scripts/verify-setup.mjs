@@ -256,6 +256,67 @@ function checkPython() {
   return found.exe;
 }
 
+function checkVision(pythonExe) {
+  const policyPath = path.join(PLUGIN_ROOT, "automation", "deck_layout_policy.json");
+  const calibrationPath = path.join(PLUGIN_ROOT, "automation", "photo", "deck_calibration.json");
+  const weightsPath = path.join(PLUGIN_ROOT, "vision", "models", "weights", "deck_v2_best.pt");
+
+  if (fs.existsSync(policyPath)) {
+    pass("Deck layout policy", path.relative(PLUGIN_ROOT, policyPath));
+  } else {
+    warn(
+      "Deck layout policy",
+      "Missing automation/deck_layout_policy.json",
+      "Copy or create machine-specific fixed slots + detection scope before live deck vision."
+    );
+  }
+
+  if (fs.existsSync(calibrationPath)) {
+    pass("Deck calibration", path.relative(PLUGIN_ROOT, calibrationPath));
+  } else {
+    warn(
+      "Deck calibration",
+      "Missing automation/photo/deck_calibration.json",
+      "Run: python automation/click_deck_corners.py --show"
+    );
+  }
+
+  if (fs.existsSync(weightsPath)) {
+    pass("Deck YOLO weights", path.relative(PLUGIN_ROOT, weightsPath));
+  } else {
+    warn(
+      "Deck YOLO weights",
+      "Missing vision/models/weights/deck_v2_best.pt",
+      "Train with automation/train_deck_yolo.py or set OPENTRONS_DECK_YOLO_WEIGHTS."
+    );
+  }
+
+  if (!pythonExe) {
+    warn(
+      "Vision Python deps",
+      "Skipped (no Python interpreter)",
+      "Install ultralytics in OPENTRONS_PYTHON: pip install ultralytics opencv-python-headless pillow"
+    );
+    return;
+  }
+
+  const visionCheck = spawnSync(
+    pythonExe,
+    ["-c", "import ultralytics, cv2, PIL; print('ok')"],
+    { encoding: "utf8", timeout: 20000 }
+  );
+
+  if (visionCheck.status === 0) {
+    pass("Vision Python deps", "ultralytics, opencv-python-headless, pillow");
+  } else {
+    warn(
+      "Vision Python deps",
+      "ultralytics/opencv/pillow not importable",
+      `${pythonExe} -m pip install ultralytics opencv-python-headless pillow`
+    );
+  }
+}
+
 async function checkHealth(pythonExe) {
   process.env.OPENTRONS_PLUGIN_ROOT = PLUGIN_ROOT;
   if (pythonExe && !process.env.OPENTRONS_PYTHON) {
@@ -415,6 +476,7 @@ async function main() {
   checkPluginPaths();
   checkMcpManifestPaths();
   const pythonExe = checkPython();
+  checkVision(pythonExe);
   await checkHealth(pythonExe);
   await checkRuntimeRecoverySelfTest();
   printReport();

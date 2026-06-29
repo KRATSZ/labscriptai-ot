@@ -13,6 +13,7 @@ Commercial use, paid hosted services, sublicensing, or removing the citation req
 ## User and operator docs
 
 - [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) — install, verify, platform setup, first commands
+- [docs/deck-vision.md](docs/deck-vision.md) — lab-trained deck vision setup and daily use
 - [docs/GLOSSARY.md](docs/GLOSSARY.md) — deck truth, simulate gate, reconcile_state, tip policy, etc.
 - [docs/MCP_TOOLS.md](docs/MCP_TOOLS.md) — MCP tool reference by tier (L0–L4)
 - [policy/workflows.md](policy/workflows.md) — canonical workflow sequences (single source of truth)

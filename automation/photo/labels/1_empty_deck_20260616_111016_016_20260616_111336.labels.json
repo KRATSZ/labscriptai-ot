@@ -1,0 +1,38 @@
+{
+  "image_file": "1_empty_deck_20260616_111016_016_20260616_111336.jpg",
+  "phase1_scenario": "empty",
+  "phase1_hint": "Most slots empty; fixed modules on A column may still be present.",
+  "slots": {
+    "A1": "module",
+    "A2": "empty",
+    "A3": "trash_bin",
+    "B1": "module",
+    "B2": "empty",
+    "B3": "tiprack",
+    "C1": "module",
+    "C2": "empty",
+    "C3": "empty",
+    "D1": "module",
+    "D2": "empty",
+    "D3": "empty"
+  },
+  "notes": "",
+  "optional_deck_corners_norm": [
+    [
+      0.427083,
+      0.199074
+    ],
+    [
+      0.611979,
+      0.340741
+    ],
+    [
+      0.615104,
+      0.599074
+    ],
+    [
+      0.429688,
+      0.611111
+    ]
+  ]
+}

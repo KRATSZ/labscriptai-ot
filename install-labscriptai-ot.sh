@@ -21,6 +21,11 @@ Set these variables in your client if it does not inject them:
 Optional writable state directory:
   PLUGIN_DATA=$PLUGIN_ROOT/.plugin-data
 
+Optional deck vision (lab-trained YOLO):
+  pip install ultralytics opencv-python-headless pillow
+  Weights: vision/models/weights/deck_v2_best.pt
+  Setup: docs/GETTING_STARTED.md#deck-vision-setup
+
 Next steps: docs/GETTING_STARTED.md
 EOF
 

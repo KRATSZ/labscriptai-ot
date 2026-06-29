@@ -1,0 +1,44 @@
+{
+  "phase": 1,
+  "description": "Five representative deck layouts for slot ground-truth labeling.",
+  "layout_policy": "deck_layout_policy.json",
+  "note": "Fixed slots A1/B1/C1/D1/A3 are recorded as module/trash but are not vision detection targets.",
+  "calibration": "deck_calibration.json",
+  "labels_dir": "labels",
+  "slot_vocabulary": [
+    "empty",
+    "tiprack",
+    "plate",
+    "reservoir",
+    "module",
+    "trash_bin",
+    "unknown"
+  ],
+  "images": [
+    {
+      "file": "1_empty_deck_20260616_111016_016_20260616_111336.jpg",
+      "scenario": "empty",
+      "hint": "Most slots empty; fixed modules on A column may still be present."
+    },
+    {
+      "file": "2_normal_deck_20260616_110821_001_20260616_110821.jpg",
+      "scenario": "normal",
+      "hint": "Typical mixed layout: modules + plates + colored tip boxes."
+    },
+    {
+      "file": "3_more_deck_20260616_111016_010_20260616_111216.jpg",
+      "scenario": "more",
+      "hint": "Heavily populated; many tip racks and plates across columns."
+    },
+    {
+      "file": "4_little_deck_20260616_111919_005_20260616_112012.jpg",
+      "scenario": "little",
+      "hint": "Sparse: column 2 mostly empty, few tip racks on column 3."
+    },
+    {
+      "file": "5_little_deck_20260616_111016_014_20260616_111309.jpg",
+      "scenario": "little",
+      "hint": "Sparse variant: modules on A column, partial tip/plate fill elsewhere."
+    }
+  ]
+}
