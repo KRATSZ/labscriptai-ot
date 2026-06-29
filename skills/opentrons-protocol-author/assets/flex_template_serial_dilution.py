@@ -18,6 +18,14 @@ metadata = {
 requirements = {"robotType": "Flex", "apiLevel": "2.24"}
 
 
+def finish_tip(pipette, trash, dry_run_on: bool) -> None:
+    """Return tips during a liquid-free dry run; discard them otherwise."""
+    if dry_run_on:
+        pipette.return_tip()
+    else:
+        pipette.drop_tip(trash)
+
+
 def add_parameters(parameters: protocol_api.ParameterContext) -> None:
     parameters.add_int(
         display_name="Number of dilution steps",
@@ -32,6 +40,11 @@ def add_parameters(parameters: protocol_api.ParameterContext) -> None:
         default=50.0,
         minimum=5.0,
         maximum=50.0,
+    )
+    parameters.add_bool(
+        display_name="Dry run: return tips",
+        variable_name="dry_run_on",
+        default=False,
     )
 
 
@@ -50,6 +63,9 @@ def run(protocol: protocol_api.ProtocolContext) -> None:
 
     steps = protocol.params.dilution_steps
     xfer = protocol.params.transfer_volume_ul
+    dry_run_on = protocol.params.dry_run_on
+    if dry_run_on:
+        protocol.comment("DRY RUN: no liquids may be loaded; tips will return to their pickup wells.")
 
     row = "A"
     wells = [f"{row}{i}" for i in range(1, 2 + steps)]
@@ -59,7 +75,7 @@ def run(protocol: protocol_api.ProtocolContext) -> None:
     pipette.pick_up_tip()
     pipette.aspirate(prime_vol, diluent["A1"])
     pipette.dispense(prime_vol, plate[wells[1]])
-    pipette.drop_tip(trash)
+    finish_tip(pipette, trash, dry_run_on)
 
     for i in range(steps):
         src = plate[wells[i]]
@@ -68,4 +84,4 @@ def run(protocol: protocol_api.ProtocolContext) -> None:
         pipette.aspirate(xfer, src)
         pipette.dispense(xfer, dst)
         pipette.mix(repetitions=8, volume=min(40, xfer * 0.8), location=dst)
-        pipette.drop_tip(trash)
+        finish_tip(pipette, trash, dry_run_on)

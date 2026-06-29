@@ -58,6 +58,16 @@ class _AstPreflightVisitor(ast.NodeVisitor):
     def __init__(self) -> None:
         self.errors: list[dict[str, Any]] = []
         self.warnings: list[dict[str, Any]] = []
+        self.function_stack: list[str] = []
+        self.dry_run_param_found = False
+        self.return_tip_lines: list[int] = []
+        self.drop_tip_outside_helper: list[int] = []
+        self.auto_tip_calls: list[tuple[str, int]] = []
+
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+        self.function_stack.append(node.name)
+        self.generic_visit(node)
+        self.function_stack.pop()
 
     def visit_Attribute(self, node: ast.Attribute) -> None:
         # Heuristic: InstrumentContext has no .default_flow_rate (use .flow_rate.aspirate / .dispense).
@@ -119,6 +129,61 @@ class _AstPreflightVisitor(ast.NodeVisitor):
                     }
                 )
 
+            if func.attr == "add_bool":
+                variable_name: str | None = None
+                default_value: bool | None = None
+                for kw in node.keywords:
+                    if (
+                        kw.arg == "variable_name"
+                        and isinstance(kw.value, ast.Constant)
+                        and isinstance(kw.value.value, str)
+                    ):
+                        variable_name = kw.value.value
+                    if (
+                        kw.arg == "default"
+                        and isinstance(kw.value, ast.Constant)
+                        and isinstance(kw.value.value, bool)
+                    ):
+                        default_value = kw.value.value
+                if variable_name == "dry_run_on":
+                    self.dry_run_param_found = True
+                    if default_value is not False:
+                        self.errors.append(
+                            {
+                                "code": "dry_run_default_must_be_false",
+                                "message": (
+                                    "`dry_run_on` must explicitly use `default=False`; "
+                                    "dry mode must never be enabled implicitly."
+                                ),
+                                "line": node.lineno,
+                            }
+                        )
+
+        if isinstance(func, ast.Attribute) and func.attr == "return_tip":
+            self.return_tip_lines.append(node.lineno)
+
+        if isinstance(func, ast.Attribute) and func.attr == "drop_tip":
+            current_function = self.function_stack[-1] if self.function_stack else ""
+            if current_function != "finish_tip":
+                self.drop_tip_outside_helper.append(node.lineno)
+
+        if isinstance(func, ast.Attribute) and func.attr in {
+            "transfer",
+            "distribute",
+            "consolidate",
+            "transfer_with_liquid_class",
+        }:
+            new_tip_value: str | None = None
+            for kw in node.keywords:
+                if (
+                    kw.arg == "new_tip"
+                    and isinstance(kw.value, ast.Constant)
+                    and isinstance(kw.value.value, str)
+                ):
+                    new_tip_value = kw.value.value
+            if new_tip_value != "never":
+                self.auto_tip_calls.append((func.attr, node.lineno))
+
         if isinstance(func, ast.Attribute) and func.attr == "transfer":
             if len(node.args) >= 3:
                 src, dst = node.args[1], node.args[2]
@@ -153,6 +218,41 @@ def _analyze_ast(text: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]
 
     visitor = _AstPreflightVisitor()
     visitor.visit(tree)
+    if visitor.dry_run_param_found:
+        if not visitor.return_tip_lines:
+            visitor.errors.append(
+                {
+                    "code": "dry_run_missing_return_tip",
+                    "message": (
+                        "`dry_run_on` is declared, but no `return_tip()` call exists. "
+                        "Route tip release through `finish_tip()`."
+                    ),
+                    "line": 0,
+                }
+            )
+        for line in visitor.drop_tip_outside_helper:
+            visitor.errors.append(
+                {
+                    "code": "dry_run_bypassed_tip_helper",
+                    "message": (
+                        "`drop_tip()` bypasses `finish_tip()` while `dry_run_on` is declared; "
+                        "this tip would not return to its pickup well."
+                    ),
+                    "line": line,
+                }
+            )
+        for call_name, line in visitor.auto_tip_calls:
+            visitor.errors.append(
+                {
+                    "code": "dry_run_automatic_tip_disposal",
+                    "message": (
+                        f"`{call_name}()` manages tips automatically. With `dry_run_on`, "
+                        "use explicit pick/aspirate/dispense/finish_tip steps or set "
+                        "`new_tip='never'` while managing the tip externally."
+                    ),
+                    "line": line,
+                }
+            )
     return visitor.errors, visitor.warnings
 
 

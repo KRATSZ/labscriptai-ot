@@ -15,6 +15,14 @@ metadata = {
 requirements = {"robotType": "Flex", "apiLevel": "2.24"}
 
 
+def finish_tip(pipette, trash, dry_run_on: bool) -> None:
+    """Return tips during a liquid-free dry run; discard them otherwise."""
+    if dry_run_on:
+        pipette.return_tip()
+    else:
+        pipette.drop_tip(trash)
+
+
 def add_parameters(parameters: protocol_api.ParameterContext) -> None:
     parameters.add_float(
         display_name="Master mix (µL)",
@@ -29,6 +37,11 @@ def add_parameters(parameters: protocol_api.ParameterContext) -> None:
         default=5.0,
         minimum=1.0,
         maximum=20.0,
+    )
+    parameters.add_bool(
+        display_name="Dry run: return tips",
+        variable_name="dry_run_on",
+        default=False,
     )
 
 
@@ -48,6 +61,9 @@ def run(protocol: protocol_api.ProtocolContext) -> None:
 
     mm_vol = protocol.params.mm_volume_ul
     sample_vol = protocol.params.sample_volume_ul
+    dry_run_on = protocol.params.dry_run_on
+    if dry_run_on:
+        protocol.comment("DRY RUN: no liquids may be loaded; tips will return to their pickup wells.")
 
     # Example: reactions in first row A1–H1 — replace with target_wells from intent review.
     reaction_wells = [f"A{i}" for i in range(1, 9)]
@@ -62,13 +78,11 @@ def run(protocol: protocol_api.ProtocolContext) -> None:
     # Master mix — use transfer with new_tip="always" (same reagent, no cross-contamination
     # between destinations, but fresh tip prevents carryover). For tight tip budgets, switch
     # to new_tip="once" (one tip for entire MM distribution).
-    pipette.transfer(
-        mm_vol,
-        mm_res["A1"],
-        [pcr_plate[w] for w in reaction_wells],
-        new_tip="always",
-        trash_location=trash,
-    )
+    for dest_well in reaction_wells:
+        pipette.pick_up_tip()
+        pipette.aspirate(mm_vol, mm_res["A1"])
+        pipette.dispense(mm_vol, pcr_plate[dest_well])
+        finish_tip(pipette, trash, dry_run_on)
 
     # Sample addition — always new_tip (different biological samples).
     # Mix after each sample addition.
@@ -79,6 +93,6 @@ def run(protocol: protocol_api.ProtocolContext) -> None:
         pipette.aspirate(sample_vol, s)
         pipette.dispense(sample_vol, d)
         pipette.mix(repetitions=5, volume=min(20, mm_vol + sample_vol - 1), location=d)
-        pipette.drop_tip(trash)
+        finish_tip(pipette, trash, dry_run_on)
 
     # NTC: e.g. add MM to H12 but skip sample — model explicitly in your study design.

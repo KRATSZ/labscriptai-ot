@@ -19,13 +19,11 @@ DEFAULT_PORT = 31950
 DEFAULT_TIMEOUT = 30
 DEFAULT_HEADERS = {"Opentrons-Version": "3"}
 
-TERMINAL_RUN_STATUSES = frozenset({
-    "succeeded",
-    "failed",
-    "stopped",
-    "awaiting-recovery",
-    "blocked-by-open-door",
-})
+# Keep in sync with automation/robot_run.py (single source of truth).
+_AUTOMATION_DIR = Path(__file__).resolve().parents[3] / "automation"
+if str(_AUTOMATION_DIR) not in sys.path:
+    sys.path.insert(0, str(_AUTOMATION_DIR))
+from robot_run import TERMINAL_RUN_STATUSES  # noqa: E402
 
 LOCAL_ONLY_COMMANDS = frozenset({"show-connection", "search-labware"})
 

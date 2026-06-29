@@ -19,6 +19,10 @@ This file is the **single source of truth** for safety rules and hard bans in th
 - **Simulation** should use the project venv: `.venv/bin/python` (or `uv run python`) for normal simulate paths. If another Opentrons runtime is selected, record the path in the command or run notes.
 - **Physical deck**: Never assume layout — read actual state via MCP or the configured `PLUGIN_DATA/session-state/` JSON.
 - **Modules**: Do not `load_module` for hardware you are not using.
+- **Dry-run returned tips**: `dry_run_on` defaults to false. Enable it only for
+  clean, liquid-free physical motion tests. Every tip must return to its original
+  pickup position via `return_tip()`. Returned tips remain used/potentially
+  contaminated and must be segregated or replaced before any wet protocol.
 
 ## Vision and camera
 
