@@ -32,6 +32,9 @@ If the user only wants validation or labware inspection, stop after the check an
 - If code exists and is runnable, simulate is the default next action.
 - Ask at most one clarification round before drafting.
 - Only block on missing information that would change safety, deck truth, robot compatibility, or module choice.
+- New protocols expose `dry_run_on=false`. Before a physical run, report the
+  resolved value. If true, confirm the deck and labware are clean and liquid-free;
+  returned tips must be segregated or replaced before a wet run.
 
 ## Error recovery (live robot)
 

@@ -69,6 +69,9 @@ Before outputting your final protocol, verify each item below. Fix any issues fo
 10. **Trash bin**: Flex protocols MUST call `protocol.load_trash_bin("A3")`. OT-2 protocols do not need this.
 11. **RTP choices format**: Any `add_str(..., choices=...)` must use `{"display_name": ..., "value": ...}` dicts, NOT plain strings.
 12. **transfer_with_liquid_class 1:many**: When transferring from one source to many destinations with a liquid class, you MUST loop per destination. `transfer_with_liquid_class` does NOT support `distribute` mode.
+13. **Dry-run switch**: Does `dry_run_on` default to `False`, and does every
+    tip-release path call the common helper? If enabled for a physical run,
+    verify the deck is liquid-free and quarantine the returned-tip rack afterward.
 
 ## design-notes.json schema
 

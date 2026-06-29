@@ -54,6 +54,9 @@ The goal is to lock the intent before protocol authoring or live execution.
    - Minimize motion: batch paths, avoid unnecessary pick/drop.
    - If user has not chosen a tip policy yet, give one recommended default plus
      one sentence on when to choose the stricter option.
+   - Record `dry_run_on` separately from contamination policy. Default `False`.
+     When enabled, require a liquid-free deck and return each tip to its pickup
+     position. Returned tips remain used and cannot be assumed clean for a wet run.
 6. **Risks** — overflow, wrong reservoir well, wrong tip rack density,
    Flex vs OT-2 naming (requirements, trash, pipette API).
 
@@ -72,7 +75,8 @@ Produce these sections for the downstream author (seven blocks):
 2. `biology_constraints` — short bullets; use `unknown` + one question if unspecified. See `references/biology-constraints.md` only when you need the checklist.
 3. `deck_constraints` — robot type, intended slots/load names, pipettes, modules, orientation vs indexing; must match what will be simulated and later `reconcile_state`. See `references/deck-constraints.md` only when needed.
 4. `plate_mask` or `target_wells` — explicit list or grid.
-5. `tip_policy` — e.g. `single_tip_reuse_same_buffer` vs `one_tip_per_destination`.
+5. `tip_policy` — e.g. `single_tip_reuse_same_buffer` vs `one_tip_per_destination`;
+   include `dry_run_on: false` unless the operator explicitly requests dry mode.
 6. `open_questions` — numbered; block live run until answered if safety-critical.
 7. `recommendation` — `go` | `revise_mapping` | `revise_protocol` | `stop_for_human`.
 

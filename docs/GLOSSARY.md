@@ -9,6 +9,7 @@ Shared vocabulary for operators and agents. For workflow order, see [policy/work
 | **Live readiness** | Read-only preflight (`live_readiness_check`) combining environment health, session state, robot/module status, and optional protocol deck diff. Distinct from `health_check`, which probes the developer environment only. |
 | **reconcile_state** | Compares persisted session deck state with live hardware and run context, then proposes or persists a reconciliation snapshot. Run when deck layout may have drifted or after restarts. |
 | **Tip policy** | Rules for tip usage: rack count, low-volume transfer warnings, out-of-tips handling. Often set during intent review (`opentrons-experiment-intent-review`) and checked with `estimate_tip_budget`. |
+| **dry_run_on** | Protocol runtime switch for a liquid-free physical motion test. When enabled, each tip is returned to its original rack position instead of discarded. Returned tips remain used/potentially contaminated; replace or segregate the rack before a wet run. Default is off. |
 | **Session state** | Persisted bookkeeping under `PLUGIN_DATA` (runs, deck commits, recovery hints). Historical logs are audit-only, not live deck truth. |
 | **Opt-in live** | Physical robot motion requires explicit operator confirmation. Tools like `run_protocol` and `probe_wells` do not run unattended by default. |
 | **Probe wells** | Experimental liquid-presence helper. Live motion requires `OPENTRONS_ENABLE_PROBE_WELLS=1` and operator sign-off. |

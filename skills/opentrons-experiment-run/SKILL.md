@@ -58,6 +58,9 @@ not wait for the user to explicitly ask for simulate.
 - Author or revise Python with `opentrons-protocol-author`.
 - Code must match Phase 0 outputs (requirements, labware slots, pipette names,
   trash on Flex, volumes).
+- Protocols should expose `dry_run_on` (default `False`). It changes only tip
+  disposal: returned to the pickup position in dry mode, discarded normally in
+  wet mode.
 
 ### Phase 2 — Simulation Gate (blocking)
 
@@ -93,6 +96,9 @@ not wait for the user to explicitly ask for simulate.
 - **For unattended / "keep going until done" runs**, arm `runtime_watch_loop` instead of repeated manual polls (see `opentrons-experiment-goal`). It reuses `runtime_watch_poll` on a budgeted schedule, persists `goal-state.json`, and emits outbox sentinels so the host IDE can auto-wake. Default `self_fix_mode=observe`; guarded L0 self-fix requires `allow_l4_execution=true` + `operator_opt_in=true`.
 - Before this phase, give the operator a short ready-state summary rather than a
   long internal trace.
+- Include the resolved `dry_run_on` value in that summary. If `True`, require
+  operator confirmation that no liquids are loaded and that the returned-tip
+  rack will be replaced or segregated before any wet run.
 
 ### Phase 5 — Failure / Recovery
 

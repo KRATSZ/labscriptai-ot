@@ -166,6 +166,34 @@ Use runtime parameters when:
 
 Do not use runtime parameters for constants that never change.
 
+### Standard dry-run switch
+
+New project protocols should expose this switch:
+
+```python
+parameters.add_bool(
+    display_name="Dry run: return tips",
+    variable_name="dry_run_on",
+    default=False,
+)
+```
+
+Route every release through one helper:
+
+```python
+def finish_tip(pipette, trash, dry_run_on: bool) -> None:
+    if dry_run_on:
+        pipette.return_tip()
+    else:
+        pipette.drop_tip(trash)
+```
+
+For OT-2, omit `trash` from the helper and call `pipette.drop_tip()` in wet
+mode. `return_tip()` returns the current tip to its original pickup well.
+`dry_run_on` is permitted only on a liquid-free physical deck. Returning tips
+does not sterilize them or reset contamination history; segregate or replace the
+rack before a wet run.
+
 ## Camera Capture
 
 The local `ProtocolContext.capture_image()` method supports:
@@ -246,6 +274,8 @@ hs.deactivate_shaker()
 - **Flex trash bin**: Every Flex protocol MUST include `protocol.load_trash_bin()`.
 - **Volume splits**: Transfers exceeding pipette max are split into multiple operations.
 - **Tip sufficiency**: Total tips needed ≤ tips available (96 per rack).
+- **Dry-run switch**: `dry_run_on` defaults to `False`; all tip-release paths
+  use the shared return-or-discard helper.
 - **Dead volume**: Source labware is loaded with transfer volume + dead volume.
 - **Liquid classes**: Use `transfer_with_liquid_class()` when reagent matches a verified class. Do NOT hand-tune µL/s tables for water/ethanol_80/glycerol_50.
 

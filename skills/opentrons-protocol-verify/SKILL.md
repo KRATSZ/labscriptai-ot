@@ -16,6 +16,8 @@ Use `.venv/bin/python` or `uv run python` for all commands.
 ## Workflow
 
 1. Run `scripts/verify_protocol.py preflight` for fast static checks (invalid Flex pipette names, apiLevel hints, AST rules: `display_name` length, no `.default_flow_rate`, RTP arg style, literal `transfer` list lengths) — no opentrons import.
+   It also checks the standard `dry_run_on` contract: boolean parameter defaults
+   off and protocols that declare it include `return_tip()`.
 2. Run `scripts/verify_protocol.py doctor` if runtime readiness is unknown.
 3. If `doctor` reports broken imports, report the missing prerequisite — do not
    pretend the protocol is validated.

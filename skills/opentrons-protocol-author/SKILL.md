@@ -14,10 +14,13 @@ mcp_tools: []
 3. Read `references/python-protocol-patterns.md`, `references/pattern-library.md`, and (Flex) `references/liquid-classes-flex.md`.
 4. Start from **`assets/flex_protocol_template.py`** (Flex) or **`assets/protocol_template.py`** (OT-2). For common workflows, copy from **`assets/flex_template_*.py`** or **`assets/flex_liquid_classes_example.py`**. Supplementary snippets live under **`assets/archive/`** — not default starters.
 5. Keep protocol explicit: labware, instruments, mounts, slots, runtime parameters.
-6. If user asks about validation -> `opentrons-protocol-verify`.
-7. If simulation fails and goal is iterative repair -> `opentrons-simulation-repair`.
-8. If MCP tools are available, validate unfamiliar labware names before writing code, inspect labware geometry/dead volume when choosing substitutes, and estimate tip budget before finalizing a draft. This catches the most common avoidable errors early.
-9. If the user only wants validation or labware inspection, return findings directly. Do not force a full protocol draft when the task is just to check or compare options.
+6. Add the standard `dry_run_on` boolean runtime parameter unless the user
+   explicitly declines it. Default `False`. Route every tip release through one
+   helper: `return_tip()` when enabled, otherwise `drop_tip(...)`.
+7. If user asks about validation -> `opentrons-protocol-verify`.
+8. If simulation fails and goal is iterative repair -> `opentrons-simulation-repair`.
+9. If MCP tools are available, validate unfamiliar labware names before writing code, inspect labware geometry/dead volume when choosing substitutes, and estimate tip budget before finalizing a draft. This catches the most common avoidable errors early.
+10. If the user only wants validation or labware inspection, return findings directly. Do not force a full protocol draft when the task is just to check or compare options.
 
 **Finalize / report:** When outputting `design-notes.json`, calculating dead volume or tip budgets, or running the full pre-output checklist, read **`references/authoring-appendix.md`**.
 
@@ -53,6 +56,14 @@ mcp_tools: []
 - Prefer parameterized drafts over deferring work. For example, if a tip policy
   is undecided but the rest of the protocol is known, draft the protocol with a
   recommended default and make the choice easy to revise.
+- **Dry-run tip return:** use a boolean RTP named exactly `dry_run_on`, default
+  `False`. When true, every picked-up tip must be returned with
+  `pipette.return_tip()`; when false, discard normally. Implement this through a
+  shared helper rather than scattered conditionals. Dry mode is for a physically
+  dry deck with no liquids loaded. A returned tip is still considered used and
+  potentially contaminated; replace or segregate the rack before a wet run.
+- Never silently turn on `dry_run_on` for live execution. Surface the selected
+  value in the ready-state summary.
 - **Tip budget is a hard constraint.** Before finalizing, COUNT every `pick_up_tip` / `transfer` / `mix` call and verify total ≤ 96 × number_of_tip_racks. Running out of tips mid-protocol is a fatal simulation failure. If tip budget is tight: use `new_tip="once"` for same-reagent consecutive transfers (NOT for different reagents or different destination types), or add a second tip rack.
 - **PCR / 96-well tip math example:** 96 wells × 4 reagent additions + 96 mix passes = up to 384 tips. With one 96-tip rack this is IMPOSSIBLE. You MUST either: (a) use `new_tip="once"` within the same reagent step, (b) use multi-channel pipette (96 tips covers a full column), or (c) add multiple tip racks. Always calculate before writing.
 

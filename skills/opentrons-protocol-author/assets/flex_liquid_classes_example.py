@@ -16,6 +16,22 @@ metadata = {
 requirements = {"robotType": "Flex", "apiLevel": "2.27"}
 
 
+def finish_tip(pipette, trash, dry_run_on: bool) -> None:
+    """Return tips during a liquid-free dry run; discard them otherwise."""
+    if dry_run_on:
+        pipette.return_tip()
+    else:
+        pipette.drop_tip(trash)
+
+
+def add_parameters(parameters: protocol_api.ParameterContext) -> None:
+    parameters.add_bool(
+        display_name="Dry run: return tips",
+        variable_name="dry_run_on",
+        default=False,
+    )
+
+
 def run(protocol: protocol_api.ProtocolContext) -> None:
     trash = protocol.load_trash_bin("A3")
     tiprack = protocol.load_labware("opentrons_flex_96_tiprack_50ul", "D3")
@@ -27,6 +43,9 @@ def run(protocol: protocol_api.ProtocolContext) -> None:
         "left",
         tip_racks=[tiprack],
     )
+    dry_run_on = protocol.params.dry_run_on
+    if dry_run_on:
+        protocol.comment("DRY RUN: no liquids may be loaded; tips will return to their pickup wells.")
 
     lc_water = protocol.get_liquid_class(name="water")
     lc_etoh = protocol.get_liquid_class(name="ethanol_80")
@@ -38,24 +57,26 @@ def run(protocol: protocol_api.ProtocolContext) -> None:
         (lc_etoh, reservoir["A2"], plate["A2"]),
         (lc_gly, reservoir["A3"], plate["A3"]),
     ):
+        pipette.pick_up_tip()
         pipette.transfer_with_liquid_class(
             liquid_class=liquid_class,
             volume=20,
             source=src_well,
             dest=dest_well,
-            new_tip="always",
-            trash_location=trash,
+            new_tip="never",
         )
+        finish_tip(pipette, trash, dry_run_on)
 
     # One-to-many with liquid class: loop per destination.
     # Do NOT pass a list as dest with a single source — that raises ValueError.
     # There is no distribute_with_liquid_class API.
-    for well in plate.wells():
+    for well in plate.wells()[:8]:
+        pipette.pick_up_tip()
         pipette.transfer_with_liquid_class(
             liquid_class=lc_water,
             volume=10,
             source=reservoir["A1"],
             dest=well,
-            new_tip="always",
-            trash_location=trash,
+            new_tip="never",
         )
+        finish_tip(pipette, trash, dry_run_on)

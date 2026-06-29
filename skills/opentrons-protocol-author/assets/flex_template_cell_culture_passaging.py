@@ -28,6 +28,14 @@ requirements = {"robotType": "Flex", "apiLevel": "2.24"}
 _WASH_VOL = 1000.0
 
 
+def finish_tip(pipette, trash, dry_run_on: bool) -> None:
+    """Return tips during a liquid-free dry run; discard them otherwise."""
+    if dry_run_on:
+        pipette.return_tip()
+    else:
+        pipette.drop_tip(trash)
+
+
 def add_parameters(parameters: protocol_api.ParameterContext) -> None:
     parameters.add_float(
         display_name="Well bottom clearance (mm)",
@@ -50,6 +58,11 @@ def add_parameters(parameters: protocol_api.ParameterContext) -> None:
         minimum=200.0,
         maximum=2500.0,
     )
+    parameters.add_bool(
+        display_name="Dry run: return tips",
+        variable_name="dry_run_on",
+        default=False,
+    )
 
 
 def run(protocol: protocol_api.ProtocolContext) -> None:
@@ -71,6 +84,9 @@ def run(protocol: protocol_api.ProtocolContext) -> None:
     clearance = protocol.params.well_bottom_clearance_mm
     trypsin_vol = protocol.params.trypsin_volume_ul
     medium_vol = protocol.params.medium_volume_ul
+    dry_run_on = protocol.params.dry_run_on
+    if dry_run_on:
+        protocol.comment("DRY RUN: no liquids may be loaded; tips will return to their pickup wells.")
     wash = min(_WASH_VOL, pipette.max_volume)
 
     wells = ["A1", "A2", "A3", "B1", "B2", "B3"]
@@ -81,7 +97,7 @@ def run(protocol: protocol_api.ProtocolContext) -> None:
         pipette.pick_up_tip()
         pipette.aspirate(wash, w.bottom(clearance))
         pipette.dispense(wash, trash)
-        pipette.drop_tip(trash)
+        finish_tip(pipette, trash, dry_run_on)
 
         # 2) PBS rinse, then remove PBS before trypsin (do not layer trypsin on top of PBS).
         pipette.pick_up_tip()
@@ -90,13 +106,13 @@ def run(protocol: protocol_api.ProtocolContext) -> None:
         pipette.blow_out(w.top())
         pipette.aspirate(wash, w.bottom(clearance))
         pipette.dispense(wash, trash)
-        pipette.drop_tip(trash)
+        finish_tip(pipette, trash, dry_run_on)
 
         # 3) Trypsin for detachment
         pipette.pick_up_tip()
         pipette.aspirate(trypsin_vol, trypsin["A1"])
         pipette.dispense(trypsin_vol, w.top())
-        pipette.drop_tip(trash)
+        finish_tip(pipette, trash, dry_run_on)
 
     # Incubation at 37 °C for trypsinization.
     # WARNING: Trypsin is temperature-sensitive. If on-deck temperature control is needed,
@@ -126,4 +142,4 @@ def run(protocol: protocol_api.ProtocolContext) -> None:
             volume=min(300, min(medium_vol, pipette.max_volume) * 0.3),
             location=w.bottom(max(1.0, clearance + 1.0)),
         )
-        pipette.drop_tip(trash)
+        finish_tip(pipette, trash, dry_run_on)
