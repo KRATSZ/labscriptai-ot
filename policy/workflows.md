@@ -8,11 +8,13 @@ This file is the **single source of truth** for end-to-end and tool-order workfl
 user intent / SOP
   →  (optional) one blocking clarification round
   →  protocol-author draft
-  →  doctor_local_runtime → simulate_protocol → parse_simulation_output
+  →  validate_virtual_lab_state_steps (session_id/initial_state, steps) — pure software gate
+  →  doctor_local_runtime → simulate_protocol (virtual_lab_steps) → parse_simulation_output
   →  (fix loop if failed)
   →  live_readiness_check (robot_ip, session_id?, file_path?) when the operator wants a read-only live gate
   →  return status: ready | needs_confirmation | blocked
   →  run_protocol (robot_ip, file_path, session_id) only after confirmation
+  →  runtime_watch_loop (run_id) for unattended auto-wake until COMPLETE/BLOCKED
 ```
 
 ## Protocol validation only (no live robot)
@@ -59,6 +61,54 @@ safe_next_action (session_id, robot_ip?)   # same data as restart_review + recom
 ```
 
 `safe_next_action` is a thin wrapper: one call returns full `restart_review` data plus `safe_next_action.recommended_next_tool` (usually `reconcile_state` or `robot_status`) and numbered `operator_steps`. Atomic tools are unchanged.
+
+## Active runtime recovery monitor
+
+```
+runtime_recovery_monitor (session_id, robot_ip?, run_id?, self_fix_mode=observe)
+  → L1: self-test + health_check + robot_status + module_status
+  → L2: run observer; use self_fix_mode=l0 only for runtime_watch_poll whitelist fixes
+  → L3: safe_next_action + optional live_liquid_recovery_gate + prepared recovery bundle summary
+  → L4: report whether guarded L0 execution is blocked, ready, or already applied
+```
+
+Default `self_fix_mode=observe` is read-only for run watching. `self_fix_mode=l0` may execute only the existing `runtime_watch_poll` L0 whitelist and now gates before delegation: without both `allow_l4_execution=true` and `operator_opt_in=true`, the monitor must not call `runtime_watch_poll` for self-fix execution. Do not use monitor output to bypass `live_liquid_recovery_gate`, simulation gates, liquid identity checks, or operator opt-in.
+
+Use `list_recovery_playbooks` when an agent needs to know which fixed recovery scripts exist. The registry is the runtime contract: it lists the executor tool, whether watch mode may call it, whether robot motion is possible, required gates, and semantic invariants. If an error class is not covered by a registered playbook, stop at `safe_next_action` / human review instead of inventing a new action.
+
+For live liquid recovery work after a restart, prefer the local read-only bundle exporter before any motion:
+
+```
+export-real-machine-readonly-status.mjs
+  → if blockers include attached_tip, door, estop, or robot_unreachable: stop; no robot motion
+  → writes robot HTTP snapshot + result log even when MCP transport is closed
+export-runtime-recovery-readiness.mjs
+  → read latest real-machine-readonly-status artifact and latest gate artifact
+  → if mcp_process.running=false: reload MCP client
+  → if real_machine.blockers is non-empty: stop and refresh/clear physical state
+  → if live_liquid_tests_allowed=false or no_robot_motion=true: stop and follow next_tool
+  → if ready: re-run live_liquid_recovery_gate in the loaded MCP client
+```
+
+The real-machine status exporter is deck-adjacent safety evidence from robot HTTP, not a permission to move. The readiness bundle is an artifact convenience layer over the latest live-liquid gate result and `safe_next_action`; it is not deck truth.
+
+## Goal-driven auto-wake loop
+
+For unattended live runs ("keep going until done" / auto-recover), arm the loop instead of repeating manual polls:
+
+```
+run_protocol → (run_id)
+  → runtime_watch_loop (run_id, session_id, goal_prompt,
+                        max_turns, max_runtime_ms, interval_ms,
+                        self_fix_mode=observe,
+                        notify_adapters=[cursor|claudecode|codex|cli|webhook])
+  → each tick: runtime_watch_poll + append outbox sentinel + update goal-state.json
+  → goal_status: COMPLETE | BLOCKED | BUDGET_LIMITED
+  → on BLOCKED (needs_user/hard_stop): runtime_get_alerts → operator decision → runtime_ack_alert → resume=true
+  → on COMPLETE: experiment_history to confirm
+```
+
+`runtime_watch_loop` reuses `runtime_watch_poll` and inherits its safety model: only the L0 whitelist auto-executes; `needs_user`/`hard_stop` stop the loop. `COMPLETE` requires a `completed` tick or the verify callback. Default `self_fix_mode=observe` (no robot motion); guarded L0 self-fix requires both `allow_l4_execution=true` and `operator_opt_in=true`. The loop does not bypass `live_liquid_recovery_gate`, simulation gates, or liquid identity checks. State persists in `goal-state.json` so the goal survives IDE restart / operator rotation; resume with `resume=true` + `goal_id`.
 
 ## Check robot status (quick)
 

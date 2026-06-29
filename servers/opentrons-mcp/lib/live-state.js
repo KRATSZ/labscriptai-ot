@@ -1,3 +1,5 @@
+import { normalizeLiquidTracking } from "./state.js";
+
 function unwrapData(payload) {
   if (payload && typeof payload === "object" && "data" in payload) {
     return payload.data;
@@ -287,5 +289,40 @@ export function buildRunHistorySnapshot(runPayload, commandsPayload) {
       detail: readNested(error, [["detail"], ["error", "detail"]], null),
       error_type: readNested(error, [["errorType"], ["error_type"]], null),
     })),
+  };
+}
+
+export function buildLiquidTrackingSnapshot(sessionState = {}) {
+  const tracking = normalizeLiquidTracking(sessionState.liquid_tracking || {});
+  const containers = Object.values(tracking.containers || {});
+  const overCapacity = containers.filter(
+    container =>
+      container.volume_ul !== null &&
+      container.capacity_ul !== null &&
+      Number(container.volume_ul) > Number(container.capacity_ul),
+  );
+  const belowDeadVolume = containers.filter(
+    container =>
+      container.volume_ul !== null &&
+      container.dead_volume_ul !== null &&
+      Number(container.volume_ul) < Number(container.dead_volume_ul),
+  );
+  const byTrustLevel = containers.reduce((acc, container) => {
+    const trustLevel = container.trust_level || "declared";
+    acc[trustLevel] = (acc[trustLevel] || 0) + 1;
+    return acc;
+  }, {});
+
+  return {
+    container_count: containers.length,
+    source_count: Object.keys(tracking.sources || {}).length,
+    containers: Object.fromEntries(containers.map(container => [container.key, container])),
+    by_trust_level: byTrustLevel,
+    incomplete_volume_count: containers.filter(container => container.volume_ul === null).length,
+    over_capacity_count: overCapacity.length,
+    over_capacity_containers: overCapacity.map(container => container.key),
+    below_dead_volume_count: belowDeadVolume.length,
+    below_dead_volume_containers: belowDeadVolume.map(container => container.key),
+    state_history_count: Array.isArray(sessionState.state_history) ? sessionState.state_history.length : 0,
   };
 }

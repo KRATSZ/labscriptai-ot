@@ -1,11 +1,16 @@
 import {
   COLUMN_MAJOR_WELL_ORDER_96,
   FLEX_SLOT_NAMES,
+  computeStartingTip,
   ensureTiprackState,
   markTipWellStatus,
+  normalizeLiquidTracking,
   setDeckSlotState,
+  setLiquidContainerState,
 } from "./state.js";
 import { buildErrorTaxonomy, mapRobotBlockerToLeaf } from "./error-taxonomy.js";
+import { decideTipRecoveryRoute } from "./protocol-tips.js";
+import { findSameLiquidSourceCandidates } from "./liquid-source-substitution.js";
 
 export const HARD_STOP_ERROR_CATEGORIES = ["HARDWARE_FAULT", "DECK_COLLISION", "UNKNOWN"];
 
@@ -348,6 +353,8 @@ export function listTipCandidates({ sessionState, run, tiprackSlots } = {}) {
       missing_wells: state.missing_wells || [],
       depleted_wells: state.depleted_wells || [],
       unknown_blocked_wells: state.unknown_blocked_wells || [],
+      last_good_tip: state.last_good_tip || null,
+      starting_tip: computeStartingTip(state),
     });
   }
 
@@ -421,6 +428,198 @@ export function buildHomeSafetyResult({ robotStatusSnapshot, sessionState } = {}
     auto_home_allowed: blockers.length === 0 && minimumCleanupActions.length === 0,
     blockers: uniqueBy(blockers, value => value),
     minimum_cleanup_actions: uniqueBy(minimumCleanupActions, value => value),
+  };
+}
+
+function summarizeAttachedTipCleanup(robotStatusSnapshot) {
+  return uniqueBy(
+    asArray(robotStatusSnapshot?.instruments_summary)
+      .filter(instrument => instrument?.tip_detected === true && instrument?.mount)
+      .map(instrument => `drop_tip:${instrument.mount}`),
+    value => value,
+  );
+}
+
+function findRunLabwareById(run, labwareId) {
+  if (!labwareId) {
+    return null;
+  }
+  return extractRunLabware(run).find(labware => readNested(labware, [["id"]], null) === labwareId) || null;
+}
+
+function sourceMapEntryForFailure({ failedCommand, run, sessionState } = {}) {
+  const failedWell = readNested(failedCommand, [["params", "wellName"]], null);
+  const sourceLabwareId = readNested(failedCommand, [["params", "labwareId"]], null);
+  const runLabware = findRunLabwareById(run, sourceLabwareId);
+  const sourceSlot = readNested(runLabware, [["location", "slotName"], ["location", "addressableAreaName"]], null);
+  const key = sourceSlot && failedWell ? `${String(sourceSlot).toUpperCase()}.${String(failedWell).toUpperCase()}` : null;
+  return {
+    key,
+    source_slot: sourceSlot ? String(sourceSlot).toUpperCase() : null,
+    run_labware: runLabware,
+    liquid_source: key ? sessionState?.liquid_tracking?.sources?.[key] || null : null,
+  };
+}
+
+function normalizeObservedLiquidTracking(observedLiquidTracking) {
+  if (!observedLiquidTracking) {
+    return null;
+  }
+  if (Array.isArray(observedLiquidTracking)) {
+    const containers = {};
+    for (const container of observedLiquidTracking) {
+      const key = container?.container_key || container?.containerKey || container?.key ||
+        (container?.slot_name || container?.slotName
+          ? `${String(container.slot_name || container.slotName).toUpperCase()}.${String(container.well_name || container.wellName || "").toUpperCase()}`
+          : null);
+      if (key) {
+        containers[key] = container;
+      }
+    }
+    return normalizeLiquidTracking({ containers });
+  }
+  return normalizeLiquidTracking(observedLiquidTracking);
+}
+
+function compareLiquidTracking({ sessionState, observedLiquidTracking, proposedCommit, diffs }) {
+  const observed = normalizeObservedLiquidTracking(observedLiquidTracking);
+  if (!observed) {
+    return;
+  }
+
+  proposedCommit.liquid_tracking = {
+    containers: {},
+    sources: {},
+  };
+
+  const committed = normalizeLiquidTracking(sessionState?.liquid_tracking || {});
+  for (const [key, observedContainer] of Object.entries(observed.containers || {})) {
+    const committedContainer = committed.containers?.[key] || null;
+    proposedCommit.liquid_tracking.containers[key] = {
+      ...observedContainer,
+      trust_level: observedContainer.trust_level || "reconciled",
+    };
+
+    if (!committedContainer) {
+      diffs.push({
+        type: "liquid_container_missing",
+        container_key: key,
+        observed: observedContainer,
+      });
+      continue;
+    }
+
+    if (
+      observedContainer.volume_ul !== null &&
+      committedContainer.volume_ul !== null &&
+      Math.abs(Number(committedContainer.volume_ul) - Number(observedContainer.volume_ul)) > 0.1
+    ) {
+      diffs.push({
+        type: "liquid_volume_mismatch",
+        container_key: key,
+        committed: committedContainer.volume_ul,
+        observed: observedContainer.volume_ul,
+      });
+    }
+
+    if (
+      observedContainer.trust_level &&
+      committedContainer.trust_level &&
+      committedContainer.trust_level !== observedContainer.trust_level
+    ) {
+      diffs.push({
+        type: "liquid_trust_mismatch",
+        container_key: key,
+        committed: committedContainer.trust_level,
+        observed: observedContainer.trust_level,
+      });
+    }
+  }
+
+  proposedCommit.liquid_tracking = normalizeLiquidTracking(proposedCommit.liquid_tracking);
+}
+
+function buildLiquidManualRecoveryContext({ failedCommand, robotStatusSnapshot, run, sessionState } = {}) {
+  const failedWell = readNested(failedCommand, [["params", "wellName"]], null);
+  const sourceLabwareId = readNested(failedCommand, [["params", "labwareId"]], null);
+  const commandId = readNested(failedCommand, [["id"]], null);
+  const commandType = readNested(failedCommand, [["commandType"]], null);
+  const sourceMap = sourceMapEntryForFailure({ failedCommand, run, sessionState });
+  const cleanupRequired = summarizeAttachedTipCleanup(robotStatusSnapshot);
+  const sourceIdentity = sourceMap.liquid_source
+    ? [
+        sourceMap.liquid_source.liquid_name,
+        sourceMap.liquid_source.sample_id ? `sample ${sourceMap.liquid_source.sample_id}` : null,
+      ].filter(Boolean).join(" / ")
+    : null;
+  const expectedPresence = sourceMap.liquid_source?.expected_presence;
+  const hasRecordedPresenceExpectation = typeof expectedPresence === "boolean";
+  const expectedAbsent = expectedPresence === false;
+  const expectedPresent = expectedPresence === true;
+  const sourceMapExpectationMismatch = hasRecordedPresenceExpectation;
+  const sameLiquidSourceCandidates = findSameLiquidSourceCandidates({
+    sources: sessionState?.liquid_tracking?.sources || {},
+    failedKey: sourceMap.key,
+    failedSource: sourceMap.liquid_source,
+  });
+  const hasSameLiquidSourceCandidates = sameLiquidSourceCandidates.length > 0;
+  const blockedAutoRecoveryReason = hasSameLiquidSourceCandidates
+    ? "same_liquid_source_substitution_requires_prepared_recovery_bundle_and_live_gate"
+    : "liquid_source_change_requires_human_confirmation";
+  const operatorSteps = [
+    expectedAbsent
+      ? `Source map says ${sourceMap.key || "the failed source well"} is expected to be empty; inspect the protocol source or update the source map before retry.`
+      : expectedPresent
+      ? `Source map says ${sourceMap.key || "the failed source well"} should contain liquid, but the runtime liquid probe did not find liquid; verify fill height, well identity, and source-map freshness before retry.`
+      : failedWell
+      ? `Verify or refill the intended source well ${failedWell}.`
+      : "Verify or refill the intended source well.",
+    sourceIdentity
+      ? `Preserve source identity: ${sourceIdentity}.`
+      : null,
+    sourceLabwareId
+      ? `Confirm the source labware ${sourceLabwareId} is still the intended liquid source.`
+      : "Confirm the source labware is still the intended liquid source.",
+    hasSameLiquidSourceCandidates
+      ? `Same-liquid alternatives are recorded: ${sameLiquidSourceCandidates.map(source => source.source_map_key).join(", ")}. Use them only through prepare_liquid_source_substitution_recovery, live_liquid_recovery_gate, and operator opt-in.`
+      : "Do not change source wells unless the operator provides a confirmed source map.",
+    cleanupRequired.length > 0
+      ? `Clear attached tips before homing or continuing: ${cleanupRequired.join(", ")}.`
+      : null,
+    "After physical correction, rerun through simulation or a validated continuation path.",
+  ].filter(Boolean);
+
+  return {
+    failed_well: failedWell,
+    source_labware_id: sourceLabwareId,
+    source_slot: sourceMap.source_slot,
+    source_map_key: sourceMap.key,
+    liquid_source: sourceMap.liquid_source,
+    source_map_expected_presence: expectedPresence ?? null,
+    observed_liquid_presence: false,
+    source_map_expectation_mismatch: sourceMapExpectationMismatch,
+    same_liquid_source_candidates: sameLiquidSourceCandidates,
+    same_liquid_source_candidate_count: sameLiquidSourceCandidates.length,
+    same_liquid_source_substitution_allowed: hasSameLiquidSourceCandidates,
+    same_liquid_source_substitution_next_tool: hasSameLiquidSourceCandidates
+      ? "prepare_liquid_source_substitution_recovery"
+      : null,
+    same_liquid_source_substitution_playbook: hasSameLiquidSourceCandidates
+      ? "liquid_source_substitution_continuation_protocol"
+      : null,
+    same_liquid_source_substitution_required_gates: hasSameLiquidSourceCandidates
+      ? ["live_liquid_recovery_gate", "run_protocol_only_after_operator_opt_in"]
+      : [],
+    same_liquid_auto_resume_eligible: false,
+    same_liquid_auto_resume_blocker: hasSameLiquidSourceCandidates
+      ? "live_gate_and_operator_opt_in_required_before_any_robot_motion"
+      : null,
+    failed_command_id: commandId,
+    failed_command_type: commandType,
+    blocked_auto_recovery_reason: blockedAutoRecoveryReason,
+    cleanup_required: cleanupRequired,
+    blockers: asArray(robotStatusSnapshot?.blockers),
+    operator_steps: operatorSteps,
   };
 }
 
@@ -597,6 +796,10 @@ export function classifyRecoveryError({ run, commands, moduleStatusSnapshot, rob
 
   if (
     lowerError.includes("insufficient_volume") ||
+    lowerError.includes("liquidnotfound") ||
+    lowerError.includes("liquid not found") ||
+    lowerError.includes("pipetteliquidnotfounderror") ||
+    lowerError.includes("liquid not found during probe") ||
     lowerError.includes("out of liquid") ||
     lowerError.includes("not enough liquid") ||
     lowerError.includes("invalidaspiratevolumeerror")
@@ -734,6 +937,7 @@ export function buildReconciliationResult({
   robotStatusSnapshot,
   moduleStatusSnapshot,
   observedDeckState,
+  observedLiquidTracking = null,
   run,
 } = {}) {
   const diffs = [];
@@ -745,6 +949,10 @@ export function buildReconciliationResult({
       slots: {},
     },
     pipettes: {},
+    liquid_tracking: {
+      containers: {},
+      sources: {},
+    },
     cleanup: {
       pending_actions: uniqueBy([...(sessionState?.cleanup?.pending_actions || [])], value => value),
       auto_home_allowed: null,
@@ -822,6 +1030,13 @@ export function buildReconciliationResult({
     });
   }
 
+  compareLiquidTracking({
+    sessionState,
+    observedLiquidTracking,
+    proposedCommit,
+    diffs,
+  });
+
   const confidence =
     diffs.length === 0
       ? "high"
@@ -864,6 +1079,16 @@ export function applyObservedDeckToSessionState(sessionState, proposedCommit) {
     ...(proposedCommit.pipettes || {}),
   };
 
+  for (const [containerKey, container] of Object.entries(proposedCommit.liquid_tracking?.containers || {})) {
+    setLiquidContainerState(sessionState, {
+      ...container,
+      container_key: containerKey,
+      trust_level: container.trust_level || "reconciled",
+      why: "reconcile_state",
+      step: { type: "reconcile_state", id: "reconcile_state" },
+    });
+  }
+
   return sessionState;
 }
 
@@ -878,6 +1103,9 @@ export function buildRecoverySuggestion({
   slotOccupation,
   reconciliation,
   alternativeSlots = [],
+  tipBindingMode = null,
+  tipBindingClassification = null,
+  sessionState = null,
 } = {}) {
   const normalizedRun = normalizeRunRecord(run) || {};
   const runStatus = readNested(normalizedRun, [["status"]], null);
@@ -885,6 +1113,8 @@ export function buildRecoverySuggestion({
   const { failed_command } = extractRuntimeErrorStrings({ run, commands });
   const resolvedErrorLeaf = errorLeaf || errorCategory || "UNKNOWN_NEEDS_HUMAN";
   const robotBlockers = robotStatusSnapshot?.blockers || [];
+  const preserveRuntimeFailureContextDespiteRobotBlockers =
+    resolvedErrorLeaf === "INSUFFICIENT_VOLUME";
   const onlyModuleBlockerDiffs =
     Array.isArray(reconciliation?.diffs) &&
     reconciliation.diffs.length > 0 &&
@@ -941,7 +1171,7 @@ export function buildRecoverySuggestion({
     ...extra,
   });
 
-  if (robotBlockers.length > 0) {
+  if (robotBlockers.length > 0 && !preserveRuntimeFailureContextDespiteRobotBlockers) {
     const blockerLeaf = mapRobotBlockerToLeaf(robotBlockers[0]);
     return {
       ...manualOnly({
@@ -1039,7 +1269,57 @@ export function buildRecoverySuggestion({
       });
 
     case "TIP_PHYSICALLY_MISSING":
-      if (awaitingRecovery && nextTipSuggestion?.next_candidate) {
+      if (!nextTipSuggestion?.next_candidate) {
+        return manualOnly({
+          rationale: "no_viable_tip_candidates",
+          recommendedManualAction: "escalate_tip_search_exhausted",
+          extra: {
+            tip_binding_mode: tipBindingMode,
+            tip_binding_classification: tipBindingClassification,
+            route: "human",
+          },
+        });
+      }
+
+      {
+        const route = decideTipRecoveryRoute({
+          errorLeaf: resolvedErrorLeaf,
+          errorCategory,
+          tipBindingMode,
+        });
+
+        if (route === "human") {
+          return manualOnly({
+            rationale: tipBindingMode ? "tip_recovery_route_requires_human" : "tip_binding_mode_unknown",
+            recommendedManualAction: tipBindingMode
+              ? "inspect_tip_state_before_recovery"
+              : "provide_protocol_source_or_confirm_tip_binding",
+            extra: {
+              tip_binding_mode: tipBindingMode,
+              tip_binding_classification: tipBindingClassification,
+              route,
+            },
+          });
+        }
+
+        if (route === "replan") {
+          return protocolEditRequired({
+            rationale: "explicit_tip_binding_requires_continuation_protocol",
+            recommendedManualAction: "generate_continuation_protocol",
+            extra: {
+              tip_binding_mode: tipBindingMode,
+              tip_binding_classification: tipBindingClassification,
+              route,
+              failed_command_type: readNested(failed_command, [["commandType"]]),
+              failed_well: readNested(failed_command, [["params", "wellName"]], null),
+              suggested_starting_tip: nextTipSuggestion.next_candidate,
+              should_resume_run: false,
+            },
+          });
+        }
+      }
+
+      if (awaitingRecovery) {
         return {
           ...buildErrorTaxonomy({
             phase: "recovery",
@@ -1060,15 +1340,21 @@ export function buildRecoverySuggestion({
           failed_command_type: readNested(failed_command, [["commandType"]]),
           failed_well: readNested(failed_command, [["params", "wellName"]], null),
           suggested_tip: nextTipSuggestion.next_candidate,
+          tip_binding_mode: tipBindingMode,
+          tip_binding_classification: tipBindingClassification,
+          route: "fixit",
           intent: "fixit",
           should_resume_run: true,
         };
       }
       return manualOnly({
-        rationale: nextTipSuggestion?.next_candidate ? "retry_requires_recovery_context" : "no_viable_tip_candidates",
-        recommendedManualAction: nextTipSuggestion?.next_candidate
-          ? "retry_pick_up_tip_with_next_candidate"
-          : "escalate_tip_search_exhausted",
+        rationale: "retry_requires_recovery_context",
+        recommendedManualAction: "retry_pick_up_tip_with_next_candidate",
+        extra: {
+          tip_binding_mode: tipBindingMode,
+          tip_binding_classification: tipBindingClassification,
+          route: "fixit",
+        },
       });
 
     case "DESTINATION_OCCUPIED":
@@ -1125,6 +1411,12 @@ export function buildRecoverySuggestion({
       return manualOnly({
         rationale: "runtime_volume_issue_detected",
         recommendedManualAction: "probe_or_reduce_volume_then_retry",
+        extra: buildLiquidManualRecoveryContext({
+          failedCommand: failed_command,
+          robotStatusSnapshot,
+          run,
+          sessionState,
+        }),
       });
 
     case "AIR_BUBBLE":
@@ -1269,10 +1561,24 @@ export function buildActionSummary({
           well: nextTipSuggestion.next_candidate.well_name,
           tiprack_slot: nextTipSuggestion.next_candidate.tiprack_slot,
           intent: recoverySuggestion?.intent || "normal",
+          tip_binding_mode: recoverySuggestion?.tip_binding_mode || null,
+          route: recoverySuggestion?.route || null,
         };
         summary.then_resume = recoverySuggestion?.should_resume_run || false;
         summary.if_fails = "escalate_tip_search_exhausted";
       }
+      break;
+
+    case "protocol_edit_required":
+      summary.params = {
+        recommended_manual_action: recoverySuggestion?.recommended_manual_action || null,
+        tip_binding_mode: recoverySuggestion?.tip_binding_mode || null,
+        route: recoverySuggestion?.route || null,
+        starting_tip: recoverySuggestion?.suggested_starting_tip?.well_name || null,
+        tiprack_slot: recoverySuggestion?.suggested_starting_tip?.tiprack_slot || null,
+      };
+      summary.then_resume = false;
+      summary.if_fails = "human_generate_continuation_protocol";
       break;
 
     case "choose_new_slot_or_escalate":
@@ -1353,6 +1659,31 @@ export function buildActionSummary({
     case "manual_only":
       summary.params = {
         recommended_manual_action: recoverySuggestion?.recommended_manual_action || null,
+        failed_well: recoverySuggestion?.failed_well || null,
+        source_labware_id: recoverySuggestion?.source_labware_id || null,
+        source_slot: recoverySuggestion?.source_slot || null,
+        source_map_key: recoverySuggestion?.source_map_key || null,
+        liquid_source: recoverySuggestion?.liquid_source || null,
+        source_map_expected_presence: recoverySuggestion?.source_map_expected_presence ?? null,
+        observed_liquid_presence: recoverySuggestion?.observed_liquid_presence ?? null,
+        source_map_expectation_mismatch: recoverySuggestion?.source_map_expectation_mismatch || false,
+        same_liquid_source_candidates: recoverySuggestion?.same_liquid_source_candidates || [],
+        same_liquid_source_candidate_count: recoverySuggestion?.same_liquid_source_candidate_count || 0,
+        same_liquid_source_substitution_allowed:
+          recoverySuggestion?.same_liquid_source_substitution_allowed || false,
+        same_liquid_source_substitution_next_tool:
+          recoverySuggestion?.same_liquid_source_substitution_next_tool || null,
+        same_liquid_source_substitution_playbook:
+          recoverySuggestion?.same_liquid_source_substitution_playbook || null,
+        same_liquid_source_substitution_required_gates:
+          recoverySuggestion?.same_liquid_source_substitution_required_gates || [],
+        same_liquid_auto_resume_eligible: recoverySuggestion?.same_liquid_auto_resume_eligible || false,
+        same_liquid_auto_resume_blocker: recoverySuggestion?.same_liquid_auto_resume_blocker || null,
+        failed_command_id: recoverySuggestion?.failed_command_id || null,
+        failed_command_type: recoverySuggestion?.failed_command_type || null,
+        blocked_auto_recovery_reason: recoverySuggestion?.blocked_auto_recovery_reason || null,
+        operator_steps: recoverySuggestion?.operator_steps || [],
+        cleanup_required: recoverySuggestion?.cleanup_required || [],
         candidate_destination_slots: recoverySuggestion?.candidate_destination_slots || [],
         blockers: recoverySuggestion?.blockers || [],
       };

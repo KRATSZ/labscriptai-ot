@@ -7,12 +7,15 @@ import {
   buildCommandPayload,
   buildContextPaths,
   buildCreateRunContextRequest,
+  buildDropTipCommand,
+  buildDropTipInPlaceCommand,
   buildHeaterShakerCommand,
   buildHomeCommand,
   buildLoadLabwareCommand,
   buildLoadModuleCommand,
   buildLoadPipetteCommand,
   buildMoveLabwareCommand,
+  buildMoveToAddressableAreaForDropTipCommand,
   buildMoveToMaintenancePositionCommand,
   buildOpenGripperJawCommand,
   buildTemperatureModuleCommand,
@@ -177,6 +180,16 @@ test("cleanup and motion commands use verified command types", () => {
     "calibration/moveToMaintenancePosition",
   );
   assert.equal(buildHomeCommand().data.commandType, "home");
+  assert.equal(buildDropTipCommand({ pipetteId: "pipette-1" }).data.commandType, "dropTip");
+  assert.equal(buildDropTipCommand({ pipetteId: "pipette-1" }).data.params.pipetteId, "pipette-1");
+  assert.equal(
+    buildMoveToAddressableAreaForDropTipCommand({ pipetteId: "pipette-1" }).data.commandType,
+    "moveToAddressableAreaForDropTip",
+  );
+  assert.equal(
+    buildDropTipInPlaceCommand({ pipetteId: "pipette-1" }).data.commandType,
+    "dropTipInPlace",
+  );
 });
 
 test("isTerminalCommandStatus recognizes only terminal states", () => {

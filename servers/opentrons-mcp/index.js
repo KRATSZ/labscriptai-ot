@@ -39,12 +39,15 @@ import {
   buildCommandPayload,
   buildCreateRunContextRequest,
   buildContextPaths,
+  buildDropTipCommand,
+  buildDropTipInPlaceCommand,
   buildHeaterShakerCommand,
   buildHomeCommand,
   buildLoadLabwareCommand,
   buildLoadModuleCommand,
   buildLoadPipetteCommand,
   buildMoveLabwareCommand,
+  buildMoveToAddressableAreaForDropTipCommand,
   buildMoveToMaintenancePositionCommand,
   buildOpenGripperJawCommand,
   buildTemperatureModuleCommand,
@@ -64,13 +67,17 @@ import { parseSimulationLog, runDoctorTool, runSimulationTool } from "./lib/simu
 import { buildProbeWellsProtocol, extractProbeResultsFromCommands } from "./lib/probe.js";
 import {
   DEFAULT_SESSION_ID,
+  validateVirtualLabStateSteps,
   ensureTiprackState,
+  markTipWellStatus,
   mutateSessionState,
   readSessionState,
   setCleanupState,
+  setLiquidSourceState,
   setPipetteState,
   uniqueSessionStrings,
 } from "./lib/state.js";
+import { classifyTipBindingModeDetail } from "./lib/protocol-tips.js";
 import {
   appendResultLogEntry,
   readResultLogEntries,
@@ -92,12 +99,29 @@ import {
   buildPreviewArtifactName,
   contentTypeToExtension,
 } from "./lib/vision.js";
-import { buildHealthCheck, checkRobotHealth } from "./lib/health-check.js";
+import { MCP_RUNTIME_CAPABILITIES, buildHealthCheck, checkRobotHealth } from "./lib/health-check.js";
+import { generateTipContinuationProtocol } from "./lib/continuation.js";
+import {
+  LIQUID_SOURCE_SUBSTITUTION_PLAYBOOK_ID,
+  buildLiquidSourceSubstitutionPlan,
+  generateLiquidSourceSubstitutionValidationProtocol,
+  validateLiquidSourceSubstitutionInvariants,
+} from "./lib/liquid-source-substitution.js";
+import { listRecoveryPlaybooks } from "./lib/recovery-playbooks.js";
 import { runVisionCheck } from "./lib/vision-check.js";
 import { buildErrorTaxonomy, buildTaxonomyIssue } from "./lib/error-taxonomy.js";
 import { buildLiveReadinessReport } from "./lib/live-readiness.js";
+import { runRuntimeRecoveryMonitor } from "./lib/runtime-monitor.js";
 import { runtimeWatchPoll } from "./lib/runtime-watch/sentry-step.js";
+import { runtimeWatchLoop } from "./lib/runtime-watch/watch-loop.js";
 import { ackAlert, readAlerts, readLatest } from "./lib/runtime-watch/alert-store.js";
+import {
+  ackRuntimeOutboxEvent,
+  deliverRuntimeOutbox,
+  publishMonitorNotifications,
+  readRuntimeOutbox,
+  runtimeOutboxPaths,
+} from "./lib/runtime-outbox.js";
 import {
   buildDeckPhotoAnalysisPrompt,
   buildImageDataUrl,
@@ -113,6 +137,45 @@ const __filename = fileURLToPath(import.meta.url);
 const DEFAULT_CAMERA_ARTIFACT_DIR = path.join(ARTIFACTS_DIR, "camera-captures");
 const DEFAULT_VISION_ANNOTATED_DIR = path.resolve(DEFAULT_CAMERA_ARTIFACT_DIR, "vision-annotated");
 const DEFAULT_PROBE_PROTOCOL_DIR = path.join(ARTIFACTS_DIR, "probe-protocols");
+const DEFAULT_CONTINUATION_PROTOCOL_DIR = path.join(ARTIFACTS_DIR, "continuation-protocols");
+const DEFAULT_LIQUID_SUBSTITUTION_PROTOCOL_DIR = path.join(ARTIFACTS_DIR, "liquid-substitution-protocols");
+const REQUIRED_RUNTIME_TOOLS = [
+  "health_check",
+  "runtime_recovery_self_test",
+  "runtime_recovery_monitor",
+  "runtime_get_outbox",
+  "runtime_ack_outbox",
+  "runtime_deliver_outbox",
+  "runtime_watch_loop",
+  "safe_next_action",
+  "restart_review",
+  "validate_virtual_lab_state_steps",
+  "list_recovery_playbooks",
+  "live_liquid_recovery_gate",
+  "robot_status",
+  "module_status",
+  "is_home_safe",
+  "experiment_history",
+  "record_liquid_source_map",
+  "get_liquid_source_map",
+  "summarize_liquid_source_map",
+  "plan_liquid_source_substitution",
+  "generate_liquid_source_substitution_protocol",
+  "prepare_liquid_source_substitution_recovery",
+];
+
+function buildToolAvailabilitySummary() {
+  const handlerNames = Object.keys(TOOL_HANDLERS || {});
+  const present = REQUIRED_RUNTIME_TOOLS.filter(name => typeof TOOL_HANDLERS?.[name] === "function");
+  const missing = REQUIRED_RUNTIME_TOOLS.filter(name => typeof TOOL_HANDLERS?.[name] !== "function");
+  return {
+    required: REQUIRED_RUNTIME_TOOLS,
+    present,
+    missing,
+    all_present: missing.length === 0,
+    tool_count: handlerNames.length,
+  };
+}
 
 const TOOL_DEFINITIONS = [
   {
@@ -264,6 +327,205 @@ const TOOL_DEFINITIONS = [
     },
   },
   {
+    name: "record_liquid_source_map",
+    description:
+      "Record operator-confirmed liquid/sample identity and optional live probe observations for source wells in session state. This is bookkeeping only and does not move the robot.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        session_id: { type: "string" },
+        sources: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              slot_name: { type: "string", description: "Deck slot such as C3 or D3" },
+              well_name: { type: "string", description: "Well name such as A1" },
+              labware_load_name: { type: "string" },
+              liquid_name: { type: "string" },
+              sample_id: { type: "string" },
+              volume_ul: { type: "number" },
+              capacity_ul: { type: "number" },
+              dead_volume_ul: { type: "number" },
+              liquid_class: { type: "string" },
+              trust_level: {
+                type: "string",
+                enum: ["declared", "simulated", "observed", "reconciled"],
+              },
+              expected_presence: { type: "boolean" },
+              observed_presence: { type: "boolean" },
+              observed_at: { type: "string" },
+              observed_run_id: { type: "string" },
+              observed_source: { type: "string" },
+              expected_min_height_mm: { type: "number" },
+              notes: { type: "string" },
+            },
+            required: ["slot_name", "well_name"],
+          },
+        },
+      },
+      required: ["sources"],
+    },
+  },
+  {
+    name: "get_liquid_source_map",
+    description:
+      "Read operator-confirmed liquid/source identity from session state. This is bookkeeping only and does not inspect or move the robot.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        session_id: { type: "string" },
+        slot_name: { type: "string", description: "Optional deck slot filter such as D3" },
+        well_name: { type: "string", description: "Optional well filter such as A1; requires slot_name to match a single source" },
+      },
+    },
+  },
+  {
+    name: "summarize_liquid_source_map",
+    description:
+      "Summarize liquid source-map completeness for semantic recovery. This is read-only and does not inspect or move the robot.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        session_id: { type: "string" },
+        slot_name: { type: "string", description: "Optional deck slot filter such as D3" },
+      },
+    },
+  },
+  {
+    name: "validate_virtual_lab_state_steps",
+    description:
+      "Run deterministic Virtual Lab State checks against proposed protocol steps before local simulation. Pure software only; it does not write session state or move the robot.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        session_id: { type: "string" },
+        initial_state: {
+          type: "object",
+          description: "Optional complete session-state object. When omitted, the saved session state is used.",
+        },
+        steps: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              id: { type: "string" },
+              type: {
+                type: "string",
+                enum: ["declare_container", "set_container", "pick_up_tip", "drop_tip", "aspirate", "dispense", "transfer"],
+              },
+              container_key: { type: "string" },
+              source_key: { type: "string" },
+              target_key: { type: "string" },
+              slot_name: { type: "string" },
+              well_name: { type: "string" },
+              volume_ul: { type: "number" },
+              capacity_ul: { type: "number" },
+              dead_volume_ul: { type: "number" },
+              liquid_class: { type: "string" },
+              trust_level: {
+                type: "string",
+                enum: ["declared", "simulated", "observed", "reconciled"],
+              },
+              pipette_id: { type: "string" },
+              tiprack_slot: { type: "string" },
+              requires_tip: { type: "boolean" },
+            },
+          },
+        },
+      },
+      required: ["steps"],
+    },
+  },
+  {
+    name: "list_recovery_playbooks",
+    description:
+      "List registered fixed recovery playbooks, their gates, allowed watch-mode use, and semantic invariants. This is read-only.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        include_motion: {
+          type: "boolean",
+          default: true,
+          description: "When false, return only no-motion playbooks.",
+        },
+      },
+    },
+  },
+  {
+    name: "plan_liquid_source_substitution",
+    description:
+      "Plan a same-liquid source substitution from the recorded source map. This is read-only/no-motion and does not execute or resume a run.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        session_id: { type: "string" },
+        failed_source_key: { type: "string", description: "Source key such as D3.A1" },
+        failed_slot_name: { type: "string", description: "Deck slot such as D3; used with failed_well_name" },
+        failed_well_name: { type: "string", description: "Well such as A1; used with failed_slot_name" },
+        preferred_source_key: { type: "string", description: "Optional replacement source key such as C3.A1" },
+      },
+    },
+  },
+  {
+    name: "generate_liquid_source_substitution_protocol",
+    description:
+      "Generate a fixed no-aspirate validation protocol for a planned same-liquid source substitution. This writes a local protocol file only; it does not upload, run, or resume the robot.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        session_id: { type: "string" },
+        failed_source_key: { type: "string", description: "Source key such as D3.A1" },
+        failed_slot_name: { type: "string" },
+        failed_well_name: { type: "string" },
+        preferred_source_key: { type: "string", description: "Optional replacement source key such as C3.A1" },
+        pipette_name: { type: "string", description: "Protocol pipette name such as flex_1channel_1000" },
+        mount: { type: "string", enum: ["left", "right"] },
+        tiprack_load_name: { type: "string" },
+        tiprack_slot: { type: "string" },
+        output_path: { type: "string" },
+        api_level: { type: "string", default: "2.24" },
+        robot_type: { type: "string", default: "Flex" },
+        tiprack_namespace: { type: "string", default: "opentrons" },
+        tiprack_version: { type: "integer", default: 1 },
+        labware_namespace: { type: "string", default: "opentrons" },
+        labware_version: { type: "integer", default: 1 },
+        trash_slot: { type: "string" },
+      },
+      required: ["failed_source_key", "pipette_name", "mount", "tiprack_load_name", "tiprack_slot"],
+    },
+  },
+  {
+    name: "prepare_liquid_source_substitution_recovery",
+    description:
+      "Prepare the registered same-liquid source-substitution recovery playbook: plan replacement, generate the fixed validation protocol, run local simulation, write an auditable bundle, and stop before any robot motion.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        session_id: { type: "string" },
+        failed_source_key: { type: "string", description: "Source key such as D3.A1" },
+        failed_slot_name: { type: "string" },
+        failed_well_name: { type: "string" },
+        preferred_source_key: { type: "string", description: "Optional replacement source key such as C3.A1" },
+        pipette_name: { type: "string", description: "Protocol pipette name such as flex_1channel_1000" },
+        mount: { type: "string", enum: ["left", "right"] },
+        tiprack_load_name: { type: "string" },
+        tiprack_slot: { type: "string" },
+        output_path: { type: "string", description: "Optional JSON recovery bundle path" },
+        output_protocol_path: { type: "string", description: "Optional generated validation protocol path" },
+        python_executable: { type: "string" },
+        api_level: { type: "string", default: "2.24" },
+        robot_type: { type: "string", default: "Flex" },
+        tiprack_namespace: { type: "string", default: "opentrons" },
+        tiprack_version: { type: "integer", default: 1 },
+        labware_namespace: { type: "string", default: "opentrons" },
+        labware_version: { type: "integer", default: 1 },
+        trash_slot: { type: "string" },
+      },
+      required: ["failed_source_key", "pipette_name", "mount", "tiprack_load_name", "tiprack_slot"],
+    },
+  },
+  {
     name: "is_home_safe",
     description: "Return whether auto-home is currently safe and which cleanup actions are still required first.",
     inputSchema: {
@@ -288,6 +550,31 @@ const TOOL_DEFINITIONS = [
           enum: ["protocol", "maintenance"],
         },
         context_id: { type: "string" },
+        observed_liquid_containers: {
+          type: "array",
+          description:
+            "Optional observed/reconciled liquid container snapshot to compare with session state. Pure bookkeeping; does not probe or move.",
+          items: {
+            type: "object",
+            properties: {
+              container_key: { type: "string" },
+              slot_name: { type: "string" },
+              well_name: { type: "string" },
+              volume_ul: { type: "number" },
+              capacity_ul: { type: "number" },
+              dead_volume_ul: { type: "number" },
+              liquid_class: { type: "string" },
+              trust_level: {
+                type: "string",
+                enum: ["declared", "simulated", "observed", "reconciled"],
+              },
+            },
+          },
+        },
+        observed_liquid_tracking: {
+          type: "object",
+          description: "Optional liquid_tracking-like snapshot with containers keyed by container_key.",
+        },
       },
     },
   },
@@ -309,6 +596,23 @@ const TOOL_DEFINITIONS = [
         target_slot: { type: "string" },
         failed_well: { type: "string" },
         tiprack_slot: { type: "string" },
+        tip_binding_mode: {
+          type: "string",
+          enum: ["auto", "explicit", "starting_tip"],
+          description: "Optional operator-supplied tip binding mode when protocol source is unavailable.",
+        },
+        protocol_source: {
+          type: "string",
+          description: "Optional protocol source used to classify auto vs explicit tip binding.",
+        },
+        file_path: {
+          type: "string",
+          description: "Optional local protocol file path used to classify auto vs explicit tip binding.",
+        },
+        protocol_path: {
+          type: "string",
+          description: "Alias for file_path.",
+        },
         tiprack_slots: {
           type: "array",
           items: { type: "string" },
@@ -567,6 +871,27 @@ const TOOL_DEFINITIONS = [
           type: "array",
           items: { type: "string" },
         },
+        session_id: { type: "string" },
+        timeout_ms: { type: "integer", default: 30000 },
+        poll_interval_ms: { type: "integer", default: 500 },
+      },
+      required: ["context_id"],
+    },
+  },
+  {
+    name: "drop_attached_tip",
+    description:
+      "Safely drop an already attached pipette tip in a maintenance context after a stopped or recovery run. Refuses when robot_status does not confirm a tip on the requested mount.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        robot_ip: { type: "string", description: "Robot IP or full base URL" },
+        context_id: { type: "string" },
+        mount: { type: "string", enum: ["left", "right"], default: "left" },
+        pipette_name: { type: "string" },
+        pipette_id: { type: "string" },
+        labware_id: { type: "string" },
+        well_name: { type: "string" },
         session_id: { type: "string" },
         timeout_ms: { type: "integer", default: 30000 },
         poll_interval_ms: { type: "integer", default: 500 },
@@ -868,6 +1193,7 @@ const TOOL_DEFINITIONS = [
         mount: { type: "string", enum: ["left", "right"] },
         tiprack_load_name: { type: "string" },
         tiprack_slot: { type: "string" },
+        starting_tip: { type: "string", description: "Optional first tip well, such as A2, to avoid reusing tips across probe runs." },
         labware_load_name: { type: "string" },
         labware_slot: { type: "string" },
         trash_slot: { type: "string" },
@@ -952,6 +1278,29 @@ const TOOL_DEFINITIONS = [
     },
   },
   {
+    name: "generate_continuation_protocol",
+    description:
+      "Generate a new tip-only continuation protocol from an awaiting-recovery run. This writes a local protocol file but does not stop, play, or move the robot.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        robot_ip: { type: "string", description: "Robot IP or full base URL" },
+        run_id: { type: "string", description: "Source run id in awaiting-recovery or failed state" },
+        session_id: { type: "string" },
+        output_path: { type: "string", description: "Optional explicit output .py path" },
+        page_length: { type: "integer", default: 200 },
+        protocol_name: { type: "string" },
+        use_session_state: {
+          type: "boolean",
+          default: false,
+          description:
+            "When true, merge persisted session tip bookkeeping into the preview. Default false trusts live run command history only.",
+        },
+      },
+      required: ["robot_ip", "run_id"],
+    },
+  },
+  {
     name: "execute_protocol_recovery",
     description:
       "Execute a supported protocol recovery branch from live recovery guidance, then resume the run when appropriate.",
@@ -968,6 +1317,13 @@ const TOOL_DEFINITIONS = [
         },
         recovery_well: { type: "string" },
         tiprack_slot: { type: "string" },
+        tip_binding_mode: {
+          type: "string",
+          enum: ["auto", "explicit", "starting_tip"],
+        },
+        protocol_source: { type: "string" },
+        file_path: { type: "string" },
+        protocol_path: { type: "string" },
         destination_slot: { type: "string" },
         allow_low_confidence_destination: { type: "boolean", default: false },
         module_wait_timeout_ms: { type: "integer", default: 120000 },
@@ -997,6 +1353,13 @@ const TOOL_DEFINITIONS = [
           type: "array",
           items: { type: "string" },
         },
+        tip_binding_mode: {
+          type: "string",
+          enum: ["auto", "explicit", "starting_tip"],
+        },
+        protocol_source: { type: "string" },
+        file_path: { type: "string" },
+        protocol_path: { type: "string" },
         module_wait_timeout_ms: { type: "integer" },
         module_poll_interval_ms: { type: "integer", default: 1000 },
         max_attempts_per_failed_command: { type: "integer", default: 3 },
@@ -1006,17 +1369,63 @@ const TOOL_DEFINITIONS = [
     },
   },
   {
+    name: "runtime_watch_loop",
+    description:
+      "Auto-wake runtime watch loop: reuses runtime_watch_poll on a budgeted schedule (max_turns / max_runtime_ms / interval_ms) and emits one outbox sentinel per tick for host-adapter wake (claudecode/cursor/codex/cli/webhook). Persists a goal-state.json per run (resume=true continues an active goal). Goal status is COMPLETE/BLOCKED/BUDGET_LIMITED; COMPLETE requires either a completed tick or a verify callback. Safety model is inherited from runtime_watch_poll: only L0 whitelist fixes auto-execute; needs_user/hard_stop stop the loop and emit a BLOCKED sentinel. Default self_fix_mode=observe (no robot motion).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        robot_ip: { type: "string", description: "Robot IP or full base URL" },
+        run_id: { type: "string" },
+        session_id: { type: "string" },
+        goal_id: { type: "string", description: "Optional explicit goal id; reused with resume=true." },
+        goal_prompt: { type: "string", description: "Operator goal text recorded in goal-state for handoff/audit." },
+        max_turns: { type: "integer", default: 20 },
+        max_runtime_ms: { type: "integer", default: 600000 },
+        interval_ms: { type: "integer", default: 5000 },
+        max_block_ms: { type: "integer", default: 30000 },
+        poll_interval_ms: { type: "integer", default: 3000 },
+        page_length: { type: "integer", default: 20 },
+        tiprack_slots: { type: "array", items: { type: "string" } },
+        tip_binding_mode: { type: "string", enum: ["auto", "explicit", "starting_tip"] },
+        protocol_source: { type: "string" },
+        file_path: { type: "string" },
+        protocol_path: { type: "string" },
+        module_wait_timeout_ms: { type: "integer" },
+        module_poll_interval_ms: { type: "integer", default: 1000 },
+        max_attempts_per_failed_command: { type: "integer", default: 3 },
+        unreachable_threshold: { type: "integer", default: 2 },
+        resume: { type: "boolean", default: false },
+        self_fix_mode: { type: "string", enum: ["observe", "l0"], default: "observe" },
+        allow_l4_execution: { type: "boolean", default: false },
+        operator_opt_in: { type: "boolean", default: false },
+        watch_dir: { type: "string" },
+        outbox_dir: { type: "string" },
+        notify_adapters: {
+          type: "array",
+          items: { type: "string", enum: ["claudecode", "claude", "codex", "cursor", "cli", "webhook"] },
+          description: "Adapters to deliver pending outbox sentinels to after the loop ends.",
+        },
+        notify_limit: { type: "integer", default: 20 },
+        host_adapter_dir: { type: "string" },
+        webhook_url: { type: "string" },
+      },
+      required: ["run_id"],
+    },
+  },
+  {
     name: "runtime_get_alerts",
     description:
-      "Read runtime watch alerts and latest watch state for a run. Intended for hook/insurance paths and current-dialog notification checks.",
+      "Read runtime watch and monitor alerts plus latest watch state. Intended for hook/insurance paths and current-dialog notification checks.",
     inputSchema: {
       type: "object",
       properties: {
         run_id: { type: "string" },
+        session_id: { type: "string" },
         limit: { type: "integer", default: 20 },
         include_acked: { type: "boolean", default: false },
+        watch_dir: { type: "string" },
       },
-      required: ["run_id"],
     },
   },
   {
@@ -1029,8 +1438,66 @@ const TOOL_DEFINITIONS = [
         alert_id: { type: "string" },
         note: { type: "string" },
         selection: { type: ["string", "object", "null"] },
+        watch_dir: { type: "string" },
       },
       required: ["run_id", "alert_id"],
+    },
+  },
+  {
+    name: "runtime_get_outbox",
+    description:
+      "Read pending runtime notification outbox events created from watcher/monitor alerts for host adapters.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        session_id: { type: "string" },
+        run_id: { type: "string" },
+        limit: { type: "integer", default: 20 },
+        include_acked: { type: "boolean", default: false },
+        include_delivered: { type: "boolean", default: true },
+        outbox_dir: { type: "string" },
+        host_adapter_dir: { type: "string" },
+      },
+    },
+  },
+  {
+    name: "runtime_ack_outbox",
+    description:
+      "Mark a runtime notification outbox event handled after the operator or host adapter has acted on it.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        session_id: { type: "string" },
+        outbox_id: { type: "string" },
+        note: { type: "string" },
+        selection: { type: ["string", "object", "null"] },
+        outbox_dir: { type: "string" },
+      },
+      required: ["outbox_id"],
+    },
+  },
+  {
+    name: "runtime_deliver_outbox",
+    description:
+      "Deliver pending runtime outbox events to configured host adapters: claudecode, codex, cursor, cli, or webhook.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        session_id: { type: "string" },
+        run_id: { type: "string" },
+        adapters: {
+          type: "array",
+          items: {
+            type: "string",
+            enum: ["claudecode", "codex", "cursor", "cli", "webhook"],
+          },
+        },
+        limit: { type: "integer", default: 20 },
+        include_delivered: { type: "boolean", default: false },
+        outbox_dir: { type: "string" },
+        host_adapter_dir: { type: "string" },
+        webhook_url: { type: "string" },
+      },
     },
   },
   {
@@ -1127,6 +1594,112 @@ const TOOL_DEFINITIONS = [
     },
   },
   {
+    name: "runtime_recovery_monitor",
+    description:
+      "Active L1-L4 runtime recovery monitor tick. L1 checks runtime/robot/module health, L2 watches a run, L3 coordinates recovery gates and safe-next guidance, and L4 only delegates whitelisted L0 self-fixes when explicitly enabled.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        robot_ip: { type: "string", description: "Robot IP or full base URL" },
+        session_id: { type: "string" },
+        run_id: { type: "string" },
+        levels: {
+          type: "array",
+          items: {
+            type: "string",
+            enum: ["L1", "L2", "L3", "L4"],
+          },
+          description: "Optional subset of monitor levels. Default runs L1-L4.",
+        },
+        self_fix_mode: {
+          type: "string",
+          enum: ["observe", "l0"],
+          default: "observe",
+          description:
+            "observe is read-only for run watching. l0 delegates only whitelisted L0 fixes to runtime_watch_poll.",
+        },
+        allow_l4_execution: {
+          type: "boolean",
+          default: false,
+          description:
+            "Required, together with operator_opt_in and self_fix_mode=l0, before L4 treats L0 self-fix execution as allowed.",
+        },
+        operator_opt_in: {
+          type: "boolean",
+          default: false,
+          description: "Explicit operator opt-in for the guarded execution layer.",
+        },
+        source_plan: {
+          type: "string",
+          enum: ["c3_d3_liquid_recovery"],
+          description:
+            "Optional liquid gate source plan. c3_d3_liquid_recovery expands to C3.A1 present, D3.A1-H1 present, and D3.A12 absent.",
+        },
+        required_sources: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              slot_name: { type: "string" },
+              well_name: { type: "string" },
+              expected_presence: { type: "boolean" },
+            },
+            required: ["slot_name", "well_name"],
+          },
+        },
+        enable_liquid_gate: {
+          type: "boolean",
+          default: false,
+          description:
+            "When true, run live_liquid_recovery_gate even without source_plan or required_sources.",
+        },
+        allow_observed_mismatch_reprobe: { type: "boolean", default: false },
+        max_block_ms: { type: "integer", default: 0 },
+        poll_interval_ms: { type: "integer", default: 250 },
+        timeout_ms: { type: "integer" },
+        page_length: { type: "integer", default: 20 },
+        tiprack_slots: {
+          type: "array",
+          items: { type: "string" },
+        },
+        tip_binding_mode: {
+          type: "string",
+          enum: ["auto", "explicit", "starting_tip"],
+        },
+        protocol_source: { type: "string" },
+        file_path: { type: "string" },
+        protocol_path: { type: "string" },
+        watch_dir: { type: "string" },
+        record_result_log: { type: "boolean", default: true },
+        publish_notifications: {
+          type: "boolean",
+          default: true,
+          description:
+            "When true, publish requires-attention monitor notifications into runtime alerts and the durable outbox.",
+        },
+        include_info_notifications: {
+          type: "boolean",
+          default: false,
+          description:
+            "When true, also publish info monitor notifications; default keeps the outbox low-noise.",
+        },
+        notify_adapters: {
+          type: "array",
+          items: {
+            type: "string",
+            enum: ["claudecode", "codex", "cursor", "cli", "webhook"],
+          },
+          description:
+            "Optional host adapters to deliver newly pending outbox events after the monitor tick.",
+        },
+        notify_limit: { type: "integer", default: 20 },
+        outbox_dir: { type: "string" },
+        host_adapter_dir: { type: "string" },
+        webhook_url: { type: "string" },
+      },
+    },
+  },
+  {
     name: "parse_error",
     description: "Parse run or maintenance command failures into structured runtime error categories.",
     inputSchema: {
@@ -1159,7 +1732,7 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: "simulate_protocol",
-    description: "Run local opentrons.simulate against a protocol file and return structured logs.",
+    description: "Run local opentrons.simulate against a protocol file and return structured logs. When virtual_lab_steps (or validate_virtual_lab_state=true) is provided, runs deterministic Virtual Lab State validation first and blocks the Python simulation on any violation (Phase 1.5 gate).",
     inputSchema: {
       type: "object",
       properties: {
@@ -1173,6 +1746,27 @@ const TOOL_DEFINITIONS = [
           items: { type: "string" },
         },
         max_log_chars: { type: "integer", default: 20000 },
+        session_id: {
+          type: "string",
+          description: "Session whose Virtual Lab State seeds validation when initial_state is omitted.",
+        },
+        initial_state: {
+          type: "object",
+          description: "Optional Virtual Lab State override; defaults to the persisted session state.",
+        },
+        virtual_lab_steps: {
+          type: "array",
+          description: "Proposed protocol steps to validate before simulating. When provided, the gate runs and blocks on violations.",
+          items: { type: "object" },
+        },
+        validate_virtual_lab_state: {
+          type: "boolean",
+          description: "Force the Virtual Lab State gate even when virtual_lab_steps is omitted (uses persisted session containers).",
+        },
+        skip_virtual_lab_state_validation: {
+          type: "boolean",
+          description: "Explicit escape hatch for the simulation-repair loop when intentionally simulating a known-bad protocol.",
+        },
       },
       required: ["protocol_path"],
     },
@@ -1203,6 +1797,54 @@ const TOOL_DEFINITIONS = [
           description: "Optional Python interpreter to inspect instead of the repo-local .venv.",
         },
       },
+    },
+  },
+  {
+    name: "runtime_recovery_self_test",
+    description:
+      "Run no-motion recovery invariants inside the loaded MCP process, including liquidNotFound classification, source-map mismatch handling, and manual-only liquid recovery.",
+    inputSchema: {
+      type: "object",
+      properties: {},
+    },
+  },
+  {
+    name: "live_liquid_recovery_gate",
+    description:
+      "Read-only go/no-go gate before live liquid watcher or probe re-runs. Checks loaded recovery self-test, robot/module status, door/estop, source-map readiness, source identity, and attached-tip blockers without moving the robot. Returns an ordered resolution_plan for clearing blockers safely.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        robot_ip: { type: "string", description: "Robot IP or full base URL" },
+        session_id: { type: "string" },
+        source_plan: {
+          type: "string",
+          enum: ["c3_d3_liquid_recovery"],
+          description:
+            "Optional built-in source-map plan. c3_d3_liquid_recovery expands to C3.A1 present, D3.A1-H1 present, and D3.A12 absent.",
+        },
+        required_sources: {
+          type: "array",
+          description:
+            "Optional source-map requirements that must be present before live liquid re-runs. Each item includes slot_name, well_name, and optional expected_presence.",
+          items: {
+            type: "object",
+            properties: {
+              slot_name: { type: "string", description: "Deck slot such as C3 or D3" },
+              well_name: { type: "string", description: "Well name such as A1" },
+              expected_presence: { type: "boolean" },
+            },
+            required: ["slot_name", "well_name"],
+          },
+        },
+        allow_observed_mismatch_reprobe: {
+          type: "boolean",
+          default: false,
+          description:
+            "When true, expected-present sources with observed_presence=false become a warning that permits only targeted no-aspirate probe_wells evidence collection, not resume.",
+        },
+      },
+      required: ["robot_ip"],
     },
   },
   {
@@ -1414,6 +2056,1027 @@ function readNested(value, candidates, fallback = null) {
   return fallback;
 }
 
+function buildSelfTestCheck(name, passed, details = {}) {
+  return {
+    name,
+    status: passed ? "pass" : "fail",
+    passed,
+    details,
+  };
+}
+
+function buildRuntimeRecoverySelfTestResult() {
+  const buildLiquidProbeFailureCase = ({
+    commandId,
+    wellName,
+    sourceMapEntry,
+    sampleId,
+  }) => {
+    const failedCommand = {
+      id: commandId,
+      commandType: "liquidProbe",
+      status: "failed",
+      params: {
+        pipetteId: "pipette-left",
+        labwareId: "self-test-d3-plate",
+        wellName,
+      },
+      error: {
+        errorType: "liquidNotFound",
+        detail: "Liquid Not Found",
+        wrappedErrors: [
+          {
+            errorType: "PipetteLiquidNotFoundError",
+            detail: "Liquid not found during probe.",
+          },
+        ],
+      },
+    };
+    const run = {
+      data: {
+        id: "self-test-run",
+        status: "awaiting-recovery",
+        currentlyRecoveringFrom: failedCommand.id,
+        labware: [
+          {
+            id: "self-test-d3-plate",
+            loadName: "corning_96_wellplate_360ul_flat",
+            location: {
+              slotName: "D3",
+            },
+          },
+        ],
+      },
+    };
+    const commands = {
+      data: [failedCommand],
+    };
+    const robotStatusSnapshot = {
+      blockers: [],
+      instruments_summary: [
+        {
+          mount: "left",
+          instrument_name: "p1000_single_flex",
+          tip_detected: true,
+        },
+      ],
+    };
+    const moduleStatusSnapshot = {
+      blockers: [],
+    };
+    const sessionState = {
+      state_revision: 0,
+      deck: { slots: {} },
+      pipettes: {},
+      cleanup: { pending_actions: [] },
+      liquid_tracking: {
+        sources: {
+          [`D3.${wellName}`]: {
+            slot_name: "D3",
+            well_name: wellName,
+            labware_load_name: "corning_96_wellplate_360ul_flat",
+            sample_id: sampleId,
+            ...sourceMapEntry,
+          },
+        },
+      },
+      tip_tracking: { tipracks: {} },
+    };
+
+    const classification = classifyRecoveryError({
+      run,
+      commands,
+      moduleStatusSnapshot,
+      robotStatusSnapshot,
+    });
+    const recovery = buildRecoverySuggestion({
+      errorCategory: classification.error_category,
+      errorLeaf: classification.error_leaf,
+      run,
+      commands,
+      robotStatusSnapshot,
+      moduleStatusSnapshot,
+      reconciliation: { diffs: [] },
+      sessionState,
+    });
+    const actionSummary = buildActionSummary({
+      recoverySuggestion: recovery,
+      run,
+    });
+
+    return {
+      failedCommand,
+      classification,
+      recovery,
+      actionSummary,
+    };
+  };
+
+  const emptySourceCase = buildLiquidProbeFailureCase({
+    commandId: "self-test-liquid-empty-command",
+    wellName: "A12",
+    sampleId: "self-test-empty-source-d3-a12",
+    sourceMapEntry: {
+      liquid_name: "empty-control",
+      expected_presence: false,
+      notes: "Self-test fixture: empty source must not be auto-substituted.",
+    },
+  });
+  const expectedPresentCase = buildLiquidProbeFailureCase({
+    commandId: "self-test-liquid-expected-present-command",
+    wellName: "A1",
+    sampleId: "self-test-expected-present-d3-a1",
+    sourceMapEntry: {
+      liquid_name: "operator-confirmed-liquid",
+      expected_presence: true,
+      notes: "Self-test fixture: expected-present source that probes as empty must stop for human confirmation.",
+    },
+  });
+  const failedCommand = emptySourceCase.failedCommand;
+  const classification = emptySourceCase.classification;
+  const recovery = emptySourceCase.recovery;
+  const actionSummary = emptySourceCase.actionSummary;
+  const expectedPresentActionSummary = expectedPresentCase.actionSummary;
+  const expectedPresentRecovery = expectedPresentCase.recovery;
+  const cleanupRequired = actionSummary.params?.cleanup_required || [];
+  const expectedPresentCleanupRequired = expectedPresentActionSummary.params?.cleanup_required || [];
+  const checks = [
+    buildSelfTestCheck(
+      "runtime_build_stamp",
+      MCP_RUNTIME_CAPABILITIES.runtime_build === "liquid-source-map-v2",
+      { runtime_build: MCP_RUNTIME_CAPABILITIES.runtime_build },
+    ),
+    buildSelfTestCheck(
+      "liquid_not_found_classifies_as_insufficient_volume",
+      classification.error_category === "INSUFFICIENT_VOLUME" &&
+        classification.error_leaf === "INSUFFICIENT_VOLUME",
+      {
+        error_category: classification.error_category,
+        error_leaf: classification.error_leaf,
+      },
+    ),
+    buildSelfTestCheck("liquid_recovery_is_manual_only", recovery.action === "manual_only", {
+      action: recovery.action,
+    }),
+    buildSelfTestCheck("liquid_recovery_is_not_auto_executable", recovery.auto_executable === false, {
+      auto_executable: recovery.auto_executable,
+    }),
+    buildSelfTestCheck("liquid_recovery_does_not_resume_run", actionSummary.then_resume === false, {
+      then_resume: actionSummary.then_resume,
+    }),
+    buildSelfTestCheck("source_map_resolves_failed_well", actionSummary.params?.source_map_key === "D3.A12", {
+      source_map_key: actionSummary.params?.source_map_key,
+    }),
+    buildSelfTestCheck(
+      "expected_absent_source_is_mismatch",
+      actionSummary.params?.source_map_expectation_mismatch === true &&
+        actionSummary.params?.source_map_expected_presence === false &&
+        actionSummary.params?.observed_liquid_presence === false,
+      {
+        source_map_expectation_mismatch: actionSummary.params?.source_map_expectation_mismatch,
+        source_map_expected_presence: actionSummary.params?.source_map_expected_presence,
+        observed_liquid_presence: actionSummary.params?.observed_liquid_presence,
+      },
+    ),
+    buildSelfTestCheck(
+      "expected_present_source_probe_empty_is_mismatch",
+      expectedPresentRecovery.action === "manual_only" &&
+        expectedPresentRecovery.auto_executable === false &&
+        expectedPresentActionSummary.then_resume === false &&
+        expectedPresentActionSummary.params?.source_map_key === "D3.A1" &&
+        expectedPresentActionSummary.params?.source_map_expectation_mismatch === true &&
+        expectedPresentActionSummary.params?.source_map_expected_presence === true &&
+        expectedPresentActionSummary.params?.observed_liquid_presence === false,
+      {
+        action: expectedPresentRecovery.action,
+        auto_executable: expectedPresentRecovery.auto_executable,
+        then_resume: expectedPresentActionSummary.then_resume,
+        source_map_key: expectedPresentActionSummary.params?.source_map_key,
+        source_map_expectation_mismatch: expectedPresentActionSummary.params?.source_map_expectation_mismatch,
+        source_map_expected_presence: expectedPresentActionSummary.params?.source_map_expected_presence,
+        observed_liquid_presence: expectedPresentActionSummary.params?.observed_liquid_presence,
+      },
+    ),
+    buildSelfTestCheck("attached_tip_cleanup_is_reported", cleanupRequired.includes("drop_tip:left"), {
+      cleanup_required: cleanupRequired,
+    }),
+    buildSelfTestCheck(
+      "expected_present_attached_tip_cleanup_is_reported",
+      expectedPresentCleanupRequired.includes("drop_tip:left"),
+      { cleanup_required: expectedPresentCleanupRequired },
+    ),
+    buildSelfTestCheck(
+      "source_change_requires_human_confirmation",
+      actionSummary.params?.blocked_auto_recovery_reason ===
+        "liquid_source_change_requires_human_confirmation" &&
+        expectedPresentActionSummary.params?.blocked_auto_recovery_reason ===
+          "liquid_source_change_requires_human_confirmation",
+      {
+        blocked_auto_recovery_reason: actionSummary.params?.blocked_auto_recovery_reason,
+        expected_present_blocked_auto_recovery_reason:
+          expectedPresentActionSummary.params?.blocked_auto_recovery_reason,
+      },
+    ),
+  ];
+  const failedChecks = checks.filter(check => !check.passed);
+
+  return {
+    data: {
+      status: failedChecks.length === 0 ? "pass" : "fail",
+      runtime_build: MCP_RUNTIME_CAPABILITIES.runtime_build,
+      checks,
+      failed_checks: failedChecks,
+      classification,
+      recovery,
+      action_summary: actionSummary,
+      expected_present_case: {
+        classification: expectedPresentCase.classification,
+        recovery: expectedPresentRecovery,
+        action_summary: expectedPresentActionSummary,
+        fixture: {
+          command_id: expectedPresentCase.failedCommand.id,
+          slot_name: "D3",
+          well_name: "A1",
+          expected_presence: true,
+          motion: "none",
+          network: "none",
+        },
+      },
+      fixture: {
+        run_id: "self-test-run",
+        command_id: failedCommand.id,
+        slot_name: "D3",
+        well_name: "A12",
+        motion: "none",
+        network: "none",
+      },
+    },
+  };
+}
+
+function buildGateCheck(name, status, summary, extra = {}) {
+  return {
+    name,
+    status,
+    summary,
+    ...extra,
+  };
+}
+
+function summarizeRuntimeSelfTestCoverage(selfTestData = {}) {
+  return {
+    expected_absent_source: {
+      source_map_key: selfTestData.action_summary?.params?.source_map_key || null,
+      source_map_expected_presence:
+        selfTestData.action_summary?.params?.source_map_expected_presence ?? null,
+      observed_liquid_presence:
+        selfTestData.action_summary?.params?.observed_liquid_presence ?? null,
+      manual_only: selfTestData.action_summary?.do_what === "manual_only",
+      then_resume: selfTestData.action_summary?.then_resume ?? null,
+    },
+    expected_present_source: {
+      source_map_key: selfTestData.expected_present_case?.action_summary?.params?.source_map_key || null,
+      source_map_expected_presence:
+        selfTestData.expected_present_case?.action_summary?.params?.source_map_expected_presence ?? null,
+      observed_liquid_presence:
+        selfTestData.expected_present_case?.action_summary?.params?.observed_liquid_presence ?? null,
+      manual_only: selfTestData.expected_present_case?.action_summary?.do_what === "manual_only",
+      then_resume: selfTestData.expected_present_case?.action_summary?.then_resume ?? null,
+    },
+  };
+}
+
+function summarizeAttachedLiquidGateTips(robotStatusSnapshot = {}) {
+  return asArray(robotStatusSnapshot.instruments_summary)
+    .filter(instrument => instrument?.mount && instrument.mount !== "extension" && instrument.tip_detected === true)
+    .map(instrument => ({
+      mount: instrument.mount,
+      instrument_name: instrument.instrument_name || null,
+      model: instrument.model || null,
+      serial: instrument.serial || null,
+    }));
+}
+
+function normalizeLiquidGateSourceRequirement(source = {}) {
+  const slotName = source.slot_name || source.slotName;
+  const wellName = source.well_name || source.wellName;
+  const slot = slotName ? String(slotName).trim().toUpperCase() : null;
+  const well = wellName ? String(wellName).trim().toUpperCase() : null;
+  const rawExpectedPresence = source.expected_presence ?? source.expectedPresence ?? null;
+  const expectedPresenceIsValid =
+    rawExpectedPresence === null || typeof rawExpectedPresence === "boolean";
+  return {
+    slot_name: slot,
+    well_name: well,
+    key: slot && well ? `${slot}.${well}` : null,
+    expected_presence: expectedPresenceIsValid ? rawExpectedPresence : null,
+    invalid_reason: expectedPresenceIsValid
+      ? null
+      : `expected_presence must be boolean when provided, got ${typeof rawExpectedPresence}`,
+  };
+}
+
+const LIQUID_GATE_SOURCE_PLANS = new Set(["c3_d3_liquid_recovery"]);
+
+function expandLiquidGateSourcePlan(sourcePlan = null) {
+  if (!sourcePlan) {
+    return [];
+  }
+
+  switch (String(sourcePlan)) {
+    case "c3_d3_liquid_recovery":
+      return [
+        { slot_name: "C3", well_name: "A1", expected_presence: true },
+        ...["A", "B", "C", "D", "E", "F", "G", "H"].map(row => ({
+          slot_name: "D3",
+          well_name: `${row}1`,
+          expected_presence: true,
+        })),
+        { slot_name: "D3", well_name: "A12", expected_presence: false },
+      ];
+    default:
+      return [];
+  }
+}
+
+function resolveLiquidGateRequiredSources({ sourcePlan = null, requiredSources = [] } = {}) {
+  const normalizedPlan = sourcePlan ? String(sourcePlan) : null;
+  const invalidSourcePlan =
+    normalizedPlan && !LIQUID_GATE_SOURCE_PLANS.has(normalizedPlan) ? normalizedPlan : null;
+  return {
+    requiredSources: invalidSourcePlan
+      ? asArray(requiredSources)
+      : [...expandLiquidGateSourcePlan(normalizedPlan), ...asArray(requiredSources)],
+    invalidSourcePlan,
+  };
+}
+
+function buildLiquidSourceMapGateCheck(sessionState = {}, requiredSources = [], { allowObservedMismatchReprobe = false } = {}) {
+  const requirements = asArray(requiredSources).map(normalizeLiquidGateSourceRequirement);
+  const sources = sessionState?.liquid_tracking?.sources || {};
+  const details = requirements.map(requirement => {
+    const entry = requirement.key ? sources[requirement.key] || null : null;
+    const expectedPresenceMatches =
+      requirement.expected_presence === null ||
+      (entry && entry.expected_presence === requirement.expected_presence);
+    const observedPresenceMatches =
+      requirement.expected_presence === null ||
+      !entry ||
+      entry.observed_presence !== false ||
+      requirement.expected_presence === false;
+    return {
+      ...requirement,
+      present_in_source_map: Boolean(entry),
+      expected_presence_matches: Boolean(entry && expectedPresenceMatches),
+      observed_presence_matches: Boolean(entry && observedPresenceMatches),
+      liquid_name: entry?.liquid_name || null,
+      sample_id: entry?.sample_id || null,
+      actual_expected_presence: entry?.expected_presence ?? null,
+      observed_presence: entry?.observed_presence ?? null,
+      observed_run_id: entry?.observed_run_id || null,
+    };
+  });
+  const invalidRequirements = details.filter(detail => !detail.key || detail.invalid_reason);
+  const missingSources = details.filter(detail => detail.key && !detail.present_in_source_map);
+  const mismatchedPresence = details.filter(
+    detail => detail.present_in_source_map && detail.expected_presence_matches === false,
+  );
+  const observedPresenceMismatches = details.filter(
+    detail => detail.present_in_source_map && detail.observed_presence_matches === false,
+  );
+  const observedMismatchReprobeAllowed =
+    allowObservedMismatchReprobe &&
+    observedPresenceMismatches.length > 0 &&
+    invalidRequirements.length === 0 &&
+    missingSources.length === 0 &&
+    mismatchedPresence.length === 0;
+  const failures = [
+    ...invalidRequirements,
+    ...missingSources,
+    ...mismatchedPresence,
+    ...(observedMismatchReprobeAllowed ? [] : observedPresenceMismatches),
+  ];
+
+  if (requirements.length === 0) {
+    return buildGateCheck(
+      "source_map_requirements",
+      "pass",
+      "No source-map requirements were requested for this gate.",
+      {
+        required_sources: [],
+      },
+    );
+  }
+
+  return buildGateCheck(
+    "source_map_requirements",
+    failures.length === 0 ? (observedMismatchReprobeAllowed ? "warn" : "pass") : "fail",
+    failures.length === 0
+      ? observedMismatchReprobeAllowed
+        ? "Requested source-map entries are present, but live observations disagree; only targeted no-aspirate re-probe is allowed."
+        : "All requested liquid source-map entries are present and match expected presence."
+      : "One or more requested liquid source-map entries are missing or do not match expected presence.",
+    {
+      required_sources: details,
+      missing_source_keys: missingSources.map(detail => detail.key),
+      mismatched_presence_keys: mismatchedPresence.map(detail => detail.key),
+      observed_presence_mismatch_keys: observedPresenceMismatches.map(detail => detail.key),
+      observed_mismatch_reprobe_allowed: observedMismatchReprobeAllowed,
+      allowed_probe_targets: observedMismatchReprobeAllowed
+        ? observedPresenceMismatches.map(detail => detail.key)
+        : [],
+      invalid_requirements: invalidRequirements,
+    },
+  );
+}
+
+function buildLiquidSourceIdentityOperatorGuidance(sessionId = DEFAULT_SESSION_ID) {
+  return {
+    draft_markdown_path: "runs/self-recovery/artifacts/liquid-source-identity-draft.md",
+    draft_json_path: "runs/self-recovery/artifacts/liquid-source-identity-draft.json",
+    draft_tsv_path: "runs/self-recovery/artifacts/liquid-source-identity-draft.tsv",
+    validation_report_path: "runs/self-recovery/artifacts/liquid-source-identity-md-validation-latest.json",
+    generate_draft_command: [
+      "node scripts/summarize-liquid-source-map.mjs",
+      `--session-id ${sessionId}`,
+      "--out runs/self-recovery/artifacts/liquid-source-map-summary-with-md-latest.json",
+      "--template-json-out runs/self-recovery/artifacts/liquid-source-identity-draft.json",
+      "--template-tsv-out runs/self-recovery/artifacts/liquid-source-identity-draft.tsv",
+      "--template-md-out runs/self-recovery/artifacts/liquid-source-identity-draft.md",
+    ].join(" "),
+    validate_markdown_command: [
+      "node scripts/summarize-liquid-source-map.mjs",
+      `--session-id ${sessionId}`,
+      "--validate-template-md runs/self-recovery/artifacts/liquid-source-identity-draft.md",
+      "--report-out runs/self-recovery/artifacts/liquid-source-identity-md-validation-latest.json",
+    ].join(" "),
+    apply_markdown_command: [
+      "node scripts/summarize-liquid-source-map.mjs",
+      "--apply-template-md runs/self-recovery/artifacts/liquid-source-identity-draft.md",
+      "--report-out runs/self-recovery/artifacts/liquid-source-identity-md-apply-latest.json",
+    ].join(" "),
+  };
+}
+
+function buildLiquidSourceIdentityMetadataGateCheck(sourceMapCheck = {}, { sessionId = DEFAULT_SESSION_ID } = {}) {
+  const requiredSources = asArray(sourceMapCheck.required_sources);
+  const checkedSources = requiredSources.filter(
+    source =>
+      source.present_in_source_map &&
+      source.expected_presence_matches !== false &&
+      source.expected_presence === true,
+  );
+  const incompleteSources = checkedSources
+    .map(source => {
+      const missing = [];
+      if (!source.liquid_name) {
+        missing.push("liquid_name");
+      } else if (source.liquid_name === "operator-confirmed-liquid") {
+        missing.push("specific_liquid_name");
+      }
+      if (!source.sample_id) {
+        missing.push("sample_id");
+      }
+      return missing.length > 0 ? { ...source, missing_identity_fields: missing } : null;
+    })
+    .filter(Boolean);
+
+  return buildGateCheck(
+    "source_identity_metadata",
+    incompleteSources.length > 0 ? "warn" : "pass",
+    incompleteSources.length > 0
+      ? "Some expected-present liquid sources have incomplete liquid/sample identity metadata."
+      : "Expected-present liquid sources include liquid and sample identity metadata.",
+    {
+      checked_source_count: checkedSources.length,
+      incomplete_source_count: incompleteSources.length,
+      incomplete_sources: incompleteSources,
+      operator_guidance: incompleteSources.length > 0
+        ? buildLiquidSourceIdentityOperatorGuidance(sessionId)
+        : null,
+    },
+  );
+}
+
+function buildLiquidSourceIdentityMetadataSummary(sourcesByKey = {}, { slotName = null } = {}) {
+  const normalizedSlot = slotName ? String(slotName).trim().toUpperCase() : null;
+  const entries = Object.entries(sourcesByKey || {})
+    .map(([key, source]) => ({ key, ...source }))
+    .filter(source => !normalizedSlot || source.slot_name === normalizedSlot)
+    .sort((left, right) => left.key.localeCompare(right.key));
+  const expectedPresent = entries.filter(source => source.expected_presence === true);
+  const expectedAbsent = entries.filter(source => source.expected_presence === false);
+  const unknownPresence = entries.filter(source => source.expected_presence !== true && source.expected_presence !== false);
+  const observedPresenceMismatches = entries.filter(
+    source =>
+      (source.expected_presence === true || source.expected_presence === false) &&
+      (source.observed_presence === true || source.observed_presence === false) &&
+      source.expected_presence !== source.observed_presence,
+  );
+  const incompleteExpectedPresent = expectedPresent
+    .map(source => {
+      const missing = [];
+      if (!source.liquid_name) {
+        missing.push("liquid_name");
+      } else if (source.liquid_name === "operator-confirmed-liquid") {
+        missing.push("specific_liquid_name");
+      }
+      if (!source.sample_id) {
+        missing.push("sample_id");
+      }
+      return missing.length > 0 ? { ...source, missing_identity_fields: missing } : null;
+    })
+    .filter(Boolean);
+  const recordLiquidSourceMapTemplate = incompleteExpectedPresent.map(source => ({
+    slot_name: source.slot_name,
+    well_name: source.well_name,
+    labware_load_name: source.labware_load_name || null,
+    expected_presence: true,
+    liquid_name: source.liquid_name && source.liquid_name !== "operator-confirmed-liquid"
+      ? source.liquid_name
+      : "TODO_specific_liquid_name",
+    sample_id: source.sample_id || "TODO_sample_id",
+    notes: source.notes || "Fill in exact liquid/sample identity before semantic recovery.",
+  }));
+  const recordLiquidSourceMapDraft = {
+    sources: recordLiquidSourceMapTemplate,
+  };
+
+  return {
+    source_count: entries.length,
+    expected_present_count: expectedPresent.length,
+    expected_absent_count: expectedAbsent.length,
+    unknown_presence_count: unknownPresence.length,
+    observed_presence_mismatch_count: observedPresenceMismatches.length,
+    incomplete_expected_present_count: incompleteExpectedPresent.length,
+    ready_for_semantic_recovery:
+      incompleteExpectedPresent.length === 0 &&
+      observedPresenceMismatches.length === 0 &&
+      expectedPresent.length > 0,
+    incomplete_expected_present_sources: incompleteExpectedPresent,
+    observed_presence_mismatch_sources: observedPresenceMismatches,
+    record_liquid_source_map_template: recordLiquidSourceMapTemplate,
+    record_liquid_source_map_draft: recordLiquidSourceMapDraft,
+    complete_expected_present_sources: expectedPresent.filter(
+      source => !incompleteExpectedPresent.some(incomplete => incomplete.key === source.key),
+    ),
+    expected_absent_sources: expectedAbsent,
+    unknown_presence_sources: unknownPresence,
+    operator_action:
+      incompleteExpectedPresent.length > 0
+        ? "Record a specific liquid_name and sample_id for expected-present sources before semantic recovery or source substitution."
+        : observedPresenceMismatches.length > 0
+          ? "Review or correct sources where live probe observations disagree with the source map before semantic recovery or source substitution."
+        : "Expected-present sources have specific liquid and sample identity metadata.",
+  };
+}
+
+function buildLiquidSourcePlanGateCheck(sourcePlan = null, invalidSourcePlan = null) {
+  return buildGateCheck(
+    "source_plan",
+    invalidSourcePlan ? "fail" : "pass",
+    invalidSourcePlan
+      ? "Unknown source plan; refusing to treat it as an empty source requirement set."
+      : "Source plan is recognized or not requested.",
+    {
+      requested_source_plan: sourcePlan || null,
+      supported_source_plans: [...LIQUID_GATE_SOURCE_PLANS],
+    },
+  );
+}
+
+function buildLiveLiquidGateNextAction({ failedCheckNames = [], warningCheckNames = [] } = {}) {
+  const failed = new Set(failedCheckNames);
+  const warned = new Set(warningCheckNames);
+
+  if (failed.has("loaded_runtime_recovery_self_test")) {
+    return {
+      recommended_next_action: "reload_or_reinstall_mcp_runtime",
+      allowed_next_tools: ["health_check", "runtime_recovery_self_test"],
+      human_required: true,
+      reason: "loaded_runtime_recovery_self_test_failed",
+    };
+  }
+  if (failed.has("robot_readonly_connectivity")) {
+    return {
+      recommended_next_action: "restore_robot_connectivity",
+      allowed_next_tools: ["health_check", "robot_status", "module_status"],
+      human_required: true,
+      reason: "robot_readonly_connectivity_failed",
+    };
+  }
+  if (failed.has("door_and_estop")) {
+    return {
+      recommended_next_action: "resolve_door_or_estop",
+      allowed_next_tools: ["robot_status"],
+      human_required: true,
+      reason: "door_or_estop_not_safe",
+    };
+  }
+  if (failed.has("source_plan")) {
+    return {
+      recommended_next_action: "correct_gate_source_plan",
+      allowed_next_tools: ["live_liquid_recovery_gate"],
+      human_required: true,
+      reason: "unknown_liquid_source_plan",
+    };
+  }
+  if (failed.has("source_map_requirements")) {
+    return {
+      recommended_next_action: "record_or_correct_liquid_source_map",
+      allowed_next_tools: ["record_liquid_source_map", "get_liquid_source_map", "live_liquid_recovery_gate"],
+      human_required: true,
+      reason: "required_liquid_sources_missing_or_mismatched",
+    };
+  }
+  if (warned.has("source_map_requirements")) {
+    return {
+      recommended_next_action: "run_observed_mismatch_reprobe",
+      allowed_next_tools: ["probe_wells", "apply_liquid_probe_results", "live_liquid_recovery_gate"],
+      human_required: false,
+      reason: "observed_presence_mismatch_reprobe_allowed",
+    };
+  }
+  if (failed.has("no_attached_tip_before_liquid_probe_rerun")) {
+    return {
+      recommended_next_action: "clear_attached_tip_before_liquid_rerun",
+      allowed_next_tools: ["robot_status", "live_liquid_recovery_gate", "experiment_history"],
+      human_required: true,
+      reason: "attached_tip_blocks_liquid_probe_rerun",
+    };
+  }
+  if (warned.has("source_identity_metadata")) {
+    return {
+      recommended_next_action: "confirm_liquid_source_identity_before_semantic_recovery",
+      allowed_next_tools: ["record_liquid_source_map", "get_liquid_source_map", "live_liquid_recovery_gate"],
+      human_required: true,
+      reason: "liquid_source_identity_metadata_incomplete",
+    };
+  }
+  if (warned.has("module_blockers")) {
+    return {
+      recommended_next_action: "wait_or_resolve_module_blockers",
+      allowed_next_tools: ["module_status", "live_liquid_recovery_gate"],
+      human_required: false,
+      reason: "module_blockers_reported",
+    };
+  }
+  return {
+    recommended_next_action: "run_live_liquid_recovery_tests",
+    allowed_next_tools: ["runtime_watch_poll", "probe_wells", "run_protocol", "experiment_history"],
+    human_required: false,
+    reason: "live_liquid_recovery_gate_passed",
+  };
+}
+
+function buildLiveLiquidGateResolutionPlan({
+  failedCheckNames = [],
+  warningCheckNames = [],
+  checks = [],
+  sessionId = DEFAULT_SESSION_ID,
+} = {}) {
+  const failed = new Set(failedCheckNames);
+  const warned = new Set(warningCheckNames);
+  const checksByName = new Map(checks.map(item => [item.name, item]));
+  const plan = [];
+  const add = item => {
+    plan.push({
+      order: plan.length + 1,
+      no_robot_motion: true,
+      ...item,
+    });
+  };
+
+  if (failed.has("loaded_runtime_recovery_self_test")) {
+    add({
+      check_name: "loaded_runtime_recovery_self_test",
+      severity: "blocker",
+      action: "reload_or_reinstall_mcp_runtime",
+      human_required: true,
+      allowed_next_tools: ["health_check", "runtime_recovery_self_test"],
+      acceptance_criteria: [
+        "Loaded runtime_recovery_self_test returns status=pass.",
+        "health_check reports mcp_server.entrypoint under the expected labscriptai-ot clone root.",
+        "health_check reports mcp_server.capabilities.runtime_build=liquid-source-map-v2.",
+        "health_check reports mcp_server.required_runtime_tools.all_present=true.",
+      ],
+    });
+  }
+  if (failed.has("robot_readonly_connectivity")) {
+    add({
+      check_name: "robot_readonly_connectivity",
+      severity: "blocker",
+      action: "restore_robot_connectivity",
+      human_required: true,
+      allowed_next_tools: ["health_check", "robot_status", "module_status"],
+      acceptance_criteria: ["robot_status can read the robot and reports robot_reachable=true."],
+    });
+  }
+  if (failed.has("door_and_estop")) {
+    add({
+      check_name: "door_and_estop",
+      severity: "blocker",
+      action: "resolve_door_or_estop",
+      human_required: true,
+      allowed_next_tools: ["robot_status"],
+      acceptance_criteria: ["Door is closed and estop is disengaged in robot_status."],
+    });
+  }
+  if (failed.has("source_plan")) {
+    add({
+      check_name: "source_plan",
+      severity: "blocker",
+      action: "correct_gate_source_plan",
+      human_required: true,
+      allowed_next_tools: ["live_liquid_recovery_gate"],
+      acceptance_criteria: [`source_plan is one of: ${[...LIQUID_GATE_SOURCE_PLANS].join(", ")}.`],
+    });
+  }
+  if (failed.has("source_map_requirements")) {
+    add({
+      check_name: "source_map_requirements",
+      severity: "blocker",
+      action: "record_or_correct_liquid_source_map",
+      human_required: true,
+      allowed_next_tools: ["record_liquid_source_map", "get_liquid_source_map", "live_liquid_recovery_gate"],
+      acceptance_criteria: [
+        "All required source-map entries exist.",
+        "Each required entry expected_presence matches the gate requirement.",
+        "No required expected-present source has observed_presence=false from a live probe.",
+      ],
+    });
+  }
+  if (warned.has("source_map_requirements")) {
+    const sourceMapCheck = checksByName.get("source_map_requirements") || {};
+    add({
+      check_name: "source_map_requirements",
+      severity: "warning",
+      action: "run_observed_mismatch_reprobe",
+      human_required: false,
+      allowed_next_tools: ["probe_wells", "apply_liquid_probe_results", "live_liquid_recovery_gate"],
+      acceptance_criteria: [
+        "Only probe wells listed in allowed_probe_targets.",
+        "The probe protocol uses require_liquid_presence or detect_presence only.",
+        "The probe protocol has no aspirate or dispense commands.",
+        "Apply the probe result back to source-map observed_presence before any resume.",
+      ],
+      allowed_probe_targets: sourceMapCheck.allowed_probe_targets || [],
+      caution: "This warning permits evidence collection only; it does not permit runtime_watch, run_protocol resume, aspirate, or dispense.",
+    });
+  }
+  if (failed.has("no_attached_tip_before_liquid_probe_rerun")) {
+    add({
+      check_name: "no_attached_tip_before_liquid_probe_rerun",
+      severity: "blocker",
+      action: "clear_attached_tip_before_liquid_rerun",
+      human_required: true,
+      allowed_next_tools: ["robot_status", "live_liquid_recovery_gate", "experiment_history"],
+      acceptance_criteria: ["robot_status reports no pipette with tip_detected=true."],
+      caution: "Do not auto-home or run liquid tests while a tip remains attached after Stall/Collision.",
+    });
+  }
+  if (warned.has("source_identity_metadata")) {
+    const identityCheck = checksByName.get("source_identity_metadata");
+    add({
+      check_name: "source_identity_metadata",
+      severity: "warning",
+      action: "confirm_liquid_source_identity_before_semantic_recovery",
+      human_required: true,
+      allowed_next_tools: ["record_liquid_source_map", "get_liquid_source_map", "live_liquid_recovery_gate"],
+      acceptance_criteria: [
+        "C3.A1 and D3.A1-H1 expected-present sources have specific liquid_name.",
+        "C3.A1 and D3.A1-H1 expected-present sources have sample_id.",
+        "validate-template-md report has status=pass before apply.",
+      ],
+      operator_guidance:
+        identityCheck?.operator_guidance || buildLiquidSourceIdentityOperatorGuidance(sessionId),
+      inputs_needed: (identityCheck?.incomplete_sources || []).map(source => ({
+        key: source.key || `${source.slot_name}.${source.well_name}`,
+        slot_name: source.slot_name || null,
+        well_name: source.well_name || null,
+        current_liquid_name: source.liquid_name || null,
+        current_sample_id: source.sample_id || null,
+        missing_identity_fields: source.missing_identity_fields || [],
+      })),
+    });
+  }
+  if (warned.has("module_blockers")) {
+    add({
+      check_name: "module_blockers",
+      severity: "warning",
+      action: "wait_or_resolve_module_blockers",
+      human_required: false,
+      allowed_next_tools: ["module_status", "live_liquid_recovery_gate"],
+      acceptance_criteria: ["module_status reports no blockers."],
+    });
+  }
+
+  if (plan.length === 0) {
+    add({
+      check_name: "live_liquid_recovery_gate",
+      severity: "ready",
+      action: "run_live_liquid_recovery_tests",
+      human_required: false,
+      no_robot_motion: false,
+      allowed_next_tools: ["runtime_watch_poll", "probe_wells", "run_protocol", "experiment_history"],
+      acceptance_criteria: [
+        "D3 A12 empty-source watcher stops before aspirate and returns needs_user.",
+        "C3.A1 and D3.A1-H1 positive liquid probes detect liquid as expected.",
+      ],
+    });
+  }
+
+  return plan;
+}
+
+function buildLiveLiquidGateOperatorRequest(resolutionPlan = []) {
+  const humanSteps = resolutionPlan.filter(step => step?.human_required === true);
+  const requests = humanSteps.map(step => {
+    const request = {
+      order: step.order,
+      check_name: step.check_name,
+      severity: step.severity,
+      action: step.action,
+      no_robot_motion: step.no_robot_motion !== false,
+      prompt: `Please resolve ${step.action}.`,
+      prompt_zh: `请处理：${step.action}。`,
+      allowed_next_tools: step.allowed_next_tools || [],
+      acceptance_criteria: step.acceptance_criteria || [],
+    };
+    if (step.check_name === "no_attached_tip_before_liquid_probe_rerun") {
+      request.request_type = "physical_state";
+      request.prompt =
+        "Please clear or confirm the left attached-tip state, then let the agent verify with robot_status.";
+      request.prompt_zh =
+        "请先清除或确认左侧移液器仍挂着的枪头状态；之后让我用 robot_status 只读复查。";
+      request.safety_note = step.caution || null;
+      request.safety_note_zh =
+        "上一次清理遇到 Stall/Collision 后，不要自动 home，也不要继续跑液体测试。";
+    } else if (step.check_name === "source_identity_metadata") {
+      request.request_type = "liquid_identity";
+      request.prompt =
+        "Please fill exact liquid_name and sample_id for C3.A1 and D3.A1-H1 before semantic liquid recovery.";
+      request.prompt_zh =
+        "请补全 C3.A1 和 D3.A1-H1 的具体 liquid_name 与 sample_id；否则只能判断有液体，不能判断是不是正确液体。";
+      request.artifacts = {
+        draft_markdown_path: step.operator_guidance?.draft_markdown_path || null,
+        validation_report_path: step.operator_guidance?.validation_report_path || null,
+      };
+      request.inputs_needed = Array.isArray(step.inputs_needed) ? step.inputs_needed : [];
+      request.commands = {
+        generate_draft_command: step.operator_guidance?.generate_draft_command || null,
+        validate_markdown_command: step.operator_guidance?.validate_markdown_command || null,
+        apply_markdown_command: step.operator_guidance?.apply_markdown_command || null,
+      };
+    } else {
+      request.request_type = "operator_action";
+    }
+    return request;
+  });
+
+  return {
+    human_required: requests.length > 0,
+    request_count: requests.length,
+    summary:
+      requests.length > 0
+        ? "Human input is required before live liquid watcher/probe tests can continue."
+        : "No operator input is required by the current gate result.",
+    summary_zh:
+      requests.length > 0
+        ? "继续真机液体 watcher/probe 测试前，需要人先处理下面这些事项。"
+        : "当前 gate 结果不需要人额外处理。",
+    requests,
+  };
+}
+
+function buildLiveLiquidRecoveryGateResult({
+  robotIp,
+  selfTestResult,
+  robotStatusResult,
+  moduleStatusResult,
+  sessionState,
+  requiredSources = [],
+  sourcePlan = null,
+  invalidSourcePlan = null,
+  sessionId = DEFAULT_SESSION_ID,
+  allowObservedMismatchReprobe = false,
+} = {}) {
+  const selfTest = selfTestResult?.data || {};
+  const robotStatus = robotStatusResult?.data || {};
+  const moduleStatus = moduleStatusResult?.data || {};
+  const attachedTips = summarizeAttachedLiquidGateTips(robotStatus);
+  const sourcePlanCheck = buildLiquidSourcePlanGateCheck(sourcePlan, invalidSourcePlan);
+  const sourceMapCheck = buildLiquidSourceMapGateCheck(sessionState, requiredSources, {
+    allowObservedMismatchReprobe,
+  });
+  const sourceIdentityCheck = buildLiquidSourceIdentityMetadataGateCheck(sourceMapCheck, {
+    sessionId,
+  });
+  const checks = [
+    buildGateCheck(
+      "loaded_runtime_recovery_self_test",
+      selfTest.status === "pass" ? "pass" : "fail",
+      selfTest.status === "pass"
+        ? "Loaded MCP runtime recovery self-test passed."
+        : "Loaded MCP runtime recovery self-test failed.",
+      {
+        runtime_build: selfTest.runtime_build || null,
+        failed_checks: selfTest.failed_checks || [],
+        coverage: summarizeRuntimeSelfTestCoverage(selfTest),
+      },
+    ),
+    buildGateCheck(
+      "robot_readonly_connectivity",
+      robotStatus.robot_reachable === true ? "pass" : "fail",
+      robotStatus.robot_reachable === true
+        ? "Robot read-only status endpoints are reachable."
+        : "Robot read-only status endpoints are not reachable.",
+      {
+        robot_ip: robotIp || null,
+        health_summary: robotStatus.health_summary || {},
+      },
+    ),
+    buildGateCheck(
+      "door_and_estop",
+      robotStatus.door?.open === false && robotStatus.estop?.engaged === false ? "pass" : "fail",
+      "Door must be closed and estop disengaged before live liquid watcher/probe re-runs.",
+      {
+        door: robotStatus.door || null,
+        estop: robotStatus.estop || null,
+      },
+    ),
+    buildGateCheck(
+      "no_attached_tip_before_liquid_probe_rerun",
+      attachedTips.length === 0 ? "pass" : "fail",
+      attachedTips.length === 0
+        ? "No pipette reports an attached tip."
+        : "A pipette still reports an attached tip; clear this state before repeating live liquid watcher/probe tests.",
+      {
+        attached_tips: attachedTips,
+      },
+    ),
+    buildGateCheck(
+      "module_blockers",
+      (moduleStatus.blockers || []).length === 0 ? "pass" : "warn",
+      (moduleStatus.blockers || []).length === 0
+        ? "No module blockers were reported."
+        : "One or more module blockers were reported.",
+      {
+        blockers: moduleStatus.blockers || [],
+      },
+    ),
+    sourcePlanCheck,
+    sourceMapCheck,
+    sourceIdentityCheck,
+  ];
+  const failedChecks = checks.filter(check => check.status === "fail");
+  const warningChecks = checks.filter(check => check.status === "warn");
+  const failedCheckNames = failedChecks.map(check => check.name);
+  const warningCheckNames = warningChecks.map(check => check.name);
+  const nextAction = buildLiveLiquidGateNextAction({
+    failedCheckNames,
+    warningCheckNames,
+  });
+  const resolutionPlan = buildLiveLiquidGateResolutionPlan({
+    failedCheckNames,
+    warningCheckNames,
+    checks,
+    sessionId,
+  });
+  const operatorRequest = buildLiveLiquidGateOperatorRequest(resolutionPlan);
+
+  return {
+    status: failedChecks.length > 0 ? "blocked" : warningChecks.length > 0 ? "warn" : "pass",
+    ok_for_live_liquid_rerun: failedChecks.length === 0,
+    source_plan: sourcePlan || null,
+    allow_observed_mismatch_reprobe: allowObservedMismatchReprobe,
+    checks,
+    failed_checks: failedCheckNames,
+    warning_checks: warningCheckNames,
+    ...nextAction,
+    resolution_plan: resolutionPlan,
+    operator_request: operatorRequest,
+    next_steps: [
+      failedCheckNames.includes("source_plan")
+        ? `Use a supported source plan: ${[...LIQUID_GATE_SOURCE_PLANS].join(", ")}.`
+        : null,
+      failedCheckNames.includes("source_map_requirements")
+        ? "Record or correct required liquid source-map entries before repeating liquid handling."
+        : null,
+      warningCheckNames.includes("source_map_requirements")
+        ? "Only targeted no-aspirate re-probe is allowed for source-map/live-observation mismatches."
+        : null,
+      warningCheckNames.includes("source_identity_metadata")
+        ? "Fill and validate runs/self-recovery/artifacts/liquid-source-identity-draft.md before semantic liquid recovery or source substitution."
+        : null,
+      attachedTips.length > 0 ? "Clear the attached pipette tip state before any liquid watcher/probe re-run." : null,
+      failedChecks.length === 0
+        ? "Proceed to D3 A12 empty-source watcher and C3/D3 positive liquid probe re-runs using the loaded MCP client."
+        : "Do not run live liquid watcher/probe tests until failed gate checks are resolved.",
+    ].filter(Boolean),
+  };
+}
+
 function resolveSessionId(args, robotStatusResult) {
   return (
     args.session_id ||
@@ -1424,9 +3087,10 @@ function resolveSessionId(args, robotStatusResult) {
 
 function recordResultLog(entry) {
   try {
-    appendResultLogEntry(entry);
+    return appendResultLogEntry(entry);
   } catch {
     // Result logging must never break the main MCP flow.
+    return null;
   }
 }
 
@@ -1461,7 +3125,7 @@ function recordToolResultLog({
   fallbackSessionId = DEFAULT_SESSION_ID,
   fallbackStatus = "completed",
 } = {}) {
-  recordResultLog({
+  return recordResultLog({
     session_id: resolveLoggedSessionId({ args, result, error, fallback: fallbackSessionId }),
     run_id: resolveLoggedRunId({ result, error }),
     tool_name: toolName,
@@ -1535,6 +3199,76 @@ function resolveProbeProtocolOutputPath(args) {
     timestamp,
   ].join("_");
   return path.join(DEFAULT_PROBE_PROTOCOL_DIR, `${baseName}.py`);
+}
+
+function resolveContinuationProtocolOutputPath(args, runId) {
+  if (args.output_path) {
+    return path.resolve(args.output_path);
+  }
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const baseName = [
+    "continuation",
+    sanitizeProbeFilenamePart(runId || "run"),
+    timestamp,
+  ].join("_");
+  return path.join(DEFAULT_CONTINUATION_PROTOCOL_DIR, `${baseName}.py`);
+}
+
+function resolveLiquidSubstitutionProtocolOutputPath(args, failedSourceKey, selectedSourceKey) {
+  if (args.output_path) {
+    return path.resolve(args.output_path);
+  }
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const baseName = [
+    "liquid-source-substitution",
+    sanitizeProbeFilenamePart(failedSourceKey || "failed-source"),
+    sanitizeProbeFilenamePart(selectedSourceKey || args.preferred_source_key || "replacement"),
+    timestamp,
+  ].join("_");
+  return path.join(DEFAULT_LIQUID_SUBSTITUTION_PROTOCOL_DIR, `${baseName}.py`);
+}
+
+function resolveLiquidSubstitutionRecoveryBundleOutputPath(args, failedSourceKey, selectedSourceKey) {
+  if (args.output_path) {
+    return path.resolve(args.output_path);
+  }
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const baseName = [
+    "liquid-source-substitution-recovery",
+    sanitizeProbeFilenamePart(failedSourceKey || "failed-source"),
+    sanitizeProbeFilenamePart(selectedSourceKey || args.preferred_source_key || "replacement"),
+    timestamp,
+  ].join("_");
+  return path.join(DEFAULT_LIQUID_SUBSTITUTION_PROTOCOL_DIR, `${baseName}.json`);
+}
+
+function selectProtocolAnalysis(analysesPayload) {
+  const analyses = asArray(unwrapData(analysesPayload));
+  return (
+    analyses.find(analysis => analysis?.status === "completed" && Array.isArray(analysis.commands)) ||
+    analyses.find(analysis => Array.isArray(analysis?.commands)) ||
+    null
+  );
+}
+
+async function readProtocolAnalysisForRun(robotIp, runDetail) {
+  const runRecord = unwrapData(runDetail) || {};
+  const protocolId = readNested(runRecord, [["protocolId"]], null);
+  if (!protocolId) {
+    throw new Error("generate_continuation_protocol could not resolve protocolId from source run.");
+  }
+
+  const analyses = await requestRobotJson("GET", robotIp, `/protocols/${protocolId}/analyses`);
+  const analysis = selectProtocolAnalysis(analyses);
+  if (!analysis) {
+    throw new Error(`generate_continuation_protocol found no analysis commands for protocol ${protocolId}.`);
+  }
+
+  return {
+    protocolId,
+    analysis,
+    analysisCommands: asArray(analysis.commands),
+  };
 }
 
 function rewriteVisionEndpointError(error, endpoint) {
@@ -1742,6 +3476,18 @@ function deriveContextRunId(contextType, contextId) {
   return normalizeContextType(contextType) === "protocol" ? contextId : null;
 }
 
+function assertCommandSucceeded(result, label) {
+  const terminal = unwrapData(result?.terminal) || {};
+  const status = readNested(terminal, [["status"]], null);
+  if (status !== "succeeded") {
+    const commandType = readNested(terminal, [["commandType"]], label);
+    const detail = readNested(terminal, [["error", "detail"]], null);
+    throw new Error(
+      `${label || commandType || "command"} failed with status ${status || "unknown"}${detail ? `: ${detail}` : ""}`,
+    );
+  }
+}
+
 function resolveContextSessionId(args, robotStatusResult, contextId = null) {
   return args.session_id || contextId || resolveSessionId(args, robotStatusResult);
 }
@@ -1850,6 +3596,59 @@ function resolveFailedWellAndTiprackSlot({ args, run, failedCommand } = {}) {
   return {
     failedWell,
     tiprackSlot: readNested(labware, [["location", "slotName"]], null),
+  };
+}
+
+function readProtocolSourceForTipBinding(args = {}) {
+  if (typeof args.protocol_source === "string" && args.protocol_source.trim()) {
+    return {
+      source: args.protocol_source,
+      sourceType: "protocol_source",
+      filePath: null,
+    };
+  }
+
+  const inputPath = args.file_path || args.protocol_path || null;
+  if (!inputPath) {
+    return null;
+  }
+
+  const resolved = path.resolve(inputPath);
+  if (!fs.existsSync(resolved)) {
+    throw new Error(`Protocol file not found for tip binding classification: ${resolved}`);
+  }
+
+  return {
+    source: fs.readFileSync(resolved, "utf8"),
+    sourceType: "file_path",
+    filePath: resolved,
+  };
+}
+
+function resolveTipBindingClassification(args = {}) {
+  if (args.tip_binding_mode) {
+    const mode = String(args.tip_binding_mode).trim().toLowerCase();
+    if (!["auto", "explicit", "starting_tip"].includes(mode)) {
+      throw new Error(`Unsupported tip_binding_mode: ${args.tip_binding_mode}`);
+    }
+    return {
+      mode,
+      reason: "operator_supplied",
+      source_type: "argument",
+      file_path: null,
+    };
+  }
+
+  const protocolSource = readProtocolSourceForTipBinding(args);
+  if (!protocolSource) {
+    return null;
+  }
+
+  const classification = classifyTipBindingModeDetail(protocolSource.source);
+  return {
+    ...classification,
+    source_type: protocolSource.sourceType,
+    file_path: protocolSource.filePath,
   };
 }
 
@@ -2171,6 +3970,17 @@ async function executeProtocolRecovery(args, { expectedAction = null, watchMode 
         timeoutMs: args.timeout_ms ?? 120000,
         pollIntervalMs: args.poll_interval_ms ?? 500,
       });
+
+      if (nextTiprackSlot && nextWell) {
+        mutateSessionState(sessionId, sessionState => {
+          markTipWellStatus(sessionState, {
+            slotName: nextTiprackSlot,
+            wellName: nextWell,
+            status: "depleted",
+          });
+          return sessionState;
+        });
+      }
 
       executionResult = {
         executedAction: action,
@@ -2500,6 +4310,56 @@ async function executeLiveReadinessCheck(args) {
   };
 }
 
+function evaluateVirtualLabStateGate(args) {
+  if (!args || args.skip_virtual_lab_state_validation === true) {
+    return null;
+  }
+  const steps = Array.isArray(args.virtual_lab_steps) ? args.virtual_lab_steps : null;
+  const explicitValidate = args.validate_virtual_lab_state === true;
+  if (!steps && !explicitValidate) {
+    return null;
+  }
+  if (steps && steps.length === 0) {
+    return null;
+  }
+
+  const sessionId = args.session_id || DEFAULT_SESSION_ID;
+  const initialState = args.initial_state || readSessionState(sessionId);
+  const validation = validateVirtualLabStateSteps(initialState, steps || []);
+  if (validation.ok) {
+    return null;
+  }
+
+  return {
+    data: {
+      ok: false,
+      error: {
+        error_type: "VirtualLabStateViolations",
+        error: `Virtual Lab State validation blocked simulation: ${validation.violations.length} violation(s).`,
+      },
+      blocked_by: "virtual_lab_state_validation",
+      virtual_lab_validation: {
+        ok: validation.ok,
+        violation_count: validation.violations.length,
+        violations: validation.violations,
+        final_state: validation.state,
+        no_robot_motion: true,
+        persisted: false,
+      },
+      stdout: "",
+      stderr: "",
+      helper: {
+        runner_python: null,
+        helper_script: null,
+        helper_exit_code: null,
+      },
+      no_robot_motion: true,
+    },
+    stateRevision: initialState.state_revision ?? null,
+    sessionId: initialState.session_id || sessionId,
+  };
+}
+
 const TOOL_HANDLERS = {
   async robot_health(args) {
     const health = await requestRobotJson("GET", args.robot_ip, "/health");
@@ -2659,6 +4519,432 @@ const TOOL_HANDLERS = {
     };
   },
 
+  async record_liquid_source_map(args) {
+    const sessionId = args.session_id || DEFAULT_SESSION_ID;
+    const sources = Array.isArray(args.sources) ? args.sources : [];
+    if (sources.length === 0) {
+      throw new Error("record_liquid_source_map requires at least one source.");
+    }
+
+    const recorded = [];
+    const { state } = mutateSessionState(sessionId, sessionState => {
+      for (const source of sources) {
+        const entry = setLiquidSourceState(sessionState, source);
+        if (entry) {
+          recorded.push(entry);
+        }
+      }
+      return sessionState;
+    });
+
+    return {
+      data: {
+        recorded_sources: recorded,
+        liquid_tracking: state.liquid_tracking,
+      },
+      stateRevision: state.state_revision,
+      sessionId,
+    };
+  },
+
+  async get_liquid_source_map(args) {
+    const sessionId = args.session_id || DEFAULT_SESSION_ID;
+    const sessionState = readSessionState(sessionId);
+    const sourcesByKey = sessionState.liquid_tracking?.sources || {};
+    const slotFilter = args.slot_name ? String(args.slot_name).trim().toUpperCase() : null;
+    const wellFilter = args.well_name ? String(args.well_name).trim().toUpperCase() : null;
+    const entries = Object.entries(sourcesByKey)
+      .filter(([, source]) => {
+        if (slotFilter && source.slot_name !== slotFilter) {
+          return false;
+        }
+        if (wellFilter && source.well_name !== wellFilter) {
+          return false;
+        }
+        return true;
+      })
+      .map(([key, source]) => ({ key, ...source }))
+      .sort((left, right) => left.key.localeCompare(right.key));
+
+    return {
+      data: {
+        sources: entries,
+        source_count: entries.length,
+        liquid_tracking: sessionState.liquid_tracking || { sources: {} },
+      },
+      stateRevision: sessionState.state_revision,
+      sessionId,
+    };
+  },
+
+  async summarize_liquid_source_map(args) {
+    const sessionId = args.session_id || DEFAULT_SESSION_ID;
+    const sessionState = readSessionState(sessionId);
+    const slotName = args.slot_name || args.slotName || null;
+    const summary = buildLiquidSourceIdentityMetadataSummary(
+      sessionState.liquid_tracking?.sources || {},
+      { slotName },
+    );
+    const result = {
+      data: {
+        ...summary,
+        slot_filter: slotName ? String(slotName).trim().toUpperCase() : null,
+        record_liquid_source_map_draft: {
+          session_id: sessionId,
+          ...summary.record_liquid_source_map_draft,
+        },
+      },
+      stateRevision: sessionState.state_revision,
+      sessionId,
+    };
+
+    recordToolResultLog({
+      toolName: "summarize_liquid_source_map",
+      eventKind: "source_map_readiness",
+      args,
+      result,
+      fallbackSessionId: sessionId,
+      fallbackStatus: result.data.ready_for_semantic_recovery ? "pass" : "warn",
+      summary: result.data.ready_for_semantic_recovery
+        ? "Liquid source map has specific identity metadata for expected-present sources."
+        : "Liquid source map is not ready for semantic recovery; expected-present source identity metadata is incomplete.",
+      data: {
+        slot_filter: result.data.slot_filter,
+        source_count: result.data.source_count,
+        expected_present_count: result.data.expected_present_count,
+        expected_absent_count: result.data.expected_absent_count,
+        unknown_presence_count: result.data.unknown_presence_count,
+        incomplete_expected_present_count: result.data.incomplete_expected_present_count,
+        ready_for_semantic_recovery: result.data.ready_for_semantic_recovery,
+        incomplete_expected_present_sources: result.data.incomplete_expected_present_sources,
+        record_liquid_source_map_template: result.data.record_liquid_source_map_template,
+        record_liquid_source_map_draft: {
+          session_id: sessionId,
+          ...result.data.record_liquid_source_map_draft,
+        },
+        operator_action: result.data.operator_action,
+      },
+    });
+
+    return result;
+  },
+
+  async validate_virtual_lab_state_steps(args) {
+    const sessionId = args.session_id || DEFAULT_SESSION_ID;
+    const initialState = args.initial_state || readSessionState(sessionId);
+    const validation = validateVirtualLabStateSteps(initialState, args.steps || []);
+    return {
+      data: {
+        ok: validation.ok,
+        violation_count: validation.violations.length,
+        violations: validation.violations,
+        final_state: validation.state,
+        no_robot_motion: true,
+        persisted: false,
+      },
+      stateRevision: initialState.state_revision ?? null,
+      sessionId: initialState.session_id || sessionId,
+    };
+  },
+
+  async list_recovery_playbooks(args) {
+    const includeMotion = args.include_motion !== false;
+    const playbooks = listRecoveryPlaybooks({ includeMotion });
+    return {
+      data: {
+        playbooks,
+        playbook_count: playbooks.length,
+        include_motion: includeMotion,
+        no_robot_motion: true,
+      },
+    };
+  },
+
+  async plan_liquid_source_substitution(args) {
+    const sessionId = args.session_id || DEFAULT_SESSION_ID;
+    const sessionState = readSessionState(sessionId);
+    const plan = buildLiquidSourceSubstitutionPlan({
+      sessionState,
+      failedSourceKey: args.failed_source_key,
+      failedSlotName: args.failed_slot_name,
+      failedWellName: args.failed_well_name,
+      preferredSourceKey: args.preferred_source_key,
+    });
+    const result = {
+      data: plan,
+      stateRevision: sessionState.state_revision,
+      sessionId,
+    };
+
+    recordToolResultLog({
+      toolName: "plan_liquid_source_substitution",
+      eventKind: "liquid_source_substitution_plan",
+      args,
+      result,
+      fallbackSessionId: sessionId,
+      fallbackStatus: plan.status === "planned" ? "pass" : "blocked",
+      summary: plan.selected_source_key
+        ? `Liquid source substitution planned from ${plan.failed_source_key} to ${plan.selected_source_key}.`
+        : `Liquid source substitution blocked for ${plan.failed_source_key || "unknown source"}.`,
+      data: {
+        status: plan.status,
+        failed_source_key: plan.failed_source_key,
+        selected_source_key: plan.selected_source_key,
+        candidate_count: plan.candidate_count,
+        ready_for_registered_executor: plan.ready_for_registered_executor,
+        auto_resume_eligible: plan.auto_resume_eligible,
+        auto_resume_blocker: plan.auto_resume_blocker,
+        blocked_reason: plan.blocked_reason,
+        required_next_step: plan.required_next_step,
+        no_robot_motion: plan.no_robot_motion,
+        playbook: plan.playbook,
+        semantic_invariants: plan.semantic_invariants,
+        patch: plan.patch,
+      },
+    });
+
+    return result;
+  },
+
+  async generate_liquid_source_substitution_protocol(args) {
+    const sessionId = args.session_id || DEFAULT_SESSION_ID;
+    const sessionState = readSessionState(sessionId);
+    const previewPlan = buildLiquidSourceSubstitutionPlan({
+      sessionState,
+      failedSourceKey: args.failed_source_key,
+      failedSlotName: args.failed_slot_name,
+      failedWellName: args.failed_well_name,
+      preferredSourceKey: args.preferred_source_key,
+    });
+    const outputPath = resolveLiquidSubstitutionProtocolOutputPath(
+      args,
+      previewPlan.failed_source_key || args.failed_source_key,
+      previewPlan.selected_source_key,
+    );
+    const generated = generateLiquidSourceSubstitutionValidationProtocol({
+      sessionState,
+      failedSourceKey: args.failed_source_key,
+      failedSlotName: args.failed_slot_name,
+      failedWellName: args.failed_well_name,
+      preferredSourceKey: args.preferred_source_key,
+      pipetteName: args.pipette_name,
+      mount: args.mount,
+      tiprackLoadName: args.tiprack_load_name,
+      tiprackSlot: args.tiprack_slot,
+      outputPath,
+      protocolOptions: {
+        apiLevel: args.api_level || "2.24",
+        robotType: args.robot_type || "Flex",
+        tiprackNamespace: args.tiprack_namespace || "opentrons",
+        tiprackVersion: args.tiprack_version ?? 1,
+        labwareNamespace: args.labware_namespace || "opentrons",
+        labwareVersion: args.labware_version ?? 1,
+        trashSlot: args.trash_slot || null,
+      },
+    });
+    const result = {
+      data: {
+        generated_protocol_path: generated.output_path,
+        protocol_source: generated.protocol_source,
+        plan: generated.plan,
+        validation_protocol: generated.validation_protocol,
+        next_required_gates: [
+          "simulate_protocol",
+          "live_liquid_recovery_gate",
+          "run_protocol_only_after_operator_opt_in",
+        ],
+      },
+      stateRevision: sessionState.state_revision,
+      sessionId,
+    };
+
+    recordToolResultLog({
+      toolName: "generate_liquid_source_substitution_protocol",
+      eventKind: "liquid_source_substitution_protocol",
+      args: { ...args, output_path: generated.output_path },
+      result,
+      fallbackSessionId: sessionId,
+      fallbackStatus: "generated",
+      summary: `Liquid source substitution validation protocol generated at ${generated.output_path}.`,
+      data: {
+        generated_protocol_path: generated.output_path,
+        failed_source_key: generated.plan.failed_source_key,
+        selected_source_key: generated.plan.selected_source_key,
+        candidate_count: generated.plan.candidate_count,
+        no_aspirate_or_dispense: generated.validation_protocol.no_aspirate_or_dispense,
+        liquid_guard_analysis: generated.validation_protocol.liquid_guard_analysis,
+        semantic_invariants: generated.validation_protocol.semantic_invariants,
+        next_required_gates: result.data.next_required_gates,
+      },
+    });
+
+    return result;
+  },
+
+  async prepare_liquid_source_substitution_recovery(args) {
+    const sessionId = args.session_id || DEFAULT_SESSION_ID;
+    const sessionState = readSessionState(sessionId);
+    const previewPlan = buildLiquidSourceSubstitutionPlan({
+      sessionState,
+      failedSourceKey: args.failed_source_key,
+      failedSlotName: args.failed_slot_name,
+      failedWellName: args.failed_well_name,
+      preferredSourceKey: args.preferred_source_key,
+    });
+    const protocolOutputPath = args.output_protocol_path
+      ? path.resolve(args.output_protocol_path)
+      : resolveLiquidSubstitutionProtocolOutputPath(
+          {},
+          previewPlan.failed_source_key || args.failed_source_key,
+          previewPlan.selected_source_key || args.preferred_source_key,
+        );
+    const generated = generateLiquidSourceSubstitutionValidationProtocol({
+      sessionState,
+      failedSourceKey: args.failed_source_key,
+      failedSlotName: args.failed_slot_name,
+      failedWellName: args.failed_well_name,
+      preferredSourceKey: args.preferred_source_key,
+      pipetteName: args.pipette_name,
+      mount: args.mount,
+      tiprackLoadName: args.tiprack_load_name,
+      tiprackSlot: args.tiprack_slot,
+      outputPath: protocolOutputPath,
+      protocolOptions: {
+        apiLevel: args.api_level || "2.24",
+        robotType: args.robot_type || "Flex",
+        tiprackNamespace: args.tiprack_namespace || "opentrons",
+        tiprackVersion: args.tiprack_version ?? 1,
+        labwareNamespace: args.labware_namespace || "opentrons",
+        labwareVersion: args.labware_version ?? 1,
+        trashSlot: args.trash_slot || null,
+      },
+    });
+    const simulation = await TOOL_HANDLERS.simulate_protocol({
+      protocol_path: generated.output_path,
+      ...(args.python_executable ? { python_executable: args.python_executable } : {}),
+      max_log_chars: 12000,
+    });
+    const parsed = await TOOL_HANDLERS.parse_simulation_output({
+      simulation_output_json: JSON.stringify(simulation.data),
+    });
+    const simulationParse = parsed.data;
+    const semanticInvariants = validateLiquidSourceSubstitutionInvariants({
+      plan: generated.plan,
+      validationProtocol: generated.validation_protocol,
+      simulationParse,
+      liveGatePassed: false,
+      operatorOptIn: false,
+      liveExecutionAllowed: false,
+      liveProtocolRunAllowed: false,
+    });
+    const prepared =
+      simulationParse?.status === "passed" &&
+      semanticInvariants.experiment_intent_violation_count === 0;
+    const bundleOutputPath = resolveLiquidSubstitutionRecoveryBundleOutputPath(
+      args,
+      generated.plan.failed_source_key,
+      generated.plan.selected_source_key,
+    );
+    const recoveryBundle = {
+      status: prepared ? "prepared" : "blocked",
+      playbook: LIQUID_SOURCE_SUBSTITUTION_PLAYBOOK_ID,
+      playbook_contract: generated.plan.playbook,
+      session_id: sessionId,
+      state_revision: sessionState.state_revision,
+      failed_source_key: generated.plan.failed_source_key,
+      selected_source_key: generated.plan.selected_source_key,
+      generated_protocol_path: generated.output_path,
+      no_robot_motion: true,
+      no_aspirate_or_dispense: generated.validation_protocol.no_aspirate_or_dispense,
+      plan: generated.plan,
+      validation_protocol: generated.validation_protocol,
+      semantic_invariants: semanticInvariants,
+      simulation: {
+        ok: simulation.data?.ok ?? null,
+        status: simulationParse?.status || null,
+        issue_count: simulationParse?.issue_count ?? null,
+        parsed: simulationParse,
+      },
+      execution: {
+        registered_executor: LIQUID_SOURCE_SUBSTITUTION_PLAYBOOK_ID,
+        fixed_script_prepared: prepared,
+        auto_resume_eligible: prepared && generated.plan.auto_resume_eligible === true,
+        live_execution_allowed: false,
+        live_protocol_run_allowed: false,
+        experiment_intent_violation_count: semanticInvariants.experiment_intent_violation_count,
+        semantic_gate_blocker_count: semanticInvariants.gate_blocker_count,
+        semantic_invariant_status: semanticInvariants.status,
+        next_tool: prepared ? "live_liquid_recovery_gate" : "inspect_simulation_output",
+        required_next_gates: [
+          "live_liquid_recovery_gate",
+          "run_protocol_only_after_operator_opt_in",
+        ],
+        blocked_reason: prepared
+          ? "live_gate_and_operator_opt_in_required_before_any_robot_motion"
+          : semanticInvariants.experiment_intent_violation_count > 0
+            ? "experiment_intent_invariant_failed"
+            : simulationParse?.primary_issue?.category || simulationParse?.status || "simulation_failed",
+      },
+    };
+
+    fs.mkdirSync(path.dirname(bundleOutputPath), { recursive: true });
+    fs.writeFileSync(bundleOutputPath, `${JSON.stringify(recoveryBundle, null, 2)}\n`);
+
+    const result = {
+      data: {
+        ...recoveryBundle,
+        output_path: bundleOutputPath,
+      },
+      stateRevision: sessionState.state_revision,
+      sessionId,
+    };
+
+    const logEntry = recordToolResultLog({
+      toolName: "prepare_liquid_source_substitution_recovery",
+      eventKind: "liquid_source_substitution_recovery_bundle",
+      args: {
+        ...args,
+        output_path: bundleOutputPath,
+        output_protocol_path: generated.output_path,
+      },
+      result,
+      fallbackSessionId: sessionId,
+      fallbackStatus: recoveryBundle.status,
+      summary: prepared
+        ? `Liquid source substitution recovery prepared for ${generated.plan.failed_source_key} -> ${generated.plan.selected_source_key}.`
+        : `Liquid source substitution recovery blocked for ${generated.plan.failed_source_key || "unknown source"}.`,
+      data: {
+        output_path: bundleOutputPath,
+        generated_protocol_path: generated.output_path,
+        failed_source_key: generated.plan.failed_source_key,
+        selected_source_key: generated.plan.selected_source_key,
+        playbook: recoveryBundle.playbook,
+        fixed_script_prepared: prepared,
+        no_robot_motion: true,
+        no_aspirate_or_dispense: generated.validation_protocol.no_aspirate_or_dispense,
+        liquid_guard_analysis: generated.validation_protocol.liquid_guard_analysis,
+        semantic_invariants: recoveryBundle.semantic_invariants,
+        experiment_intent_violation_count:
+          recoveryBundle.execution.experiment_intent_violation_count,
+        semantic_gate_blocker_count: recoveryBundle.execution.semantic_gate_blocker_count,
+        semantic_invariant_status: recoveryBundle.execution.semantic_invariant_status,
+        simulation_status: simulationParse?.status || null,
+        simulation_issue_count: simulationParse?.issue_count ?? null,
+        auto_resume_eligible: recoveryBundle.execution.auto_resume_eligible,
+        live_execution_allowed: false,
+        live_protocol_run_allowed: false,
+        next_tool: recoveryBundle.execution.next_tool,
+        blocked_reason: recoveryBundle.execution.blocked_reason,
+        required_next_gates: recoveryBundle.execution.required_next_gates,
+      },
+    });
+    result.data.result_log_entry_id = logEntry?.entry_id || null;
+    recoveryBundle.result_log_entry_id = result.data.result_log_entry_id;
+    fs.writeFileSync(bundleOutputPath, `${JSON.stringify({ ...recoveryBundle, output_path: bundleOutputPath }, null, 2)}\n`);
+
+    return result;
+  },
+
   async is_home_safe(args) {
     const robotStatusResult = await readRobotStatus(args);
     const sessionId = resolveSessionId(args, robotStatusResult);
@@ -2698,6 +4984,18 @@ const TOOL_HANDLERS = {
         robotStatusSnapshot: robotStatusResult.data,
         moduleStatusSnapshot: moduleStatusResult.data,
         observedDeckState,
+        observedLiquidTracking: args.observed_liquid_tracking ||
+          (Array.isArray(args.observed_liquid_containers)
+            ? { containers: Object.fromEntries(args.observed_liquid_containers.map((container, index) => [
+                container.container_key ||
+                  container.containerKey ||
+                  container.key ||
+                  (container.slot_name || container.slotName
+                    ? `${String(container.slot_name || container.slotName).toUpperCase()}.${String(container.well_name || container.wellName || "").toUpperCase()}`
+                    : `observed-${index}`),
+                container,
+              ])) }
+            : null),
         run: runContext.run,
       });
       applyObservedDeckToSessionState(sessionState, reconciliation.proposed_commit);
@@ -2769,8 +5067,10 @@ const TOOL_HANDLERS = {
     });
 
     let nextTipSuggestion = null;
+    let tipBindingClassification = null;
     let stateAfterSuggestion = sessionState;
     if ((args.error_category || classification.error_category) === "TIP_PHYSICALLY_MISSING") {
+      tipBindingClassification = resolveTipBindingClassification(args);
       const result = mutateSessionState(sessionId, session => {
         nextTipSuggestion = suggestNextTipWell({
           sessionState: session,
@@ -2818,6 +5118,9 @@ const TOOL_HANDLERS = {
       slotOccupation,
       reconciliation,
       alternativeSlots,
+      tipBindingMode: tipBindingClassification?.mode || null,
+      tipBindingClassification,
+      sessionState: stateAfterSuggestion,
     });
     const actionSummary = buildActionSummary({
       recoverySuggestion,
@@ -2831,6 +5134,7 @@ const TOOL_HANDLERS = {
         classification,
         recovery: recoverySuggestion,
         next_tip_suggestion: nextTipSuggestion,
+        tip_binding_classification: tipBindingClassification,
         slot_occupation: slotOccupation,
         alternative_slots: alternativeSlots,
         reconciliation,
@@ -2984,6 +5288,162 @@ const TOOL_HANDLERS = {
       sessionId,
       runId: deriveContextRunId(contextType, args.context_id),
     };
+  },
+
+  async drop_attached_tip(args) {
+    const contextType = "maintenance";
+    const mount = args.mount || "left";
+    const sessionId = args.session_id || args.context_id || DEFAULT_SESSION_ID;
+    const robotStatusBefore = await readRobotStatus(args);
+    const instrument =
+      (robotStatusBefore.data?.instruments_summary || []).find(item => item.mount === mount) || null;
+
+    if (!instrument) {
+      throw new Error(`drop_attached_tip could not find a pipette on mount ${mount}.`);
+    }
+    if (instrument.tip_detected !== true) {
+      throw new Error(`drop_attached_tip refused: robot_status does not show an attached tip on ${mount}.`);
+    }
+
+    const pipetteName = args.pipette_name || instrument.instrument_name;
+    if (!pipetteName) {
+      throw new Error(`drop_attached_tip could not resolve pipette_name for mount ${mount}.`);
+    }
+
+    const timeoutMs = args.timeout_ms ?? 30000;
+    const pollIntervalMs = args.poll_interval_ms ?? 500;
+    const loadResult = await enqueueAndPollCommand({
+      robotIp: args.robot_ip,
+      contextType,
+      contextId: args.context_id,
+      commandPayload: buildLoadPipetteCommand({
+        pipetteName,
+        mount,
+        pipetteId: args.pipette_id,
+        intent: "fixit",
+      }),
+      timeoutMs,
+      pollIntervalMs,
+    });
+    assertCommandSucceeded(loadResult, "loadPipette cleanup");
+    const loadedPipetteId =
+      args.pipette_id ||
+      readNested(unwrapData(loadResult.terminal) || {}, [["params", "pipetteId"], ["data", "params", "pipetteId"]], null) ||
+      readNested(unwrapData(loadResult.terminal) || {}, [["result", "pipetteId"], ["data", "result", "pipetteId"]], null);
+
+    if (!loadedPipetteId) {
+      throw new Error("drop_attached_tip could not resolve pipetteId from loadPipette.");
+    }
+
+    const moveToDropResult = await enqueueAndPollCommand({
+      robotIp: args.robot_ip,
+      contextType,
+      contextId: args.context_id,
+      commandPayload: buildMoveToAddressableAreaForDropTipCommand({
+        pipetteId: loadedPipetteId,
+        intent: "fixit",
+      }),
+      timeoutMs,
+      pollIntervalMs,
+    });
+    assertCommandSucceeded(moveToDropResult, "moveToAddressableAreaForDropTip cleanup");
+    const dropResult = await enqueueAndPollCommand({
+      robotIp: args.robot_ip,
+      contextType,
+      contextId: args.context_id,
+      commandPayload: buildDropTipInPlaceCommand({
+        pipetteId: loadedPipetteId,
+        intent: "fixit",
+      }),
+      timeoutMs,
+      pollIntervalMs,
+    });
+    assertCommandSucceeded(dropResult, "dropTipInPlace cleanup");
+
+    const snapshot = await collectExecutionSnapshot({
+      robotIp: args.robot_ip,
+      contextType,
+      contextId: args.context_id,
+    });
+    const robotStatusAfter = snapshot.robotStatusResult;
+    const afterInstrument =
+      (robotStatusAfter.data?.instruments_summary || []).find(item => item.mount === mount) || null;
+    const tipStillAttached = afterInstrument?.tip_detected === true;
+
+    let reconciliation;
+    let homeSafety;
+    const { state } = mutateSessionState(sessionId, sessionState => {
+      ({ reconciliation, homeSafety } = syncSessionStateFromExecution({
+        sessionState,
+        robotStatusResult: snapshot.robotStatusResult,
+        moduleStatusResult: snapshot.moduleStatusResult,
+        contextDetail: snapshot.contextResult.detail,
+        contextRunId: null,
+        forceCommit: true,
+      }));
+      setPipetteState(sessionState, mount, {
+        instrument_name: pipetteName,
+        tip_attached: tipStillAttached,
+      });
+      const pendingActions = (sessionState.cleanup?.pending_actions || []).filter(
+        action => action !== `drop_tip:${mount}`,
+      );
+      setCleanupState(sessionState, {
+        pending_actions: tipStillAttached
+          ? uniqueSessionStrings([...pendingActions, `drop_tip:${mount}`])
+          : pendingActions,
+      });
+      homeSafety = buildHomeSafetyResult({
+        robotStatusSnapshot: snapshot.robotStatusResult.data,
+        sessionState,
+      });
+      setCleanupState(sessionState, {
+        pending_actions: sessionState.cleanup.pending_actions,
+        auto_home_allowed: homeSafety.auto_home_allowed,
+      });
+      return sessionState;
+    });
+
+    const result = {
+      data: {
+        context_type: contextType,
+        context_id: args.context_id,
+        mount,
+        pipette_name: pipetteName,
+        pipette_id: loadedPipetteId,
+        load_command: loadResult.terminal,
+        move_to_drop_command: moveToDropResult.terminal,
+        drop_command: dropResult.terminal,
+        tip_still_attached: tipStillAttached,
+        reconciliation,
+        home_safety: homeSafety,
+      },
+      hardwareSnapshot: {
+        ...robotStatusBefore.hardwareSnapshot,
+        ...snapshot.robotStatusResult.hardwareSnapshot,
+        ...snapshot.moduleStatusResult.hardwareSnapshot,
+        context: snapshot.contextResult.detail,
+      },
+      stateRevision: state.state_revision,
+      sessionId,
+      runId: null,
+    };
+    recordToolResultLog({
+      toolName: "drop_attached_tip",
+      eventKind: "cleanup_action",
+      args,
+      result,
+      fallbackSessionId: sessionId,
+      summary: tipStillAttached
+        ? `Drop attached tip attempted on ${mount}, but robot still reports a tip.`
+        : `Dropped attached tip from ${mount}.`,
+      data: {
+        mount,
+        pipette_name: pipetteName,
+        tip_still_attached: tipStillAttached,
+      },
+    });
+    return result;
   },
 
   async load_labware(args) {
@@ -4071,6 +6531,7 @@ const TOOL_HANDLERS = {
       mode: args.mode || "detect_presence",
       apiLevel: args.api_level || "2.24",
       liquidPresenceDetection: args.liquid_presence_detection ?? true,
+      startingTip: args.starting_tip,
     });
     fs.writeFileSync(outputPath, `${protocolText}\n`);
 
@@ -4178,7 +6639,13 @@ const TOOL_HANDLERS = {
       data: {
         mode: args.mode || "detect_presence",
         well_count: wells.length,
+        wells,
+        execute_on_robot: true,
+        generated_protocol_path: outputPath,
+        no_aspirate_or_dispense: !/\.aspirate\(|\.dispense\(/.test(protocolText),
         probe_result_count: probeResults.length,
+        probe_results: probeResults,
+        run_id: runResult.runId || null,
         final_status: runResult.data?.final_status || null,
       },
     });
@@ -4278,6 +6745,68 @@ const TOOL_HANDLERS = {
     return result;
   },
 
+  async generate_continuation_protocol(args) {
+    const context = await readExecutionContext(args.robot_ip, "protocol", args.run_id, {
+      includeCommands: true,
+      pageLength: args.page_length ?? 200,
+    });
+    const { protocolId, analysis, analysisCommands } = await readProtocolAnalysisForRun(
+      args.robot_ip,
+      context.detail,
+    );
+    const sessionState =
+      args.use_session_state === true && args.session_id
+        ? readSessionState(args.session_id)
+        : null;
+    const outputPath = resolveContinuationProtocolOutputPath(args, context.contextId || args.run_id);
+    const generated = generateTipContinuationProtocol({
+      run: context.detail,
+      runCommands: unwrapData(context.commands),
+      analysisCommands,
+      sessionState,
+      outputPath,
+      protocolName: args.protocol_name || null,
+    });
+    const runRecord = unwrapData(context.detail) || {};
+    const result = {
+      data: {
+        generated_protocol_path: generated.output_path,
+        starting_tip: generated.starting_tip,
+        remaining_cycles: generated.remaining_cycles,
+        operations: generated.operations,
+        ledger: generated.ledger,
+        source_run_id: context.contextId || args.run_id,
+        source_run_status: readNested(runRecord, [["status"]], null),
+        source_protocol_id: protocolId,
+        analysis_id: readNested(analysis, [["id"]], null),
+        analysis_status: readNested(analysis, [["status"]], null),
+        protocol_source: generated.protocol_source,
+      },
+      hardwareSnapshot: {
+        run: context.detail,
+        commands: context.commands,
+        protocol_analysis: analysis,
+      },
+      sessionId: args.session_id || context.contextId || args.run_id,
+      runId: context.contextId || args.run_id,
+    };
+    recordToolResultLog({
+      toolName: "generate_continuation_protocol",
+      eventKind: "continuation_protocol",
+      args: { ...args, file_path: generated.output_path },
+      result,
+      fallbackSessionId: args.session_id || args.run_id,
+      summary: `Continuation protocol generated from run ${context.contextId || args.run_id}.`,
+      data: {
+        generated_protocol_path: generated.output_path,
+        starting_tip: generated.starting_tip,
+        remaining_cycles: generated.remaining_cycles,
+        source_run_status: result.data.source_run_status,
+      },
+    });
+    return result;
+  },
+
   async execute_protocol_recovery(args) {
     const result = await executeProtocolRecovery(args);
     recordToolResultLog({
@@ -4354,19 +6883,67 @@ const TOOL_HANDLERS = {
     };
   },
 
+  async runtime_watch_loop(args) {
+    const result = await runtimeWatchLoop(args, {
+      readSnapshot: async stepArgs =>
+        collectRunExecutionSnapshot({
+          robotIp: stepArgs.robot_ip,
+          runId: stepArgs.run_id,
+          pageLength: stepArgs.page_length ?? 20,
+        }),
+      readGuidance: async stepArgs =>
+        readRunFailureGuidance(
+          stepArgs,
+          stepArgs.run_id,
+          stepArgs.session_id || stepArgs.run_id,
+        ),
+      executeRecovery: executeProtocolRecovery,
+    });
+
+    recordToolResultLog({
+      toolName: "runtime_watch_loop",
+      eventKind: "runtime_watch_loop",
+      args,
+      result,
+      fallbackSessionId: args.session_id || args.run_id,
+      fallbackStatus: result.status,
+      summary: `Runtime watch loop ended ${result.status} after ${result.turns_completed} turn(s).`,
+      data: {
+        goal_id: result.goal_id,
+        status: result.status,
+        goal_status: result.goal_status,
+        turns_completed: result.turns_completed,
+        final_status: result.final_status,
+        final_reason: result.final_reason,
+        outbox_delivery: result.outbox_delivery || null,
+        no_robot_motion: result.no_robot_motion,
+      },
+    });
+
+    return {
+      data: result,
+      runId: args.run_id,
+      sessionId: args.session_id || args.run_id,
+    };
+  },
+
   async runtime_get_alerts(args) {
+    const alertRunId = args.run_id || args.session_id;
+    if (!alertRunId) {
+      throw new Error("runtime_get_alerts requires run_id or session_id.");
+    }
     return {
       data: {
         status: "ok",
-        latest: readLatest(args.run_id, { watchDir: args.watch_dir || null }),
-        alerts: readAlerts(args.run_id, {
+        latest: readLatest(alertRunId, { watchDir: args.watch_dir || null }),
+        alerts: readAlerts(alertRunId, {
           limit: args.limit ?? 20,
           includeAcked: args.include_acked === true,
           watchDir: args.watch_dir || null,
         }),
       },
-      runId: args.run_id,
-      sessionId: args.session_id || args.run_id,
+      runId: args.run_id || null,
+      sessionId: args.session_id || alertRunId,
     };
   },
 
@@ -4383,6 +6960,75 @@ const TOOL_HANDLERS = {
       },
       runId: args.run_id,
       sessionId: args.session_id || args.run_id,
+    };
+  },
+
+  async runtime_get_outbox(args) {
+    const sessionId = args.session_id || args.run_id || DEFAULT_SESSION_ID;
+    return {
+      data: {
+        status: "ok",
+        paths: runtimeOutboxPaths({
+          sessionId,
+          outboxDir: args.outbox_dir || null,
+          hostAdapterDir: args.host_adapter_dir || null,
+        }),
+        events: readRuntimeOutbox({
+          sessionId,
+          runId: args.run_id || null,
+          limit: args.limit ?? 20,
+          includeAcked: args.include_acked === true,
+          includeDelivered: args.include_delivered !== false,
+          outboxDir: args.outbox_dir || null,
+        }),
+      },
+      runId: args.run_id || null,
+      sessionId,
+    };
+  },
+
+  async runtime_ack_outbox(args) {
+    const sessionId = args.session_id || DEFAULT_SESSION_ID;
+    const event = ackRuntimeOutboxEvent({
+      sessionId,
+      outboxId: args.outbox_id,
+      note: args.note || null,
+      selection: args.selection ?? null,
+      outboxDir: args.outbox_dir || null,
+    });
+    return {
+      data: {
+        status: "acked",
+        event,
+      },
+      runId: event.run_id || null,
+      sessionId,
+    };
+  },
+
+  async runtime_deliver_outbox(args) {
+    const sessionId = args.session_id || args.run_id || DEFAULT_SESSION_ID;
+    const delivery = await deliverRuntimeOutbox({
+      sessionId,
+      runId: args.run_id || null,
+      adapters: args.adapters || [],
+      limit: args.limit ?? 20,
+      includeDelivered: args.include_delivered === true,
+      outboxDir: args.outbox_dir || null,
+      hostAdapterDir: args.host_adapter_dir || null,
+      webhookUrl: args.webhook_url || null,
+    });
+    return {
+      data: {
+        ...delivery,
+        paths: runtimeOutboxPaths({
+          sessionId,
+          outboxDir: args.outbox_dir || null,
+          hostAdapterDir: args.host_adapter_dir || null,
+        }),
+      },
+      runId: args.run_id || null,
+      sessionId,
     };
   },
 
@@ -4460,6 +7106,76 @@ const TOOL_HANDLERS = {
     };
   },
 
+  async runtime_recovery_monitor(args) {
+    const monitor = await runRuntimeRecoveryMonitor(args, {
+      runtimeRecoverySelfTest: async () => buildRuntimeRecoverySelfTestResult(),
+      healthCheck: monitorArgs => TOOL_HANDLERS.health_check(monitorArgs),
+      readRobotStatus,
+      readModuleStatus,
+      readRunHistory,
+      readRunFailureGuidance,
+      safeNextAction: monitorArgs => TOOL_HANDLERS.safe_next_action(monitorArgs),
+      liveLiquidRecoveryGate: monitorArgs => TOOL_HANDLERS.live_liquid_recovery_gate(monitorArgs),
+      runtimeWatchPoll: monitorArgs => TOOL_HANDLERS.runtime_watch_poll(monitorArgs),
+    });
+    if (args.publish_notifications !== false) {
+      monitor.alert_publication = publishMonitorNotifications({
+        monitor,
+        watchDir: args.watch_dir || null,
+        outboxDir: args.outbox_dir || null,
+        includeInfo: args.include_info_notifications === true,
+      });
+      if (Array.isArray(args.notify_adapters) && args.notify_adapters.length > 0) {
+        monitor.outbox_delivery = await deliverRuntimeOutbox({
+          sessionId: monitor.session_id,
+          runId: monitor.run_id || null,
+          adapters: args.notify_adapters,
+          limit: args.notify_limit ?? 20,
+          outboxDir: args.outbox_dir || null,
+          hostAdapterDir: args.host_adapter_dir || null,
+          webhookUrl: args.webhook_url || null,
+        });
+      }
+    }
+    const result = {
+      data: monitor,
+      sessionId: monitor.session_id,
+      runId: monitor.run_id,
+      stateRevision: 0,
+    };
+
+    if (args.record_result_log !== false) {
+      const logEntry = recordToolResultLog({
+        toolName: "runtime_recovery_monitor",
+        eventKind: "runtime_monitor",
+        args,
+        result,
+        fallbackSessionId: monitor.session_id,
+        fallbackStatus: monitor.status,
+        summary: monitor.summary_zh,
+        data: {
+          monitor_id: monitor.monitor_id,
+          status: monitor.status,
+          self_fix_mode: monitor.self_fix_mode,
+          allow_l4_execution: monitor.allow_l4_execution,
+          operator_opt_in: monitor.operator_opt_in,
+          requires_attention: monitor.requires_attention,
+          attention_count: monitor.attention_count,
+          recommended_next_tools: monitor.recommended_next_tools,
+          notifications: monitor.notifications,
+          alert_publication: monitor.alert_publication || null,
+          outbox_delivery: monitor.outbox_delivery || null,
+          acceptance: monitor.acceptance,
+          no_robot_motion: monitor.no_robot_motion,
+        },
+      });
+      result.data.result_log_entry_id = logEntry?.entry_id || null;
+      result.data.result_log_entry = logEntry || null;
+    }
+
+    return result;
+  },
+
   async doctor_local_runtime(args) {
     return {
       data: await runDoctorTool(args),
@@ -4467,6 +7183,10 @@ const TOOL_HANDLERS = {
   },
 
   async simulate_protocol(args) {
+    const gate = evaluateVirtualLabStateGate(args);
+    if (gate) {
+      return gate;
+    }
     return {
       data: await runSimulationTool(args),
     };
@@ -4484,10 +7204,84 @@ const TOOL_HANDLERS = {
 
   async health_check(args) {
     const report = buildHealthCheck(args);
+    report.mcp_server.entrypoint = __filename;
+    report.mcp_server.required_runtime_tools = buildToolAvailabilitySummary();
     if (args.robot_ip) {
       report.robot = await checkRobotHealth(args.robot_ip);
     }
     return { data: report };
+  },
+
+  async runtime_recovery_self_test() {
+    return buildRuntimeRecoverySelfTestResult();
+  },
+
+  async live_liquid_recovery_gate(args) {
+    const [robotStatusResult, moduleStatusResult] = await Promise.all([
+      readRobotStatus(args),
+      readModuleStatus(args),
+    ]);
+    const selfTestResult = buildRuntimeRecoverySelfTestResult();
+    const sessionId = resolveSessionId(args, robotStatusResult);
+    const sessionState = readSessionState(sessionId);
+    const sourceRequirementResolution = resolveLiquidGateRequiredSources({
+      sourcePlan: args.source_plan || null,
+      requiredSources: args.required_sources || [],
+    });
+    const { requiredSources, invalidSourcePlan } = sourceRequirementResolution;
+    const gate = buildLiveLiquidRecoveryGateResult({
+      robotIp: args.robot_ip,
+      selfTestResult,
+      robotStatusResult,
+      moduleStatusResult,
+      sessionState,
+      requiredSources,
+      sourcePlan: args.source_plan || null,
+      invalidSourcePlan,
+      sessionId,
+      allowObservedMismatchReprobe: args.allow_observed_mismatch_reprobe === true,
+    });
+    const result = {
+      data: gate,
+      hardwareSnapshot: {
+        ...robotStatusResult.hardwareSnapshot,
+        ...moduleStatusResult.hardwareSnapshot,
+      },
+      stateRevision: sessionState.state_revision,
+      sessionId,
+    };
+
+    recordToolResultLog({
+      toolName: "live_liquid_recovery_gate",
+      eventKind: "live_readiness",
+      args,
+      result,
+      fallbackSessionId: sessionId,
+      fallbackStatus: gate.status || "completed",
+      summary: gate.ok_for_live_liquid_rerun
+        ? "Live liquid recovery gate passed."
+        : `Live liquid recovery gate blocked: ${gate.failed_checks.join(", ") || gate.status}.`,
+      data: {
+        ok_for_live_liquid_rerun: gate.ok_for_live_liquid_rerun,
+        source_plan: gate.source_plan,
+        failed_checks: gate.failed_checks,
+        warning_checks: gate.warning_checks,
+        recommended_next_action: gate.recommended_next_action,
+        allowed_next_tools: gate.allowed_next_tools,
+        human_required: gate.human_required,
+        resolution_plan: gate.resolution_plan,
+        operator_request: gate.operator_request,
+        next_steps: gate.next_steps,
+        self_test_coverage:
+          gate.checks.find(check => check.name === "loaded_runtime_recovery_self_test")?.coverage || null,
+        source_map_requirements:
+          gate.checks.find(check => check.name === "source_map_requirements")?.required_sources || [],
+        source_identity_metadata:
+          gate.checks.find(check => check.name === "source_identity_metadata") || null,
+      },
+    });
+
+    return result;
   },
 
   async live_readiness_check(args) {

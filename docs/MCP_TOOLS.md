@@ -38,11 +38,17 @@ Classify simulation stdout/stderr into structured repair categories.
 
 **Parameters:** `simulation_output_json` (optional), `stdout` (optional), `stderr` (optional), `exit_code` (optional), `protocol_path` (optional)
 
+### `runtime_recovery_self_test` [L0]
+
+Run no-motion recovery invariants inside the loaded MCP process, including liquidNotFound classification, source-map mismatch handling, and manual-only liquid recovery.
+
+**Parameters:** —
+
 ### `simulate_protocol` [L0]
 
-Run local opentrons.simulate against a protocol file and return structured logs.
+Run local opentrons.simulate against a protocol file and return structured logs. When `virtual_lab_steps` (or `validate_virtual_lab_state=true`) is supplied, the Virtual Lab State gate runs first and blocks the Python simulation on any violation (`blocked_by: "virtual_lab_state_validation"`). Use `skip_virtual_lab_state_validation=true` only inside the simulation-repair loop.
 
-**Parameters:** `protocol_path`, `workspace_root` (optional), `api_root` (optional), `shared_data_root` (optional), `python_executable` (optional), `extra_args` (optional), `max_log_chars` (optional)
+**Parameters:** `protocol_path`, `workspace_root` (optional), `api_root` (optional), `shared_data_root` (optional), `python_executable` (optional), `extra_args` (optional), `max_log_chars` (optional), `session_id` (optional), `initial_state` (optional), `virtual_lab_steps` (optional), `validate_virtual_lab_state` (optional), `skip_virtual_lab_state_validation` (optional)
 
 ### `validate_labware_name` [L0]
 
@@ -78,6 +84,24 @@ Query persisted run, recovery, and reconciliation result logs for recent experim
 
 **Parameters:** `session_id` (optional), `run_id` (optional), `tool_name` (optional), `event_kind` (optional), `status` (optional), `limit` (optional)
 
+### `generate_continuation_protocol` [L2]
+
+Generate a new tip-only continuation protocol from an awaiting-recovery run. This writes a local protocol file but does not stop, play, or move the robot.
+
+**Parameters:** `robot_ip`, `run_id`, `session_id` (optional), `output_path` (optional), `page_length` (optional), `protocol_name` (optional), `use_session_state` (optional)
+
+### `generate_liquid_source_substitution_protocol` [L2]
+
+Generate a fixed no-aspirate validation protocol for a planned same-liquid source substitution. This writes a local protocol file only; it does not upload, run, or resume the robot.
+
+**Parameters:** `session_id` (optional), `failed_source_key`, `failed_slot_name` (optional), `failed_well_name` (optional), `preferred_source_key` (optional), `pipette_name`, `mount`, `tiprack_load_name`, `tiprack_slot`, `output_path` (optional), `api_level` (optional), `robot_type` (optional), `tiprack_namespace` (optional), `tiprack_version` (optional), `labware_namespace` (optional), `labware_version` (optional), `trash_slot` (optional)
+
+### `get_liquid_source_map` [L2]
+
+Read operator-confirmed liquid/source identity from session state. This is bookkeeping only and does not inspect or move the robot.
+
+**Parameters:** `session_id` (optional), `slot_name` (optional), `well_name` (optional)
+
 ### `get_protocols` [L2]
 
 List protocols stored on the robot.
@@ -108,11 +132,23 @@ List all available slots matching specific criteria (empty, addressable, suitabl
 
 **Parameters:** `robot_ip` (optional), `session_id` (optional), `run_id` (optional), `context_type` (optional), `context_id` (optional), `filter` (optional)
 
+### `list_recovery_playbooks` [L2]
+
+List registered fixed recovery playbooks, their gates, allowed watch-mode use, and semantic invariants. This is read-only.
+
+**Parameters:** `include_motion` (optional)
+
 ### `list_tip_candidates` [L2]
 
 List remaining candidate tip wells in default search order using session bookkeeping plus current run context.
 
 **Parameters:** `robot_ip` (optional), `session_id` (optional), `run_id` (optional), `tiprack_slots` (optional)
+
+### `live_liquid_recovery_gate` [L2]
+
+Read-only go/no-go gate before live liquid watcher or probe re-runs. Checks loaded recovery self-test, robot/module status, door/estop, source-map readiness, source identity, and attached-tip blockers without moving the robot. Returns an ordered resolution_plan for clearing blockers safely.
+
+**Parameters:** `robot_ip`, `session_id` (optional), `source_plan` (optional), `required_sources` (optional), `allow_observed_mismatch_reprobe` (optional)
 
 ### `live_readiness_check` [L2]
 
@@ -126,11 +162,29 @@ Fetch attached module state and summarize which modules are ready for execution.
 
 **Parameters:** `robot_ip` (optional)
 
+### `plan_liquid_source_substitution` [L2]
+
+Plan a same-liquid source substitution from the recorded source map. This is read-only/no-motion and does not execute or resume a run.
+
+**Parameters:** `session_id` (optional), `failed_source_key` (optional), `failed_slot_name` (optional), `failed_well_name` (optional), `preferred_source_key` (optional)
+
+### `prepare_liquid_source_substitution_recovery` [L2]
+
+Prepare the registered same-liquid source-substitution recovery playbook: plan replacement, generate the fixed validation protocol, run local simulation, write an auditable bundle, and stop before any robot motion.
+
+**Parameters:** `session_id` (optional), `failed_source_key`, `failed_slot_name` (optional), `failed_well_name` (optional), `preferred_source_key` (optional), `pipette_name`, `mount`, `tiprack_load_name`, `tiprack_slot`, `output_path` (optional), `output_protocol_path` (optional), `python_executable` (optional), `api_level` (optional), `robot_type` (optional), `tiprack_namespace` (optional), `tiprack_version` (optional), `labware_namespace` (optional), `labware_version` (optional), `trash_slot` (optional)
+
 ### `reconcile_state` [L2]
 
 Compare committed session deck state with live hardware and current run context, then persist a proposed reconciliation snapshot.
 
-**Parameters:** `robot_ip` (optional), `session_id` (optional), `run_id` (optional), `context_type` (optional), `context_id` (optional)
+**Parameters:** `robot_ip` (optional), `session_id` (optional), `run_id` (optional), `context_type` (optional), `context_id` (optional), `observed_liquid_containers` (optional), `observed_liquid_tracking` (optional)
+
+### `record_liquid_source_map` [L2]
+
+Record operator-confirmed liquid/sample identity and optional live probe observations for source wells in session state. This is bookkeeping only and does not move the robot.
+
+**Parameters:** `session_id` (optional), `sources`
 
 ### `restart_review` [L2]
 
@@ -160,13 +214,37 @@ Get run state plus recent command history in an agent-friendly format.
 
 Mark a runtime watch alert handled after the operator has supplied the requested decision.
 
-**Parameters:** `run_id`, `alert_id`, `note` (optional), `selection` (optional)
+**Parameters:** `run_id`, `alert_id`, `note` (optional), `selection` (optional), `watch_dir` (optional)
+
+### `runtime_ack_outbox` [L2]
+
+Mark a runtime notification outbox event handled after the operator or host adapter has acted on it.
+
+**Parameters:** `session_id` (optional), `outbox_id`, `note` (optional), `selection` (optional), `outbox_dir` (optional)
+
+### `runtime_deliver_outbox` [L2]
+
+Deliver pending runtime outbox events to configured host adapters: claudecode, codex, cursor, cli, or webhook.
+
+**Parameters:** `session_id` (optional), `run_id` (optional), `adapters` (optional), `limit` (optional), `include_delivered` (optional), `outbox_dir` (optional), `host_adapter_dir` (optional), `webhook_url` (optional)
 
 ### `runtime_get_alerts` [L2]
 
-Read runtime watch alerts and latest watch state for a run. Intended for hook/insurance paths and current-dialog notification checks.
+Read runtime watch and monitor alerts plus latest watch state. Intended for hook/insurance paths and current-dialog notification checks.
 
-**Parameters:** `run_id`, `limit` (optional), `include_acked` (optional)
+**Parameters:** `run_id` (optional), `session_id` (optional), `limit` (optional), `include_acked` (optional), `watch_dir` (optional)
+
+### `runtime_get_outbox` [L2]
+
+Read pending runtime notification outbox events created from watcher/monitor alerts for host adapters.
+
+**Parameters:** `session_id` (optional), `run_id` (optional), `limit` (optional), `include_acked` (optional), `include_delivered` (optional), `outbox_dir` (optional), `host_adapter_dir` (optional)
+
+### `runtime_recovery_monitor` [L2]
+
+Active L1-L4 runtime recovery monitor tick. L1 checks runtime/robot/module health, L2 watches a run, L3 coordinates recovery gates and safe-next guidance, and L4 only delegates whitelisted L0 self-fixes when explicitly enabled.
+
+**Parameters:** `robot_ip` (optional), `session_id` (optional), `run_id` (optional), `levels` (optional), `self_fix_mode` (optional), `allow_l4_execution` (optional), `operator_opt_in` (optional), `source_plan` (optional), `required_sources` (optional), `enable_liquid_gate` (optional), `allow_observed_mismatch_reprobe` (optional), `max_block_ms` (optional), `poll_interval_ms` (optional), `timeout_ms` (optional), `page_length` (optional), `tiprack_slots` (optional), `tip_binding_mode` (optional), `protocol_source` (optional), `file_path` (optional), `protocol_path` (optional), `watch_dir` (optional), `record_result_log` (optional), `publish_notifications` (optional), `include_info_notifications` (optional), `notify_adapters` (optional), `notify_limit` (optional), `outbox_dir` (optional), `host_adapter_dir` (optional), `webhook_url` (optional)
 
 ### `safe_next_action` [L2]
 
@@ -179,6 +257,18 @@ Single-entry operator summary after MCP/host restart: same payload as restart_re
 Suggest the next viable tip well after skipping previously failed or depleted wells.
 
 **Parameters:** `robot_ip` (optional), `session_id` (optional), `run_id` (optional), `tiprack_slots` (optional), `tiprack_slot` (optional), `failed_well` (optional), `failure_status` (optional)
+
+### `summarize_liquid_source_map` [L2]
+
+Summarize liquid source-map completeness for semantic recovery. This is read-only and does not inspect or move the robot.
+
+**Parameters:** `session_id` (optional), `slot_name` (optional)
+
+### `validate_virtual_lab_state_steps` [L2]
+
+Run deterministic Virtual Lab State checks against proposed protocol steps before local simulation. Pure software only; it does not write session state or move the robot. The same checks run inline as a pre-simulation gate inside `simulate_protocol` when `virtual_lab_steps` is supplied.
+
+**Parameters:** `session_id` (optional), `initial_state` (optional), `steps`
 
 ## L3 — Live control — opt-in motion and runs
 
@@ -224,11 +314,17 @@ Create either a protocol run context or a maintenance-run context before enqueue
 
 **Parameters:** `robot_ip` (optional), `context_type` (optional), `protocol_id` (optional), `run_time_parameters` (optional), `labware_offsets` (optional), `session_id` (optional)
 
+### `drop_attached_tip` [L3]
+
+Safely drop an already attached pipette tip in a maintenance context after a stopped or recovery run. Refuses when robot_status does not confirm a tip on the requested mount.
+
+**Parameters:** `robot_ip` (optional), `context_id`, `mount` (optional), `pipette_name` (optional), `pipette_id` (optional), `labware_id` (optional), `well_name` (optional), `session_id` (optional), `timeout_ms` (optional), `poll_interval_ms` (optional)
+
 ### `execute_protocol_recovery` [L3]
 
 Execute a supported protocol recovery branch from live recovery guidance, then resume the run when appropriate.
 
-**Parameters:** `robot_ip` (optional), `run_id`, `session_id` (optional), `expected_action` (optional), `tiprack_slots` (optional), `recovery_well` (optional), `tiprack_slot` (optional), `destination_slot` (optional), `allow_low_confidence_destination` (optional), `module_wait_timeout_ms` (optional), `module_poll_interval_ms` (optional), `timeout_ms` (optional), `poll_interval_ms` (optional), `page_length` (optional)
+**Parameters:** `robot_ip` (optional), `run_id`, `session_id` (optional), `expected_action` (optional), `tiprack_slots` (optional), `recovery_well` (optional), `tiprack_slot` (optional), `tip_binding_mode` (optional), `protocol_source` (optional), `file_path` (optional), `protocol_path` (optional), `destination_slot` (optional), `allow_low_confidence_destination` (optional), `module_wait_timeout_ms` (optional), `module_poll_interval_ms` (optional), `timeout_ms` (optional), `poll_interval_ms` (optional), `page_length` (optional)
 
 ### `load_labware` [L3]
 
@@ -258,7 +354,7 @@ Enqueue moveLabware with gripper strategy and poll to terminal status.
 
 Experimental liquid probing helper that generates a temporary protocol, simulates it locally, and can be explicitly enabled for live robot execution later.
 
-**Parameters:** `robot_ip` (optional), `pipette_name`, `mount`, `tiprack_load_name`, `tiprack_slot`, `labware_load_name`, `labware_slot`, `trash_slot` (optional), `wells`, `mode` (optional), `api_level` (optional), `liquid_presence_detection` (optional), `execute_on_robot` (optional), `output_path` (optional), `timeout_ms` (optional), `poll_interval_ms` (optional), `page_length` (optional), `session_id` (optional), `workspace_root` (optional), `api_root` (optional), `shared_data_root` (optional), `python_executable` (optional), `extra_args` (optional)
+**Parameters:** `robot_ip` (optional), `pipette_name`, `mount`, `tiprack_load_name`, `tiprack_slot`, `starting_tip` (optional), `labware_load_name`, `labware_slot`, `trash_slot` (optional), `wells`, `mode` (optional), `api_level` (optional), `liquid_presence_detection` (optional), `execute_on_robot` (optional), `output_path` (optional), `timeout_ms` (optional), `poll_interval_ms` (optional), `page_length` (optional), `session_id` (optional), `workspace_root` (optional), `api_root` (optional), `shared_data_root` (optional), `python_executable` (optional), `extra_args` (optional)
 
 ### `recover_tip_pickup` [L3]
 
@@ -276,7 +372,13 @@ Upload a protocol, create a run (auto-attaching stored labware offsets), optiona
 
 Bounded runtime watch poll for a live protocol run. Polls run status, executes only narrow L0 self-fix branches, and returns only running/completed/needs_user/hard_stop/unreachable.
 
-**Parameters:** `robot_ip` (optional), `run_id`, `session_id` (optional), `max_block_ms` (optional), `poll_interval_ms` (optional), `timeout_ms` (optional), `page_length` (optional), `tiprack_slots` (optional), `module_wait_timeout_ms` (optional), `module_poll_interval_ms` (optional), `max_attempts_per_failed_command` (optional), `unreachable_threshold` (optional)
+**Parameters:** `robot_ip` (optional), `run_id`, `session_id` (optional), `max_block_ms` (optional), `poll_interval_ms` (optional), `timeout_ms` (optional), `page_length` (optional), `tiprack_slots` (optional), `tip_binding_mode` (optional), `protocol_source` (optional), `file_path` (optional), `protocol_path` (optional), `module_wait_timeout_ms` (optional), `module_poll_interval_ms` (optional), `max_attempts_per_failed_command` (optional), `unreachable_threshold` (optional)
+
+### `runtime_watch_loop` [L3]
+
+Goal-driven auto-wake loop that reuses `runtime_watch_poll` on a budgeted schedule (`max_turns`, `max_runtime_ms`, `interval_ms`) and emits one outbox sentinel per tick for host-adapter wake (`claudecode`/`cursor`/`codex`/`cli`/`webhook`). Persists `goal-state.json` per run (`resume=true` continues an active goal). Returns `goal_status` ∈ {`COMPLETE`, `BLOCKED`, `BUDGET_LIMITED`}; `COMPLETE` requires a `completed` tick or the verify callback. Inherits the L0–L4 safety model: only L0 whitelist fixes auto-execute; `needs_user`/`hard_stop` stop the loop and emit a BLOCKED sentinel. Default `self_fix_mode=observe` (no robot motion); guarded L0 self-fix requires `allow_l4_execution=true` + `operator_opt_in=true`.
+
+**Parameters:** `run_id`, `robot_ip` (optional), `session_id` (optional), `goal_id` (optional), `goal_prompt` (optional), `max_turns` (optional), `max_runtime_ms` (optional), `interval_ms` (optional), `max_block_ms` (optional), `poll_interval_ms` (optional), `page_length` (optional), `tiprack_slots` (optional), `tip_binding_mode` (optional), `protocol_source` (optional), `file_path` (optional), `protocol_path` (optional), `module_wait_timeout_ms` (optional), `module_poll_interval_ms` (optional), `max_attempts_per_failed_command` (optional), `unreachable_threshold` (optional), `resume` (optional), `self_fix_mode` (optional), `allow_l4_execution` (optional), `operator_opt_in` (optional), `watch_dir` (optional), `outbox_dir` (optional), `notify_adapters` (optional), `notify_limit` (optional), `host_adapter_dir` (optional), `webhook_url` (optional)
 
 ### `upload_protocol` [L3]
 
@@ -338,7 +440,7 @@ Parse run or maintenance command failures into structured runtime error categori
 
 Recommend the next recovery branch from live run errors, robot/module state, and session bookkeeping.
 
-**Parameters:** `robot_ip` (optional), `session_id` (optional), `run_id` (optional), `context_type` (optional), `context_id` (optional), `error_category` (optional), `target_slot` (optional), `failed_well` (optional), `tiprack_slot` (optional), `tiprack_slots` (optional)
+**Parameters:** `robot_ip` (optional), `session_id` (optional), `run_id` (optional), `context_type` (optional), `context_id` (optional), `error_category` (optional), `target_slot` (optional), `failed_well` (optional), `tiprack_slot` (optional), `tip_binding_mode` (optional), `protocol_source` (optional), `file_path` (optional), `protocol_path` (optional), `tiprack_slots` (optional)
 
 ### `vision_check` [L4]
 

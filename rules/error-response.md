@@ -51,6 +51,11 @@ Compatibility fields such as `error_category`, `hard_stop`, and `escalate_to_hum
 3. `wait_and_poll_module_status`
 4. `reconcile_state_first` when reconciliation diffs are module-blocker-only
 
+`retry_pick_up_tip_with_next_candidate` is only valid when the protocol source classifies as
+automatic tip binding (`pick_up_tip()` or high-level automatic tip handling). Explicit tip
+locations and `starting_tip` state require a continuation protocol path instead of same-run
+auto-resume.
+
 ### Runtime watch autonomy
 
 `runtime_watch_poll` is narrower than `execute_protocol_recovery`. It may auto-execute only L0 branches, in this order:
@@ -63,6 +68,10 @@ Compatibility fields such as `error_category`, `hard_stop`, and `escalate_to_hum
    - `reconcile_state_first` for module-blocker-only diffs
 
 `runtime_watch_poll` must not auto-execute `suggest_new_destination_slot`, even when candidates look high-confidence. Destination recovery remains human-reviewed.
+
+Liquid source-map entries are operator-confirmed bookkeeping only. They may be included in
+`INSUFFICIENT_VOLUME` recovery guidance to preserve liquid/sample identity, but they do not
+authorize automatic source-well substitution or automatic resume.
 
 ### Manual-only examples
 
@@ -82,6 +91,8 @@ Compatibility fields such as `error_category`, `hard_stop`, and `escalate_to_hum
 - `LABWARE_OR_MODULE_COMPAT`
 - `VOLUME_OR_RANGE_VIOLATION`
 - `OUT_OF_TIPS` when discovered in simulation
+- `TIP_PHYSICALLY_MISSING` in an explicit-tip or `starting_tip` protocol, until the validated
+  continuation-protocol generator is available
 
 ## Hard-stop policy
 

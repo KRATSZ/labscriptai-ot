@@ -46,7 +46,11 @@ Install via marketplace or local plugin source. Confirm `.claude-plugin/mcp.json
 
 ### Codex
 
-Local plugin path must be the repository root. MCP config: `.mcp.json` at repo root.
+Local plugin path must be the repository root. MCP config: `.mcp.json` at repo root. The MCP server path should use `${PLUGIN_ROOT}/servers/opentrons-mcp/index.js`.
+
+Codex desktop may also read `.codex/config.toml` from the repository. Use absolute paths in that file for `args[0]`, `OPENTRONS_PLUGIN_ROOT`, `OPENTRONS_PROTOCOL_LIBRARY_PATH`, and `PLUGIN_DATA`. If `ps` shows `node servers/opentrons-mcp/index.js` started before your latest edits, restart/reload the Codex MCP process; otherwise the active MCP can keep serving old code even when local `verify-setup` is green.
+
+After reload, `health_check` should report `mcp_server.entrypoint` under the same clone root and `mcp_server.required_runtime_tools.all_present=true`.
 
 ## Required environment variables
 

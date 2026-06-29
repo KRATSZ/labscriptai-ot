@@ -373,6 +373,72 @@ export function buildHomeCommand({
   });
 }
 
+export function buildDropTipCommand({
+  pipetteId,
+  labwareId = null,
+  wellName = null,
+  intent = "fixit",
+  key = null,
+} = {}) {
+  if (!pipetteId) {
+    throw new Error("pipetteId is required.");
+  }
+  return buildCommandPayload({
+    commandType: "dropTip",
+    intent,
+    key,
+    params: {
+      pipetteId,
+      ...(labwareId ? { labwareId } : {}),
+      ...(wellName ? { wellName } : {}),
+    },
+  });
+}
+
+export function buildMoveToAddressableAreaForDropTipCommand({
+  pipetteId,
+  addressableAreaName = "movableTrashA3",
+  offset = null,
+  alternateDropLocation = true,
+  ignoreTipConfiguration = true,
+  intent = "fixit",
+  key = null,
+} = {}) {
+  if (!pipetteId) {
+    throw new Error("pipetteId is required.");
+  }
+  return buildCommandPayload({
+    commandType: "moveToAddressableAreaForDropTip",
+    intent,
+    key,
+    params: {
+      pipetteId,
+      addressableAreaName,
+      offset: offset || { x: 0, y: 0, z: 0 },
+      alternateDropLocation,
+      ignoreTipConfiguration,
+    },
+  });
+}
+
+export function buildDropTipInPlaceCommand({
+  pipetteId,
+  intent = "fixit",
+  key = null,
+} = {}) {
+  if (!pipetteId) {
+    throw new Error("pipetteId is required.");
+  }
+  return buildCommandPayload({
+    commandType: "dropTipInPlace",
+    intent,
+    key,
+    params: {
+      pipetteId,
+    },
+  });
+}
+
 export function deriveCleanupPendingActions(commandType) {
   switch (commandType) {
     case "moveLabware":
@@ -380,6 +446,9 @@ export function deriveCleanupPendingActions(commandType) {
     case "robot/openGripperJaw":
       return ["move_to_maintenance_position"];
     case "calibration/moveToMaintenancePosition":
+      return [];
+    case "dropTip":
+    case "dropTipInPlace":
       return [];
     case "home":
       return [];

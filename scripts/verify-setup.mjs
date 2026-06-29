@@ -12,6 +12,27 @@ import { execSync, spawnSync } from "child_process";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PLUGIN_ROOT = path.resolve(process.env.OPENTRONS_PLUGIN_ROOT || path.join(__dirname, ".."));
 const MCP_ROOT = path.join(PLUGIN_ROOT, "servers/opentrons-mcp");
+const EXPECTED_RUNTIME_BUILD = "liquid-source-map-v2";
+const REQUIRED_RUNTIME_TOOLS = [
+  "health_check",
+  "runtime_recovery_self_test",
+  "runtime_recovery_monitor",
+  "safe_next_action",
+  "restart_review",
+  "validate_virtual_lab_state_steps",
+  "list_recovery_playbooks",
+  "live_liquid_recovery_gate",
+  "robot_status",
+  "module_status",
+  "is_home_safe",
+  "experiment_history",
+  "record_liquid_source_map",
+  "get_liquid_source_map",
+  "summarize_liquid_source_map",
+  "plan_liquid_source_substitution",
+  "generate_liquid_source_substitution_protocol",
+  "prepare_liquid_source_substitution_recovery",
+];
 
 const checks = [];
 let failCount = 0;
@@ -76,6 +97,113 @@ function checkPluginPaths() {
       pass(`Path: ${label}`, rel);
     } else {
       fail(`Path: ${label}`, `Missing ${rel}`, `Ensure OPENTRONS_PLUGIN_ROOT=${PLUGIN_ROOT} points at the plugin clone.`);
+    }
+  }
+}
+
+function readJsonFile(relPath) {
+  const fullPath = path.join(PLUGIN_ROOT, relPath);
+  try {
+    return JSON.parse(fs.readFileSync(fullPath, "utf8"));
+  } catch (err) {
+    fail(`Manifest: ${relPath}`, err.message, `Fix JSON syntax in ${relPath}.`);
+    return null;
+  }
+}
+
+function readTextFile(relPath) {
+  const fullPath = path.join(PLUGIN_ROOT, relPath);
+  try {
+    return fs.readFileSync(fullPath, "utf8");
+  } catch (err) {
+    fail(`Manifest: ${relPath}`, err.message, `Ensure ${relPath} exists and is readable.`);
+    return null;
+  }
+}
+
+function extractTomlString(text, key) {
+  const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = text.match(new RegExp(`^${escapedKey}\\s*=\\s*"([^"]*)"`, "m"));
+  return match ? match[1] : null;
+}
+
+function extractTomlArrayFirstString(text, key) {
+  const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = text.match(new RegExp(`^${escapedKey}\\s*=\\s*\\[\\s*"([^"]*)"`, "m"));
+  return match ? match[1] : null;
+}
+
+function checkMcpManifestPaths() {
+  const expectedIndex = "${PLUGIN_ROOT}/servers/opentrons-mcp/index.js";
+  const expectedRoot = "${PLUGIN_ROOT}";
+  const expectedLibrary = "${PLUGIN_ROOT}/bundled-library";
+  const expectedAbsoluteIndex = path.join(PLUGIN_ROOT, "servers/opentrons-mcp/index.js");
+  const expectedAbsoluteLibrary = path.join(PLUGIN_ROOT, "bundled-library");
+  const expectedAbsoluteData = path.join(PLUGIN_ROOT, ".plugin-data");
+
+  const codexMcp = readJsonFile(".mcp.json");
+  const codexServer = codexMcp?.mcpServers?.["opentrons-lab"];
+  if (
+    codexServer?.args?.[0] === expectedIndex &&
+    codexServer?.env?.OPENTRONS_PLUGIN_ROOT === expectedRoot &&
+    codexServer?.env?.OPENTRONS_PROTOCOL_LIBRARY_PATH === expectedLibrary
+  ) {
+    pass("Manifest: Codex MCP paths", ".mcp.json uses ${PLUGIN_ROOT}");
+  } else {
+    fail(
+      "Manifest: Codex MCP paths",
+      JSON.stringify({
+        args: codexServer?.args || null,
+        OPENTRONS_PLUGIN_ROOT: codexServer?.env?.OPENTRONS_PLUGIN_ROOT || null,
+        OPENTRONS_PROTOCOL_LIBRARY_PATH: codexServer?.env?.OPENTRONS_PROTOCOL_LIBRARY_PATH || null,
+      }),
+      "Use ${PLUGIN_ROOT} in .mcp.json so installed clients load this plugin root instead of a relative working directory."
+    );
+  }
+
+  const legacyServer = readJsonFile("server.json");
+  if (
+    legacyServer?.args?.[0] === expectedIndex &&
+    legacyServer?.env?.OPENTRONS_PLUGIN_ROOT === expectedRoot &&
+    legacyServer?.env?.OPENTRONS_PROTOCOL_LIBRARY_PATH === expectedLibrary
+  ) {
+    pass("Manifest: server.json paths", "server.json uses ${PLUGIN_ROOT}");
+  } else {
+    fail(
+      "Manifest: server.json paths",
+      JSON.stringify({
+        args: legacyServer?.args || null,
+        OPENTRONS_PLUGIN_ROOT: legacyServer?.env?.OPENTRONS_PLUGIN_ROOT || null,
+        OPENTRONS_PROTOCOL_LIBRARY_PATH: legacyServer?.env?.OPENTRONS_PROTOCOL_LIBRARY_PATH || null,
+      }),
+      "Use ${PLUGIN_ROOT} in server.json for clients that read the legacy single-server manifest."
+    );
+  }
+
+  const codexLocalConfig = readTextFile(".codex/config.toml");
+  if (codexLocalConfig) {
+    const args0 = extractTomlArrayFirstString(codexLocalConfig, "args");
+    const configuredRoot = extractTomlString(codexLocalConfig, "OPENTRONS_PLUGIN_ROOT");
+    const configuredLibrary = extractTomlString(codexLocalConfig, "OPENTRONS_PROTOCOL_LIBRARY_PATH");
+    const configuredData = extractTomlString(codexLocalConfig, "PLUGIN_DATA");
+    if (
+      args0 === expectedAbsoluteIndex &&
+      configuredRoot === PLUGIN_ROOT &&
+      configuredLibrary === expectedAbsoluteLibrary &&
+      configuredData === expectedAbsoluteData
+    ) {
+      pass("Manifest: Codex local config paths", ".codex/config.toml uses absolute plugin root");
+    } else {
+      fail(
+        "Manifest: Codex local config paths",
+        JSON.stringify({
+          args: args0,
+          OPENTRONS_PLUGIN_ROOT: configuredRoot,
+          OPENTRONS_PROTOCOL_LIBRARY_PATH: configuredLibrary,
+          PLUGIN_DATA: configuredData,
+        }),
+        "Use absolute paths in .codex/config.toml; relative paths can keep Codex running a stale MCP process after edits."
+      );
     }
   }
 }
@@ -145,6 +273,17 @@ async function checkHealth(pythonExe) {
       fail("health_check: MCP server", JSON.stringify(report.mcp_server), "Reinstall MCP dependencies.");
     }
 
+    const runtimeBuild = report.mcp_server?.capabilities?.runtime_build || null;
+    if (runtimeBuild === EXPECTED_RUNTIME_BUILD) {
+      pass("health_check: runtime capabilities", runtimeBuild);
+    } else {
+      fail(
+        "health_check: runtime capabilities",
+        `runtime_build=${runtimeBuild || "missing"}`,
+        `Reload the MCP plugin/server and ensure it loads this worktree. Expected runtime_build=${EXPECTED_RUNTIME_BUILD}.`
+      );
+    }
+
     const venv = report.venv || {};
     if (venv.status === "ok" && venv.opentrons && venv.opentrons !== "not_installed") {
       pass("health_check: venv", `Python ${venv.python}, opentrons ${venv.opentrons}`);
@@ -155,6 +294,88 @@ async function checkHealth(pythonExe) {
     }
   } catch (err) {
     fail("health_check", err.message, "Run npm install in servers/opentrons-mcp and retry.");
+  }
+}
+
+async function checkRuntimeRecoverySelfTest() {
+  process.env.OPENTRONS_PLUGIN_ROOT = PLUGIN_ROOT;
+
+  try {
+    const serverUrl = pathToFileURL(path.join(MCP_ROOT, "index.js")).href;
+    const mod = await import(serverUrl);
+    const missingTools = REQUIRED_RUNTIME_TOOLS.filter(
+      name => typeof mod.TOOL_HANDLERS?.[name] !== "function",
+    );
+    if (missingTools.length === 0) {
+      pass("runtime MCP tools", `${REQUIRED_RUNTIME_TOOLS.length} required tools available`);
+    } else {
+      fail(
+        "runtime MCP tools",
+        `missing=${missingTools.join(", ")}`,
+        "Reload this worktree and ensure the MCP client/server exposes the current runtime recovery tool set."
+      );
+      return;
+    }
+
+    const handler = mod.TOOL_HANDLERS?.runtime_recovery_self_test;
+
+    if (typeof handler !== "function") {
+      fail(
+        "runtime_recovery_self_test",
+        "tool handler is missing",
+        "Reload this worktree and ensure servers/opentrons-mcp/index.js exports the current TOOL_HANDLERS."
+      );
+      return;
+    }
+
+    const result = await handler({});
+    const data = result?.data || {};
+    if (data.status !== "pass") {
+      fail(
+        "runtime_recovery_self_test",
+        `status=${data.status || "missing"}`,
+        `Expected no-motion recovery self-test to pass. Failed checks: ${JSON.stringify(data.failed_checks || [])}`
+      );
+      return;
+    }
+
+    const action = data.action_summary?.do_what || null;
+    const thenResume = data.action_summary?.then_resume;
+    const sourceMapKey = data.action_summary?.params?.source_map_key || null;
+    const expectedPresentCase = data.expected_present_case || {};
+    const expectedPresentAction = expectedPresentCase.action_summary?.do_what || null;
+    const expectedPresentThenResume = expectedPresentCase.action_summary?.then_resume;
+    const expectedPresentSourceMapKey = expectedPresentCase.action_summary?.params?.source_map_key || null;
+    const expectedPresentExpectedPresence =
+      expectedPresentCase.action_summary?.params?.source_map_expected_presence;
+    const expectedPresentObservedPresence =
+      expectedPresentCase.action_summary?.params?.observed_liquid_presence;
+    if (
+      data.runtime_build !== EXPECTED_RUNTIME_BUILD ||
+      data.classification?.error_category !== "INSUFFICIENT_VOLUME" ||
+      action !== "manual_only" ||
+      thenResume !== false ||
+      sourceMapKey !== "D3.A12" ||
+      expectedPresentAction !== "manual_only" ||
+      expectedPresentThenResume !== false ||
+      expectedPresentSourceMapKey !== "D3.A1" ||
+      expectedPresentExpectedPresence !== true ||
+      expectedPresentObservedPresence !== false
+    ) {
+      fail(
+        "runtime_recovery_self_test",
+        `runtime_build=${data.runtime_build || "missing"}, error_category=${data.classification?.error_category || "missing"}, action=${action || "missing"}, then_resume=${String(thenResume)}, source_map_key=${sourceMapKey || "missing"}, expected_present_action=${expectedPresentAction || "missing"}, expected_present_source_map_key=${expectedPresentSourceMapKey || "missing"}`,
+        "Expected empty-source and expected-present liquid probe failures to stay manual-only with source-map context."
+      );
+      return;
+    }
+
+    pass(
+      "runtime_recovery_self_test",
+      `${data.runtime_build}; liquidNotFound -> INSUFFICIENT_VOLUME; manual_only; source_map_key=${sourceMapKey}; expected_present_source_map_key=${expectedPresentSourceMapKey}`
+    );
+  } catch (err) {
+    fail("runtime_recovery_self_test", err.message, "Run npm install in servers/opentrons-mcp and retry.");
   }
 }
 
@@ -192,8 +413,10 @@ async function main() {
   checkNode();
   checkMcpDependencies();
   checkPluginPaths();
+  checkMcpManifestPaths();
   const pythonExe = checkPython();
   await checkHealth(pythonExe);
+  await checkRuntimeRecoverySelfTest();
   printReport();
   process.exit(failCount > 0 ? 1 : 0);
 }

@@ -98,6 +98,21 @@ test("buildProbeWellsProtocol renders measure_liquid_height workflow", () => {
   assert.match(protocol, /liquid_presence_detection=True/);
 });
 
+test("buildProbeWellsProtocol can start from a known fresh tip", () => {
+  const protocol = buildProbeWellsProtocol({
+    pipetteName: "flex_1channel_1000",
+    mount: "left",
+    tiprackLoadName: "opentrons_flex_96_tiprack_1000ul",
+    tiprackSlot: "B2",
+    labwareLoadName: "corning_96_wellplate_360ul_flat",
+    labwareSlot: "D3",
+    wells: ["A1"],
+    startingTip: "a2",
+  });
+
+  assert.match(protocol, /pipette\.starting_tip = tiprack\["A2"\]/);
+});
+
 test("extractProbeResultsFromCommands reads comment payloads", () => {
   const results = extractProbeResultsFromCommands({
     data: [
@@ -235,6 +250,23 @@ test("probe_wells executes the live branch when enabled", async () => {
     assert.equal(result.data.probe_results[0].well, "A1");
     assert.equal(result.sessionId, "probe-session");
     assert.equal(result.runId, "run-1");
+
+    const history = await TOOL_HANDLERS.experiment_history({
+      session_id: "probe-session",
+      tool_name: "probe_wells",
+      event_kind: "probe_execution",
+    });
+    assert.equal(history.data.entries[0].data.execute_on_robot, true);
+    assert.equal(history.data.entries[0].data.no_aspirate_or_dispense, true);
+    assert.equal(history.data.entries[0].data.run_id, "run-1");
+    assert.deepEqual(history.data.entries[0].data.probe_results, [
+      {
+        well: "A1",
+        mode: "detect_presence",
+        success: true,
+        value: true,
+      },
+    ]);
   } finally {
     TOOL_HANDLERS.run_protocol = originalRunProtocol;
     global.fetch = originalFetch;

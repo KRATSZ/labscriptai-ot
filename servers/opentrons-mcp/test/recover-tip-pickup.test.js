@@ -1,7 +1,27 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "fs";
+import os from "os";
+import path from "path";
 
 import { TOOL_HANDLERS } from "../index.js";
+import { readSessionState } from "../lib/state.js";
+
+process.env.OPENTRONS_SESSION_STATE_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "recover-tip-state-"));
+
+const AUTO_TIP_PROTOCOL_SOURCE = `
+def run(protocol):
+    tiprack = protocol.load_labware("opentrons_flex_96_tiprack_1000ul", "C2")
+    pipette = protocol.load_instrument("flex_1channel_1000", "left", tip_racks=[tiprack])
+    pipette.pick_up_tip()
+`;
+
+const EXPLICIT_TIP_PROTOCOL_SOURCE = `
+def run(protocol):
+    tiprack = protocol.load_labware("opentrons_flex_96_tiprack_1000ul", "C2")
+    pipette = protocol.load_instrument("flex_1channel_1000", "left", tip_racks=[tiprack])
+    pipette.pick_up_tip(tiprack["A1"])
+`;
 
 function jsonResponse(payload, status = 200) {
   return new Response(JSON.stringify(payload), {
@@ -150,16 +170,22 @@ test("execute_protocol_recovery retries pickUpTip with fixit and resumes the run
       robot_ip: "10.31.2.149:31950",
       run_id: "run-1",
       session_id: "recover-tip-test",
+      protocol_source: AUTO_TIP_PROTOCOL_SOURCE,
       tiprack_slots: ["C2"],
-      timeout_ms: 10,
+      timeout_ms: 200,
       poll_interval_ms: 1,
     });
 
     assert.equal(result.data.executed_action, "retry_pick_up_tip_with_next_candidate");
     assert.equal(result.data.executed_params.well, "B1");
+    assert.equal(result.data.executed_params.tiprack_slot, "C2");
     assert.equal(result.data.final_run_history.status, "succeeded");
     assert.equal(result.data.resume_action.data.actionType, "resume-from-recovery");
     assert.equal(result.runId, "run-1");
+
+    const sessionState = readSessionState("recover-tip-test");
+    assert.ok(sessionState.tip_tracking.tipracks.C2.depleted_wells.includes("B1"));
+    assert.equal(sessionState.tip_tracking.tipracks.C2.last_good_tip, "B1");
   } finally {
     global.fetch = originalFetch;
   }
@@ -199,9 +225,10 @@ test("execute_protocol_recovery watch_mode skips terminal run polling after resu
       robot_ip: "10.31.2.149:31950",
       run_id: "run-1",
       session_id: "recover-tip-watch-mode",
+      protocol_source: AUTO_TIP_PROTOCOL_SOURCE,
       tiprack_slots: ["C2"],
       watch_mode: true,
-      timeout_ms: 10,
+      timeout_ms: 100,
       poll_interval_ms: 1,
     });
 
@@ -255,7 +282,7 @@ test("execute_protocol_recovery can reissue moveLabware to a chosen alternative 
       session_id: "recover-move-test",
       idempotency_key: "move-recovery",
       destination_slot: "D2",
-      timeout_ms: 10,
+      timeout_ms: 200,
       poll_interval_ms: 1,
     });
 
@@ -331,9 +358,9 @@ test("execute_protocol_recovery handles module blocker reconciliation by waiting
       robot_ip: "10.31.2.149:31950",
       run_id: "run-1",
       session_id: "recover-module-test",
-      timeout_ms: 10,
+      timeout_ms: 200,
       poll_interval_ms: 1,
-      module_wait_timeout_ms: 20,
+      module_wait_timeout_ms: 200,
       module_poll_interval_ms: 1,
     });
 
@@ -378,12 +405,64 @@ test("recover_tip_pickup remains as a compatibility wrapper", async () => {
       robot_ip: "10.31.2.149:31950",
       run_id: "run-1",
       session_id: "recover-tip-compat",
-      timeout_ms: 10,
+      protocol_source: AUTO_TIP_PROTOCOL_SOURCE,
+      timeout_ms: 200,
       poll_interval_ms: 1,
     });
 
     assert.equal(result.data.recovered_well, "B1");
     assert.equal(result.data.executed_action, "retry_pick_up_tip_with_next_candidate");
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("execute_protocol_recovery refuses same-run tip fixit for explicit tip protocols", async () => {
+  const originalFetch = global.fetch;
+  let postedFixit = false;
+  installCommonRecoveryFetch({
+    commands: [
+      {
+        id: "cmd-failed",
+        commandType: "pickUpTip",
+        status: "failed",
+        params: {
+          pipetteId: "pipette-left-1",
+          labwareId: "tiprack-1",
+          wellName: "A1",
+        },
+        error: {
+          errorType: "tipPhysicallyMissing",
+          detail: "No Tip Detected",
+        },
+      },
+    ],
+    labware: [
+      {
+        id: "tiprack-1",
+        loadName: "opentrons_flex_96_tiprack_1000ul",
+        location: { slotName: "C2" },
+      },
+    ],
+    onPostCommand() {
+      postedFixit = true;
+    },
+  });
+
+  try {
+    await assert.rejects(
+      TOOL_HANDLERS.execute_protocol_recovery({
+        robot_ip: "10.31.2.149:31950",
+        run_id: "run-1",
+        session_id: "recover-tip-explicit",
+        protocol_source: EXPLICIT_TIP_PROTOCOL_SOURCE,
+        tiprack_slots: ["C2"],
+        timeout_ms: 200,
+        poll_interval_ms: 1,
+      }),
+      /only supports recovery branches marked auto_executable=true/,
+    );
+    assert.equal(postedFixit, false);
   } finally {
     global.fetch = originalFetch;
   }

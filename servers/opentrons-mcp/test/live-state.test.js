@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  buildLiquidTrackingSnapshot,
   buildModuleStatusSnapshot,
   buildRobotStatusSnapshot,
   buildRunHistorySnapshot,
@@ -129,4 +130,41 @@ test("buildRunHistorySnapshot reads live run errors array", () => {
   );
 
   assert.equal(snapshot.command_errors[0].detail, "No trash container has been defined");
+});
+
+test("buildLiquidTrackingSnapshot summarizes quantitated containers and trust levels", () => {
+  const snapshot = buildLiquidTrackingSnapshot({
+    liquid_tracking: {
+      sources: {
+        "D3.A1": {
+          slot_name: "D3",
+          well_name: "A1",
+          role: "source",
+          volume_ul: 120,
+          capacity_ul: 100,
+          dead_volume_ul: 10,
+          trust_level: "observed",
+        },
+      },
+      containers: {
+        "C3.A1": {
+          container_key: "C3.A1",
+          role: "destination",
+          volume_ul: 20,
+          capacity_ul: 200,
+          dead_volume_ul: 0,
+          trust_level: "simulated",
+        },
+      },
+    },
+    state_history: [{ field: "liquid_tracking.containers.D3.A1.volume_ul" }],
+  });
+
+  assert.equal(snapshot.container_count, 2);
+  assert.equal(snapshot.source_count, 1);
+  assert.equal(snapshot.over_capacity_count, 1);
+  assert.deepEqual(snapshot.over_capacity_containers, ["D3.A1"]);
+  assert.equal(snapshot.by_trust_level.observed, 1);
+  assert.equal(snapshot.by_trust_level.simulated, 1);
+  assert.equal(snapshot.state_history_count, 1);
 });

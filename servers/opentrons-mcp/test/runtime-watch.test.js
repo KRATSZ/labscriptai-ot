@@ -96,6 +96,7 @@ function guidance({
   candidates = [],
   failedCommandId = "cmd-failed",
   diffs = [],
+  actionSummaryParams = {},
 } = {}) {
   return {
     parsedError: {
@@ -121,6 +122,7 @@ function guidance({
     },
     action_summary: {
       do_what: action,
+      params: actionSummaryParams,
     },
   };
 }
@@ -328,6 +330,185 @@ test("runtime watch fixture 5: estop or door is hard stop and does not execute",
 
   assert.equal(result.status, "hard_stop");
   assert.equal(executeCalls, 0);
+});
+
+test("runtime watch fixture 5b: liquid source failure asks user with manual recovery context", async () => {
+  const watchDir = tempWatchDir();
+  let executeCalls = 0;
+  const command = failedCommand({
+    id: "cmd-liquid-empty",
+    commandType: "liquidProbe",
+    detail: "Liquid Not Found",
+    errorType: "liquidNotFound",
+  });
+  command.params = {
+    pipetteId: "pipette-left",
+    labwareId: "plate-1",
+    wellName: "A12",
+  };
+
+  const result = await runSentryStep(
+    { run_id: "run-1", watch_dir: watchDir },
+    {
+      readSnapshot: async () => snapshot({ status: "awaiting-recovery", command }),
+      readGuidance: async () =>
+        guidance({
+          errorCategory: "INSUFFICIENT_VOLUME",
+          errorLeaf: "INSUFFICIENT_VOLUME",
+          action: "manual_only",
+          autoExecutable: false,
+          failedCommandId: "cmd-liquid-empty",
+          actionSummaryParams: {
+            recommended_manual_action: "probe_or_reduce_volume_then_retry",
+            failed_well: "A12",
+            source_labware_id: "plate-1",
+            source_slot: "D3",
+            source_map_key: "D3.A12",
+            liquid_source: {
+              slot_name: "D3",
+              well_name: "A12",
+              liquid_name: "water",
+              sample_id: "empty-control",
+              expected_presence: false,
+            },
+            source_map_expected_presence: false,
+            observed_liquid_presence: false,
+            source_map_expectation_mismatch: true,
+            failed_command_id: "cmd-liquid-empty",
+            failed_command_type: "liquidProbe",
+            blocked_auto_recovery_reason: "liquid_source_change_requires_human_confirmation",
+            cleanup_required: ["drop_tip:left"],
+            operator_steps: [
+              "Verify or refill the intended source well A12.",
+              "Do not change source wells unless the operator provides a confirmed source map.",
+            ],
+          },
+        }),
+      executeRecovery: async () => {
+        executeCalls += 1;
+      },
+    },
+  );
+
+  const alerts = readAlerts("run-1", { watchDir });
+  assert.equal(result.status, "needs_user");
+  assert.equal(result.data.reason, "recovery_not_auto_executable");
+  assert.equal(executeCalls, 0);
+  assert.equal(alerts[0].data.action, "manual_only");
+  assert.equal(alerts[0].data.action_summary.params.failed_well, "A12");
+  assert.equal(alerts[0].data.action_summary.params.source_labware_id, "plate-1");
+  assert.equal(alerts[0].data.action_summary.params.source_slot, "D3");
+  assert.equal(alerts[0].data.action_summary.params.source_map_key, "D3.A12");
+  assert.equal(alerts[0].data.action_summary.params.liquid_source.sample_id, "empty-control");
+  assert.equal(alerts[0].data.action_summary.params.source_map_expected_presence, false);
+  assert.equal(alerts[0].data.action_summary.params.observed_liquid_presence, false);
+  assert.equal(alerts[0].data.action_summary.params.source_map_expectation_mismatch, true);
+  assert.equal(
+    alerts[0].data.action_summary.params.blocked_auto_recovery_reason,
+    "liquid_source_change_requires_human_confirmation",
+  );
+  assert.deepEqual(alerts[0].data.action_summary.params.cleanup_required, ["drop_tip:left"]);
+  assert.ok(
+    alerts[0].data.action_summary.params.operator_steps.some(step =>
+      step.includes("confirmed source map"),
+    ),
+  );
+});
+
+test("runtime watch fixture 5c: same-liquid source failure preserves fixed playbook next tool", async () => {
+  const watchDir = tempWatchDir();
+  let executeCalls = 0;
+  const command = failedCommand({
+    id: "cmd-liquid-water-empty",
+    commandType: "liquidProbe",
+    detail: "Liquid Not Found",
+    errorType: "liquidNotFound",
+  });
+  command.params = {
+    pipetteId: "pipette-left",
+    labwareId: "plate-1",
+    wellName: "A1",
+  };
+
+  const result = await runSentryStep(
+    { run_id: "run-1", watch_dir: watchDir },
+    {
+      readSnapshot: async () => snapshot({ status: "awaiting-recovery", command }),
+      readGuidance: async () =>
+        guidance({
+          errorCategory: "INSUFFICIENT_VOLUME",
+          errorLeaf: "INSUFFICIENT_VOLUME",
+          action: "manual_only",
+          autoExecutable: false,
+          failedCommandId: "cmd-liquid-water-empty",
+          actionSummaryParams: {
+            recommended_manual_action: "probe_or_reduce_volume_then_retry",
+            failed_well: "A1",
+            source_labware_id: "plate-1",
+            source_slot: "D3",
+            source_map_key: "D3.A1",
+            liquid_source: {
+              slot_name: "D3",
+              well_name: "A1",
+              liquid_name: "water",
+              sample_id: "water-d3-a1",
+              expected_presence: true,
+            },
+            source_map_expected_presence: true,
+            observed_liquid_presence: false,
+            source_map_expectation_mismatch: true,
+            same_liquid_source_candidates: [
+              {
+                source_map_key: "C3.A1",
+                slot_name: "C3",
+                well_name: "A1",
+                liquid_name: "water",
+                sample_id: "water-c3-a1",
+                expected_presence: true,
+              },
+            ],
+            same_liquid_source_candidate_count: 1,
+            same_liquid_source_substitution_allowed: true,
+            same_liquid_source_substitution_next_tool: "prepare_liquid_source_substitution_recovery",
+            same_liquid_source_substitution_playbook: "liquid_source_substitution_continuation_protocol",
+            same_liquid_source_substitution_required_gates: [
+              "live_liquid_recovery_gate",
+              "run_protocol_only_after_operator_opt_in",
+            ],
+            same_liquid_auto_resume_eligible: false,
+            same_liquid_auto_resume_blocker: "live_gate_and_operator_opt_in_required_before_any_robot_motion",
+            failed_command_id: "cmd-liquid-water-empty",
+            failed_command_type: "liquidProbe",
+            blocked_auto_recovery_reason:
+              "same_liquid_source_substitution_requires_prepared_recovery_bundle_and_live_gate",
+            cleanup_required: ["drop_tip:left"],
+            operator_steps: [
+              "Same-liquid alternatives are recorded: C3.A1. Use them only through prepare_liquid_source_substitution_recovery, live_liquid_recovery_gate, and operator opt-in.",
+            ],
+          },
+        }),
+      executeRecovery: async () => {
+        executeCalls += 1;
+      },
+    },
+  );
+
+  const alerts = readAlerts("run-1", { watchDir });
+  const params = alerts[0].data.action_summary.params;
+  assert.equal(result.status, "needs_user");
+  assert.equal(result.data.reason, "recovery_not_auto_executable");
+  assert.equal(executeCalls, 0);
+  assert.equal(params.source_map_key, "D3.A1");
+  assert.equal(params.same_liquid_source_substitution_allowed, true);
+  assert.equal(params.same_liquid_source_candidates[0].source_map_key, "C3.A1");
+  assert.equal(params.same_liquid_source_substitution_next_tool, "prepare_liquid_source_substitution_recovery");
+  assert.equal(params.same_liquid_source_substitution_playbook, "liquid_source_substitution_continuation_protocol");
+  assert.deepEqual(params.same_liquid_source_substitution_required_gates, [
+    "live_liquid_recovery_gate",
+    "run_protocol_only_after_operator_opt_in",
+  ]);
+  assert.equal(params.same_liquid_auto_resume_eligible, false);
+  assert.equal(params.same_liquid_auto_resume_blocker, "live_gate_and_operator_opt_in_required_before_any_robot_motion");
 });
 
 test("runtime watch fixture 6: fourth retry escalates through attempt queue", async () => {

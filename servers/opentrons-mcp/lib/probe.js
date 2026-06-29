@@ -55,6 +55,7 @@ export function buildProbeWellsProtocol({
   labwareVersion = 1,
   liquidPresenceDetection = true,
   trashSlot = null,
+  startingTip = null,
 } = {}) {
   const normalizedWells = wells.map(well => String(well).toUpperCase());
   const usedSlots = new Set([tiprackSlot, labwareSlot].filter(Boolean).map(slot => String(slot).toUpperCase()));
@@ -99,6 +100,7 @@ export function buildProbeWellsProtocol({
     "        tip_racks=[tiprack],",
     `        liquid_presence_detection=${liquidPresenceDetection ? "True" : "False"},`,
     "    )",
+    ...(startingTip ? [`    pipette.starting_tip = tiprack[${pythonLiteral(String(startingTip).toUpperCase())}]`] : []),
     `    probe_mode = ${pythonLiteral(mode)}`,
     `    wells = ${pythonLiteral(normalizedWells)}`,
     "    for well_name in wells:",

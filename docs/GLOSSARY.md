@@ -12,6 +12,9 @@ Shared vocabulary for operators and agents. For workflow order, see [policy/work
 | **Session state** | Persisted bookkeeping under `PLUGIN_DATA` (runs, deck commits, recovery hints). Historical logs are audit-only, not live deck truth. |
 | **Opt-in live** | Physical robot motion requires explicit operator confirmation. Tools like `run_protocol` and `probe_wells` do not run unattended by default. |
 | **Probe wells** | Experimental liquid-presence helper. Live motion requires `OPENTRONS_ENABLE_PROBE_WELLS=1` and operator sign-off. |
+| **Liquid source map** | Operator-confirmed session bookkeeping for which liquid/sample is expected in a source well. It helps recovery messages preserve sample identity; it does not authorize automatic source-well substitution. |
+| **Runtime recovery monitor** | L1-L4 active monitor tick that combines runtime self-test, robot/module status, run watching, safe-next guidance, liquid gates, and guarded L0 self-fix status. Default observe mode is read-only for run watching. |
+| **Recovery playbook** | Registered fixed recovery contract exposed by `list_recovery_playbooks`: executor tool, watch-mode permission, motion boundary, required gates, and semantic invariants. Agents must not invent live recovery actions outside this registry. |
 | **Vision (observation-only)** | Camera capture and `vision_check` provide hints about deck appearance. Never treat vision output as committed deck truth — always compare with `reconcile_state`. |
 | **Preflight** | `preflight_run_setup` verifies reconciliation, robot readiness, and (Flex) declared protocol loads vs live deck before play. |
 | **Recovery branch** | Structured fix path from `suggest_recovery_action` (e.g. retry tip pickup). Only `auto_executable` branches may run via `execute_protocol_recovery` without human review. |

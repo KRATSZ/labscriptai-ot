@@ -28,6 +28,7 @@ function buildSessionState() {
     deck: { slots: {} },
     pipettes: {},
     tip_tracking: { tipracks: {} },
+    liquid_tracking: { sources: {} },
     cleanup: { pending_actions: [], auto_home_allowed: null },
     updated_at: "2026-03-24T00:00:00.000Z",
   };
@@ -208,6 +209,61 @@ test("buildReconciliationResult reports tip mismatch and can apply observed stat
   assert.equal(sessionState.deck.slots.C2.occupant_name, "opentrons_flex_96_tiprack_1000ul");
 });
 
+test("buildReconciliationResult compares liquid volume and trust level when observed liquid state is supplied", () => {
+  const sessionState = buildSessionState();
+  sessionState.liquid_tracking = {
+    containers: {
+      "D3.A1": {
+        container_key: "D3.A1",
+        slot_name: "D3",
+        well_name: "A1",
+        role: "source",
+        volume_ul: 100,
+        capacity_ul: 200,
+        dead_volume_ul: 10,
+        trust_level: "declared",
+      },
+    },
+    sources: {},
+  };
+
+  const reconciliation = buildReconciliationResult({
+    sessionState,
+    robotStatusSnapshot: {
+      health_summary: { robot_serial: "FLX-TEST" },
+      instruments_summary: [],
+    },
+    moduleStatusSnapshot: { blockers: [] },
+    observedDeckState: buildObservedDeckState({}),
+    observedLiquidTracking: {
+      containers: {
+        "D3.A1": {
+          container_key: "D3.A1",
+          slot_name: "D3",
+          well_name: "A1",
+          role: "source",
+          volume_ul: 80,
+          capacity_ul: 200,
+          dead_volume_ul: 10,
+          trust_level: "observed",
+        },
+      },
+    },
+    run: { data: { id: "run-liquid-reconcile" } },
+  });
+
+  assert.ok(reconciliation.diffs.some(diff => diff.type === "liquid_volume_mismatch"));
+  assert.ok(reconciliation.diffs.some(diff => diff.type === "liquid_trust_mismatch"));
+  applyObservedDeckToSessionState(sessionState, reconciliation.proposed_commit);
+  assert.equal(sessionState.liquid_tracking.containers["D3.A1"].volume_ul, 80);
+  assert.equal(sessionState.liquid_tracking.sources["D3.A1"].trust_level, "observed");
+  assert.ok(
+    sessionState.state_history.some(
+      history => history.field === "liquid_tracking.containers.D3.A1.volume_ul",
+    ),
+  );
+});
+
 test("classifyRecoveryError and buildRecoverySuggestion handle tip recovery", () => {
   const classification = classifyRecoveryError({
     run: {
@@ -251,12 +307,76 @@ test("classifyRecoveryError and buildRecoverySuggestion handle tip recovery", ()
       },
     },
     reconciliation: { diffs: [] },
+    tipBindingMode: "auto",
+    tipBindingClassification: { mode: "auto", reason: "test" },
   });
 
   assert.equal(classification.error_category, "TIP_PHYSICALLY_MISSING");
   assert.equal(suggestion.action, "retry_pick_up_tip_with_next_candidate");
   assert.equal(suggestion.intent, "fixit");
+  assert.equal(suggestion.route, "fixit");
+  assert.equal(suggestion.tip_binding_mode, "auto");
   assert.equal(suggestion.suggested_tip.well_name, "B1");
+});
+
+test("buildRecoverySuggestion routes explicit tip protocols to continuation instead of same-run fixit", () => {
+  const suggestion = buildRecoverySuggestion({
+    errorCategory: "TIP_PHYSICALLY_MISSING",
+    errorLeaf: "TIP_PHYSICALLY_MISSING",
+    run: { data: { status: "awaiting-recovery" } },
+    commands: {
+      data: [
+        {
+          commandType: "pickUpTip",
+          status: "failed",
+          params: { wellName: "A1" },
+        },
+      ],
+    },
+    robotStatusSnapshot: { blockers: [] },
+    moduleStatusSnapshot: { blockers: [] },
+    nextTipSuggestion: {
+      next_candidate: { tiprack_slot: "C2", well_name: "B1" },
+    },
+    reconciliation: { diffs: [] },
+    tipBindingMode: "explicit",
+    tipBindingClassification: { mode: "explicit", reason: "test" },
+  });
+
+  assert.equal(suggestion.actionability, "protocol_edit_required");
+  assert.equal(suggestion.auto_executable, false);
+  assert.equal(suggestion.action, "protocol_edit_required");
+  assert.equal(suggestion.route, "replan");
+  assert.equal(suggestion.recommended_manual_action, "generate_continuation_protocol");
+  assert.equal(suggestion.suggested_starting_tip.well_name, "B1");
+});
+
+test("buildRecoverySuggestion gates tip recovery when binding mode is unknown", () => {
+  const suggestion = buildRecoverySuggestion({
+    errorCategory: "TIP_PHYSICALLY_MISSING",
+    errorLeaf: "TIP_PHYSICALLY_MISSING",
+    run: { data: { status: "awaiting-recovery" } },
+    commands: {
+      data: [
+        {
+          commandType: "pickUpTip",
+          status: "failed",
+          params: { wellName: "A1" },
+        },
+      ],
+    },
+    robotStatusSnapshot: { blockers: [] },
+    moduleStatusSnapshot: { blockers: [] },
+    nextTipSuggestion: {
+      next_candidate: { tiprack_slot: "C2", well_name: "B1" },
+    },
+    reconciliation: { diffs: [] },
+  });
+
+  assert.equal(suggestion.action, "manual_only");
+  assert.equal(suggestion.auto_executable, false);
+  assert.equal(suggestion.route, "human");
+  assert.equal(suggestion.rationale, "tip_binding_mode_unknown");
 });
 
 test("classifyRecoveryError prioritizes run-level protocol setup errors", () => {
@@ -322,6 +442,52 @@ test("parseRuntimeError extracts move destination and escalation", () => {
   assert.equal(parsed.hard_stop, false);
   assert.equal(parsed.actionability, "manual_only");
   assert.equal(parsed.auto_executable, false);
+});
+
+test("parseRuntimeError classifies liquidNotFound as manual-only insufficient volume", () => {
+  const parsed = parseRuntimeError({
+    run: {
+      data: {
+        id: "run-liquid-empty",
+        status: "awaiting-recovery",
+      },
+    },
+    commands: {
+      data: [
+        {
+          id: "cmd-liquid-1",
+          commandType: "liquidProbe",
+          status: "failed",
+          params: {
+            labwareId: "plate-1",
+            wellName: "A12",
+          },
+          error: {
+            errorType: "liquidNotFound",
+            detail: "Liquid Not Found",
+            wrappedErrors: [
+              {
+                errorType: "PipetteLiquidNotFoundError",
+                detail: "Liquid not found during probe.",
+              },
+            ],
+          },
+        },
+      ],
+    },
+    moduleStatusSnapshot: { blockers: [] },
+    robotStatusSnapshot: { blockers: [] },
+  });
+
+  assert.equal(parsed.error_category, "INSUFFICIENT_VOLUME");
+  assert.equal(parsed.error_leaf, "INSUFFICIENT_VOLUME");
+  assert.equal(parsed.failed_well, "A12");
+  assert.equal(parsed.source_labware_id, "plate-1");
+  assert.equal(parsed.actionability, "manual_only");
+  assert.equal(parsed.auto_executable, false);
+  assert.equal(parsed.requires_human_review, true);
+  assert.equal(parsed.escalate_to_human, false);
+  assert.equal(parsed.hard_stop, false);
 });
 
 test("listAvailableSlots groups slots by availability", () => {
@@ -556,17 +722,365 @@ test("buildRecoverySuggestion keeps liquid issues manual-only when no supported 
   const suggestion = buildRecoverySuggestion({
     errorCategory: "INSUFFICIENT_VOLUME",
     errorLeaf: "INSUFFICIENT_VOLUME",
-    run: { data: { status: "awaiting-recovery" } },
-    commands: { data: [] },
-    robotStatusSnapshot: { blockers: [] },
+    run: {
+      data: {
+        status: "awaiting-recovery",
+        labware: [
+          {
+            id: "plate-1",
+            loadName: "corning_96_wellplate_360ul_flat",
+            location: { slotName: "D3" },
+          },
+        ],
+      },
+    },
+    commands: {
+      data: [
+        {
+          id: "cmd-liquid-empty",
+          commandType: "liquidProbe",
+          status: "failed",
+          params: {
+            labwareId: "plate-1",
+            wellName: "A12",
+          },
+          error: {
+            errorType: "liquidNotFound",
+            detail: "Liquid Not Found",
+          },
+        },
+      ],
+    },
+    robotStatusSnapshot: {
+      blockers: [],
+      instruments_summary: [
+        { mount: "left", instrument_name: "p1000_single_flex", tip_detected: true },
+      ],
+    },
     moduleStatusSnapshot: { blockers: [] },
     reconciliation: { diffs: [] },
+    sessionState: {
+      ...buildSessionState(),
+      liquid_tracking: {
+        sources: {
+          "D3.A12": {
+            slot_name: "D3",
+            well_name: "A12",
+            labware_load_name: "corning_96_wellplate_360ul_flat",
+            liquid_name: "water",
+            sample_id: "empty-control",
+            expected_presence: false,
+          },
+        },
+      },
+    },
   });
 
   assert.equal(suggestion.action, "manual_only");
   assert.equal(suggestion.actionability, "manual_only");
   assert.equal(suggestion.auto_executable, false);
   assert.equal(suggestion.recommended_manual_action, "probe_or_reduce_volume_then_retry");
+  assert.equal(suggestion.failed_well, "A12");
+  assert.equal(suggestion.source_labware_id, "plate-1");
+  assert.equal(suggestion.source_slot, "D3");
+  assert.equal(suggestion.source_map_key, "D3.A12");
+  assert.equal(suggestion.liquid_source.sample_id, "empty-control");
+  assert.equal(suggestion.source_map_expected_presence, false);
+  assert.equal(suggestion.observed_liquid_presence, false);
+  assert.equal(suggestion.source_map_expectation_mismatch, true);
+  assert.equal(suggestion.failed_command_id, "cmd-liquid-empty");
+  assert.equal(suggestion.failed_command_type, "liquidProbe");
+  assert.equal(
+    suggestion.blocked_auto_recovery_reason,
+    "liquid_source_change_requires_human_confirmation",
+  );
+  assert.deepEqual(suggestion.cleanup_required, ["drop_tip:left"]);
+  assert.ok(suggestion.operator_steps.some(step => step.includes("A12")));
+  assert.ok(suggestion.operator_steps.some(step => step.includes("empty-control")));
+  assert.ok(suggestion.operator_steps.some(step => step.includes("expected to be empty")));
+  assert.ok(suggestion.operator_steps.some(step => step.includes("confirmed source map")));
+});
+
+test("buildRecoverySuggestion flags expected-present liquid source that probes as empty", () => {
+  const suggestion = buildRecoverySuggestion({
+    errorCategory: "INSUFFICIENT_VOLUME",
+    errorLeaf: "INSUFFICIENT_VOLUME",
+    run: {
+      data: {
+        status: "awaiting-recovery",
+        labware: [
+          {
+            id: "plate-1",
+            loadName: "corning_96_wellplate_360ul_flat",
+            location: { slotName: "D3" },
+          },
+        ],
+      },
+    },
+    commands: {
+      data: [
+        {
+          id: "cmd-liquid-air",
+          commandType: "liquidProbe",
+          status: "failed",
+          params: {
+            labwareId: "plate-1",
+            wellName: "A1",
+          },
+          error: {
+            errorType: "liquidNotFound",
+            detail: "Liquid Not Found",
+          },
+        },
+      ],
+    },
+    robotStatusSnapshot: {
+      blockers: [],
+      instruments_summary: [
+        { mount: "left", instrument_name: "p1000_single_flex", tip_detected: true },
+      ],
+    },
+    moduleStatusSnapshot: { blockers: [] },
+    reconciliation: { diffs: [] },
+    sessionState: {
+      ...buildSessionState(),
+      liquid_tracking: {
+        sources: {
+          "D3.A1": {
+            slot_name: "D3",
+            well_name: "A1",
+            labware_load_name: "corning_96_wellplate_360ul_flat",
+            liquid_name: "operator-confirmed-liquid",
+            sample_id: "sample-a1",
+            expected_presence: true,
+          },
+        },
+      },
+    },
+  });
+
+  assert.equal(suggestion.action, "manual_only");
+  assert.equal(suggestion.auto_executable, false);
+  assert.equal(suggestion.failed_well, "A1");
+  assert.equal(suggestion.source_map_key, "D3.A1");
+  assert.equal(suggestion.liquid_source.sample_id, "sample-a1");
+  assert.equal(suggestion.source_map_expected_presence, true);
+  assert.equal(suggestion.observed_liquid_presence, false);
+  assert.equal(suggestion.source_map_expectation_mismatch, true);
+  assert.equal(
+    suggestion.blocked_auto_recovery_reason,
+    "liquid_source_change_requires_human_confirmation",
+  );
+  assert.deepEqual(suggestion.cleanup_required, ["drop_tip:left"]);
+  assert.ok(suggestion.operator_steps.some(step => step.includes("should contain liquid")));
+  assert.ok(suggestion.operator_steps.some(step => step.includes("did not find liquid")));
+  assert.ok(suggestion.operator_steps.some(step => step.includes("fill height")));
+  assert.ok(suggestion.operator_steps.some(step => step.includes("sample sample-a1")));
+});
+
+test("buildRecoverySuggestion lists same-liquid water alternatives without pretending auto resume exists", () => {
+  const suggestion = buildRecoverySuggestion({
+    errorCategory: "INSUFFICIENT_VOLUME",
+    errorLeaf: "INSUFFICIENT_VOLUME",
+    run: {
+      data: {
+        status: "awaiting-recovery",
+        labware: [
+          {
+            id: "plate-1",
+            loadName: "corning_96_wellplate_360ul_flat",
+            location: { slotName: "D3" },
+          },
+        ],
+      },
+    },
+    commands: {
+      data: [
+        {
+          id: "cmd-liquid-air",
+          commandType: "liquidProbe",
+          status: "failed",
+          params: {
+            labwareId: "plate-1",
+            wellName: "A1",
+          },
+          error: {
+            errorType: "liquidNotFound",
+            detail: "Liquid Not Found",
+          },
+        },
+      ],
+    },
+    robotStatusSnapshot: {
+      blockers: ["attached_tip:left"],
+      instruments_summary: [
+        { mount: "left", instrument_name: "p1000_single_flex", tip_detected: true },
+      ],
+    },
+    moduleStatusSnapshot: { blockers: [] },
+    reconciliation: { diffs: [] },
+    sessionState: {
+      ...buildSessionState(),
+      liquid_tracking: {
+        sources: {
+          "D3.A1": {
+            slot_name: "D3",
+            well_name: "A1",
+            labware_load_name: "corning_96_wellplate_360ul_flat",
+            liquid_name: "water",
+            sample_id: "water-d3-a1",
+            expected_presence: true,
+          },
+          "D3.B1": {
+            slot_name: "D3",
+            well_name: "B1",
+            labware_load_name: "corning_96_wellplate_360ul_flat",
+            liquid_name: "water",
+            sample_id: "water-d3-b1",
+            expected_presence: true,
+          },
+          "C3.A1": {
+            slot_name: "C3",
+            well_name: "A1",
+            labware_load_name: "nest_12_reservoir_15ml",
+            liquid_name: "water",
+            sample_id: "water-c3-a1",
+            expected_presence: true,
+          },
+          "D3.C1": {
+            slot_name: "D3",
+            well_name: "C1",
+            labware_load_name: "corning_96_wellplate_360ul_flat",
+            liquid_name: "buffer",
+            sample_id: "buffer-c1",
+            expected_presence: true,
+          },
+          "D3.D1": {
+            slot_name: "D3",
+            well_name: "D1",
+            labware_load_name: "corning_96_wellplate_360ul_flat",
+            liquid_name: "water",
+            sample_id: "empty-water-control",
+            expected_presence: false,
+          },
+        },
+      },
+    },
+  });
+
+  assert.equal(suggestion.action, "manual_only");
+  assert.equal(suggestion.auto_executable, false);
+  assert.equal(suggestion.source_map_key, "D3.A1");
+  assert.equal(suggestion.same_liquid_source_candidate_count, 2);
+  assert.deepEqual(
+    suggestion.same_liquid_source_candidates.map(source => source.source_map_key),
+    ["D3.B1", "C3.A1"],
+  );
+  assert.equal(suggestion.same_liquid_source_substitution_allowed, true);
+  assert.equal(
+    suggestion.same_liquid_source_substitution_next_tool,
+    "prepare_liquid_source_substitution_recovery",
+  );
+  assert.equal(
+    suggestion.same_liquid_source_substitution_playbook,
+    "liquid_source_substitution_continuation_protocol",
+  );
+  assert.deepEqual(suggestion.same_liquid_source_substitution_required_gates, [
+    "live_liquid_recovery_gate",
+    "run_protocol_only_after_operator_opt_in",
+  ]);
+  assert.equal(suggestion.same_liquid_auto_resume_eligible, false);
+  assert.deepEqual(suggestion.blockers, ["attached_tip:left"]);
+  assert.deepEqual(suggestion.cleanup_required, ["drop_tip:left"]);
+  assert.equal(
+    suggestion.same_liquid_auto_resume_blocker,
+    "live_gate_and_operator_opt_in_required_before_any_robot_motion",
+  );
+  assert.equal(
+    suggestion.blocked_auto_recovery_reason,
+    "same_liquid_source_substitution_requires_prepared_recovery_bundle_and_live_gate",
+  );
+  assert.ok(suggestion.operator_steps.some(step => step.includes("Same-liquid alternatives")));
+
+  const summary = buildActionSummary({ recoverySuggestion: suggestion });
+  assert.equal(summary.do_what, "manual_only");
+  assert.equal(summary.then_resume, false);
+  assert.equal(summary.params.same_liquid_source_candidate_count, 2);
+  assert.equal(summary.params.same_liquid_source_substitution_allowed, true);
+  assert.equal(
+    summary.params.same_liquid_source_substitution_next_tool,
+    "prepare_liquid_source_substitution_recovery",
+  );
+  assert.equal(
+    summary.params.same_liquid_source_substitution_playbook,
+    "liquid_source_substitution_continuation_protocol",
+  );
+  assert.deepEqual(summary.params.same_liquid_source_substitution_required_gates, [
+    "live_liquid_recovery_gate",
+    "run_protocol_only_after_operator_opt_in",
+  ]);
+  assert.equal(summary.params.same_liquid_auto_resume_eligible, false);
+  assert.deepEqual(summary.params.blockers, ["attached_tip:left"]);
+  assert.deepEqual(summary.params.cleanup_required, ["drop_tip:left"]);
+  assert.equal(summary.params.same_liquid_source_candidates[0].source_map_key, "D3.B1");
+});
+
+test("buildActionSummary carries liquid manual-recovery context", () => {
+  const recoverySuggestion = {
+    action: "manual_only",
+    error_category: "INSUFFICIENT_VOLUME",
+    error_leaf: "INSUFFICIENT_VOLUME",
+    actionability: "manual_only",
+    auto_executable: false,
+    requires_confirmation: false,
+    required_inputs: [],
+    escalate_to_human: true,
+    rationale: "runtime_volume_issue_detected",
+    recommended_manual_action: "probe_or_reduce_volume_then_retry",
+    failed_well: "A12",
+    source_labware_id: "plate-1",
+    source_slot: "D3",
+    source_map_key: "D3.A12",
+    liquid_source: {
+      slot_name: "D3",
+      well_name: "A12",
+      liquid_name: "water",
+      sample_id: "empty-control",
+    },
+    source_map_expected_presence: false,
+    observed_liquid_presence: false,
+    source_map_expectation_mismatch: true,
+    failed_command_id: "cmd-liquid-empty",
+    failed_command_type: "liquidProbe",
+    blocked_auto_recovery_reason: "liquid_source_change_requires_human_confirmation",
+    cleanup_required: ["drop_tip:left"],
+    operator_steps: [
+      "Verify or refill the intended source well A12.",
+      "Do not change source wells unless the operator provides a confirmed source map.",
+    ],
+  };
+
+  const summary = buildActionSummary({ recoverySuggestion });
+
+  assert.equal(summary.do_what, "manual_only");
+  assert.equal(summary.then_resume, false);
+  assert.equal(summary.if_fails, "manual_intervention");
+  assert.equal(summary.params.failed_well, "A12");
+  assert.equal(summary.params.source_labware_id, "plate-1");
+  assert.equal(summary.params.source_slot, "D3");
+  assert.equal(summary.params.source_map_key, "D3.A12");
+  assert.equal(summary.params.liquid_source.sample_id, "empty-control");
+  assert.equal(summary.params.source_map_expected_presence, false);
+  assert.equal(summary.params.observed_liquid_presence, false);
+  assert.equal(summary.params.source_map_expectation_mismatch, true);
+  assert.equal(summary.params.failed_command_id, "cmd-liquid-empty");
+  assert.equal(summary.params.failed_command_type, "liquidProbe");
+  assert.equal(
+    summary.params.blocked_auto_recovery_reason,
+    "liquid_source_change_requires_human_confirmation",
+  );
+  assert.deepEqual(summary.params.cleanup_required, ["drop_tip:left"]);
+  assert.ok(summary.params.operator_steps.some(step => step.includes("confirmed source map")));
 });
 
 test("collision and unknown classes are explicit hard stops", () => {

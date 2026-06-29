@@ -8,6 +8,9 @@ mcp_tools:
   - reconcile_state
   - run_protocol
   - runtime_watch_poll
+  - runtime_watch_loop
+  - runtime_get_outbox
+  - runtime_ack_outbox
   - runtime_get_alerts
   - runtime_ack_alert
   - parse_error
@@ -59,6 +62,12 @@ not wait for the user to explicitly ask for simulate.
 ### Phase 2 — Simulation Gate (blocking)
 
 - `doctor_local_runtime` -> `simulate_protocol` -> `parse_simulation_output`
+- Before `simulate_protocol`, when you have proposed protocol steps, pass
+  `virtual_lab_steps` (plus `session_id` / `initial_state`) so the Virtual Lab
+  State gate runs deterministically **before** Python spawns: it blocks overflow,
+  source depletion (aspirate > volume − dead_volume), single-use tip reuse, and
+  missing prerequisites. Use `skip_virtual_lab_state_validation=true` only inside
+  `opentrons-simulation-repair` when intentionally simulating a known-bad protocol.
 - Or `opentrons-simulation-repair` for the edit loop.
 - **Failure here -> STOP for live.** No workaround.
 - If simulation fails, keep ownership of the repair loop when possible instead of
@@ -81,6 +90,7 @@ not wait for the user to explicitly ask for simulate.
 - After a successful `run_protocol` call that returns a `run_id`, immediately call `runtime_watch_poll` for that run.
 - If `runtime_watch_poll.status == "running"`, immediately call `runtime_watch_poll` again and do not emit user-facing text between poll windows.
 - Only report when `runtime_watch_poll` returns `completed`, `needs_user`, `hard_stop`, or `unreachable`.
+- **For unattended / "keep going until done" runs**, arm `runtime_watch_loop` instead of repeated manual polls (see `opentrons-experiment-goal`). It reuses `runtime_watch_poll` on a budgeted schedule, persists `goal-state.json`, and emits outbox sentinels so the host IDE can auto-wake. Default `self_fix_mode=observe`; guarded L0 self-fix requires `allow_l4_execution=true` + `operator_opt_in=true`.
 - Before this phase, give the operator a short ready-state summary rather than a
   long internal trace.
 
