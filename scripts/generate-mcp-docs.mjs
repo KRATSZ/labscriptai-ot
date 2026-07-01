@@ -64,6 +64,7 @@ const TOOL_TIERS = {
   create_run: "L3",
   control_run: "L3",
   probe_wells: "L3",
+  apply_liquid_probe_results: "L2",
   upload_protocol: "L3",
   create_run_context: "L3",
   load_pipette: "L3",

@@ -211,6 +211,8 @@ function normalizeLiquidContainerEntry(key, entry = {}, { defaultRole = "source"
     dead_volume_ul: deadVolumeUl,
     expected_presence: entry.expected_presence ?? entry.expectedPresence ?? null,
     observed_presence: entry.observed_presence ?? entry.observedPresence ?? null,
+    observed_height_mm: normalizeLiquidNumber(entry.observed_height_mm ?? entry.observedHeightMm, null),
+    observed_probe_mode: entry.observed_probe_mode || entry.observedProbeMode || null,
     observed_at: entry.observed_at || entry.observedAt || null,
     observed_run_id: entry.observed_run_id || entry.observedRunId || null,
     observed_source: entry.observed_source || entry.observedSource || null,
@@ -501,6 +503,8 @@ function recordContainerFieldChanges(sessionState, { key, before = {}, after = {
     "dead_volume_ul",
     "expected_presence",
     "observed_presence",
+    "observed_height_mm",
+    "observed_probe_mode",
     "observed_at",
     "observed_run_id",
     "observed_source",
@@ -559,6 +563,10 @@ export function setLiquidContainerState(sessionState, container = {}) {
       dead_volume_ul: container.dead_volume_ul ?? container.deadVolumeUl ?? current.dead_volume_ul ?? null,
       expected_presence: container.expected_presence ?? container.expectedPresence ?? current.expected_presence ?? null,
       observed_presence: container.observed_presence ?? container.observedPresence ?? current.observed_presence ?? null,
+      observed_height_mm:
+        container.observed_height_mm ?? container.observedHeightMm ?? current.observed_height_mm ?? null,
+      observed_probe_mode:
+        container.observed_probe_mode ?? container.observedProbeMode ?? current.observed_probe_mode ?? null,
       observed_at: container.observed_at ?? container.observedAt ?? current.observed_at ?? null,
       observed_run_id: container.observed_run_id ?? container.observedRunId ?? current.observed_run_id ?? null,
       observed_source: container.observed_source ?? container.observedSource ?? current.observed_source ?? null,

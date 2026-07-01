@@ -277,3 +277,86 @@ test("probe_wells executes the live branch when enabled", async () => {
     }
   }
 });
+
+test("probe_wells auto_apply_to_session writes probe observations", async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "opentrons-probe-auto-apply-"));
+  const fakeRunnerPath = createFakeSimulationRunner(tempDir, { simulatePass: true });
+  const originalFlag = process.env.OPENTRONS_ENABLE_PROBE_WELLS;
+  const originalRunProtocol = TOOL_HANDLERS.run_protocol;
+  const originalFetch = global.fetch;
+  const sessionId = `probe-auto-apply-${Date.now()}`;
+
+  process.env.OPENTRONS_ENABLE_PROBE_WELLS = "1";
+  TOOL_HANDLERS.run_protocol = async () => ({
+    data: { final_status: "succeeded" },
+    hardwareSnapshot: { robot: "snapshot" },
+    stateRevision: 7,
+    sessionId,
+    runId: "run-auto-apply",
+  });
+  global.fetch = async (url, options = {}) => {
+    const requestUrl = new URL(url);
+    const method = options.method || "GET";
+
+    if (method === "GET" && requestUrl.pathname === "/runs/run-auto-apply/commands") {
+      return jsonResponse({
+        data: [
+          {
+            commandType: "comment",
+            params: {
+              message:
+                'PROBE_RESULT:{"well":"A1","mode":"measure_height","success":true,"value":9.2}',
+            },
+          },
+        ],
+      });
+    }
+
+    throw new Error(`Unexpected request: ${method} ${requestUrl.toString()}`);
+  };
+
+  try {
+    await TOOL_HANDLERS.record_liquid_source_map({
+      session_id: sessionId,
+      sources: [
+        {
+          slot_name: "C1",
+          well_name: "A1",
+          labware_load_name: "nest_12_reservoir_15ml",
+          expected_presence: true,
+        },
+      ],
+    });
+
+    const result = await TOOL_HANDLERS.probe_wells({
+      pipette_name: "flex_1channel_1000",
+      mount: "left",
+      tiprack_load_name: "opentrons_flex_96_tiprack_1000ul",
+      tiprack_slot: "D1",
+      labware_load_name: "nest_12_reservoir_15ml",
+      labware_slot: "C1",
+      wells: ["A1"],
+      mode: "measure_height",
+      output_path: path.join(tempDir, "probe_protocol.py"),
+      python_executable: fakeRunnerPath,
+      execute_on_robot: true,
+      auto_apply_to_session: true,
+      session_id: sessionId,
+      robot_ip: "10.31.2.149:31950",
+    });
+
+    assert.equal(result.data.apply_liquid_probe_results?.applied_count, 1);
+    assert.equal(result.data.apply_liquid_probe_results?.applied_sources[0].observed_height_mm, 9.2);
+
+    const sourceMap = await TOOL_HANDLERS.get_liquid_source_map({ session_id: sessionId, slot_name: "C1" });
+    assert.equal(sourceMap.data.sources[0].observed_height_mm, 9.2);
+  } finally {
+    TOOL_HANDLERS.run_protocol = originalRunProtocol;
+    global.fetch = originalFetch;
+    if (originalFlag === undefined) {
+      delete process.env.OPENTRONS_ENABLE_PROBE_WELLS;
+    } else {
+      process.env.OPENTRONS_ENABLE_PROBE_WELLS = originalFlag;
+    }
+  }
+});

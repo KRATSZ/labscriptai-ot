@@ -65,6 +65,7 @@ import {
 } from "./lib/labware-offsets.js";
 import { parseSimulationLog, runDoctorTool, runSimulationTool } from "./lib/simulation.js";
 import { buildProbeWellsProtocol, extractProbeResultsFromCommands } from "./lib/probe.js";
+import { applyLiquidProbeResults } from "./lib/liquid-probe-results.js";
 import {
   DEFAULT_SESSION_ID,
   validateVirtualLabStateSteps,
@@ -159,6 +160,7 @@ const REQUIRED_RUNTIME_TOOLS = [
   "record_liquid_source_map",
   "get_liquid_source_map",
   "summarize_liquid_source_map",
+  "apply_liquid_probe_results",
   "plan_liquid_source_substitution",
   "generate_liquid_source_substitution_protocol",
   "prepare_liquid_source_substitution_recovery",
@@ -354,6 +356,8 @@ const TOOL_DEFINITIONS = [
               },
               expected_presence: { type: "boolean" },
               observed_presence: { type: "boolean" },
+              observed_height_mm: { type: "number" },
+              observed_probe_mode: { type: "string" },
               observed_at: { type: "string" },
               observed_run_id: { type: "string" },
               observed_source: { type: "string" },
@@ -1208,6 +1212,12 @@ const TOOL_DEFINITIONS = [
         },
         api_level: { type: "string", default: "2.24" },
         liquid_presence_detection: { type: "boolean", default: true },
+        auto_apply_to_session: {
+          type: "boolean",
+          default: false,
+          description:
+            "When execute_on_robot is true, write probe_results into session liquid_tracking via apply_liquid_probe_results.",
+        },
         execute_on_robot: { type: "boolean", default: false },
         output_path: { type: "string" },
         timeout_ms: { type: "integer", default: 1800000 },
@@ -1232,6 +1242,43 @@ const TOOL_DEFINITIONS = [
         "labware_slot",
         "wells",
       ],
+    },
+  },
+  {
+    name: "apply_liquid_probe_results",
+    description:
+      "Apply live probe_wells observations to session liquid_tracking. Records observed_presence and observed_height_mm separately from operator expected_presence. Bookkeeping only; no robot motion.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        session_id: { type: "string" },
+        probe_results: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              well: { type: "string" },
+              mode: { type: "string" },
+              success: { type: "boolean" },
+              value: {},
+            },
+            required: ["well"],
+          },
+        },
+        probe_artifact_path: {
+          type: "string",
+          description: "Optional JSON artifact from probe_wells live execution.",
+        },
+        generated_protocol_path: { type: "string" },
+        slot_name: { type: "string", description: "Deck slot of probed labware, e.g. C2" },
+        labware_slot: { type: "string", description: "Alias for slot_name" },
+        labware_load_name: { type: "string" },
+        run_id: { type: "string" },
+        mode: {
+          type: "string",
+          enum: ["detect_presence", "require_presence", "measure_height"],
+        },
+      },
     },
   },
   {
@@ -4629,6 +4676,33 @@ const TOOL_HANDLERS = {
     return result;
   },
 
+  async apply_liquid_probe_results(args) {
+    const result = await applyLiquidProbeResults(args, {
+      recordLiquidSourceMap: TOOL_HANDLERS.record_liquid_source_map.bind(TOOL_HANDLERS),
+      summarizeLiquidSourceMap: TOOL_HANDLERS.summarize_liquid_source_map.bind(TOOL_HANDLERS),
+    });
+
+    recordToolResultLog({
+      toolName: "apply_liquid_probe_results",
+      eventKind: "liquid_probe_applied",
+      args,
+      result,
+      fallbackSessionId: result.sessionId,
+      fallbackStatus: "completed",
+      summary: `Applied ${result.data.applied_count} live probe observation(s) to session liquid_tracking.`,
+      data: {
+        run_id: result.data.run_id,
+        slot_name: result.data.slot_name,
+        probe_mode: result.data.probe_mode,
+        applied_count: result.data.applied_count,
+        observed_presence_mismatch_count: result.data.source_map_summary?.observed_presence_mismatch_count ?? null,
+        ready_for_semantic_recovery: result.data.source_map_summary?.ready_for_semantic_recovery ?? null,
+      },
+    });
+
+    return result;
+  },
+
   async validate_virtual_lab_state_steps(args) {
     const sessionId = args.session_id || DEFAULT_SESSION_ID;
     const initialState = args.initial_state || readSessionState(sessionId);
@@ -6613,6 +6687,18 @@ const TOOL_HANDLERS = {
       },
     });
     const probeResults = extractProbeResultsFromCommands(rawCommands);
+    let applyResult = null;
+    if (args.auto_apply_to_session === true && probeResults.length > 0) {
+      applyResult = await TOOL_HANDLERS.apply_liquid_probe_results({
+        session_id: args.session_id || runResult.sessionId || DEFAULT_SESSION_ID,
+        probe_results: probeResults,
+        generated_protocol_path: outputPath,
+        slot_name: args.labware_slot,
+        labware_load_name: args.labware_load_name,
+        run_id: runResult.runId || null,
+        mode: args.mode || "detect_presence",
+      });
+    }
     const result = {
       data: {
         mode: args.mode || "detect_presence",
@@ -6623,6 +6709,7 @@ const TOOL_HANDLERS = {
         parsed_simulation_output: parsedSimulationOutput,
         run_protocol: runResult.data,
         probe_results: probeResults,
+        apply_liquid_probe_results: applyResult?.data || null,
       },
       hardwareSnapshot: runResult.hardwareSnapshot,
       stateRevision: runResult.stateRevision,
