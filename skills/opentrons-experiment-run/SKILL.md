@@ -18,6 +18,9 @@ mcp_tools:
   - execute_protocol_recovery
   - recover_tip_pickup
   - live_readiness_check
+  - live_liquid_recovery_gate
+  - probe_wells
+  - apply_liquid_probe_results
   - safe_next_action
   - restart_review
   - experiment_history
@@ -83,6 +86,7 @@ not wait for the user to explicitly ask for simulate.
 - If `guidance.reconcile_first` -> `reconcile_state`.
 - `robot_status`, `module_status` — verify robot reachable and modules ready.
 - `reconcile_state` — confirm deck matches expected layout.
+- **Optional Flex liquid probe (LPD):** When source fill is uncertain or session source map has `expected_presence=true` without `observed_presence`, offer `probe_wells` (simulate first). Live probe requires `OPENTRONS_ENABLE_PROBE_WELLS=1`, operator confirmation, then `apply_liquid_probe_results` and `live_liquid_recovery_gate`. See `policy/workflows.md` *Optional Flex liquid probe*.
 - **Deck vision (observation-only) — ONLY if the operator explicitly requests a visual check or image-based deck confirmation:** `camera_status` → `capture_preview_image` → `vision_check` on the saved image. Canonical sequence and setup: `policy/workflows.md` section *Optional deck vision (observation-only)*. Do **not** pull vision into the default preflight path. Treat output as hints; **do not** treat vision as committed deck truth — compare with `reconcile_state` and robot APIs. Vision weights are optional; pass `weights` or set `OPENTRONS_DECK_YOLO_WEIGHTS` when needed.
 - Before `home`: `is_home_safe`.
 

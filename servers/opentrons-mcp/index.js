@@ -65,14 +65,19 @@ import {
 } from "./lib/labware-offsets.js";
 import { parseSimulationLog, runDoctorTool, runSimulationTool } from "./lib/simulation.js";
 import { buildProbeWellsProtocol, extractProbeResultsFromCommands } from "./lib/probe.js";
+import * as probeLib from "./lib/probe.js";
+import { applyLiquidProbeResults } from "./lib/liquid-probe-results.js";
 import {
   DEFAULT_SESSION_ID,
   validateVirtualLabStateSteps,
+  canOverwriteTrust,
   ensureTiprackState,
+  liquidContainerKey,
   markTipWellStatus,
   mutateSessionState,
   readSessionState,
   setCleanupState,
+  setLiquidContainerState,
   setLiquidSourceState,
   setPipetteState,
   uniqueSessionStrings,
@@ -105,8 +110,10 @@ import {
   LIQUID_SOURCE_SUBSTITUTION_PLAYBOOK_ID,
   buildLiquidSourceSubstitutionPlan,
   generateLiquidSourceSubstitutionValidationProtocol,
+  setSuffixSufficiencyOnPlan,
   validateLiquidSourceSubstitutionInvariants,
 } from "./lib/liquid-source-substitution.js";
+import { evaluateSuffixSufficiency } from "./lib/suffix-monitor.js";
 import { listRecoveryPlaybooks } from "./lib/recovery-playbooks.js";
 import { runVisionCheck } from "./lib/vision-check.js";
 import { buildErrorTaxonomy, buildTaxonomyIssue } from "./lib/error-taxonomy.js";
@@ -131,12 +138,267 @@ import {
   parseAssistantJson,
   resolveSiliconFlowApiKey,
 } from "./lib/siliconflow.js";
-import { ARTIFACTS_DIR } from "./lib/paths.js";
+import { ARTIFACTS_DIR, DATA_DIR } from "./lib/paths.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const DEFAULT_CAMERA_ARTIFACT_DIR = path.join(ARTIFACTS_DIR, "camera-captures");
 const DEFAULT_VISION_ANNOTATED_DIR = path.resolve(DEFAULT_CAMERA_ARTIFACT_DIR, "vision-annotated");
 const DEFAULT_PROBE_PROTOCOL_DIR = path.join(ARTIFACTS_DIR, "probe-protocols");
+const PROBE_STATE_WRITEBACK_MODES = new Set(["measure_height", "require_presence", "detect_presence"]);
+
+function resolvePendingProbeRunsDir() {
+  const configured = process.env.PLUGIN_DATA || process.env.OPENTRONS_PLUGIN_DATA;
+  const dataDir = configured ? path.resolve(configured) : DATA_DIR;
+  return path.join(dataDir, "pending-probe-runs");
+}
+
+function sanitizePendingSessionId(sessionId = DEFAULT_SESSION_ID) {
+  return String(sessionId || DEFAULT_SESSION_ID).replace(/[^a-zA-Z0-9._-]/g, "_");
+}
+
+function pendingProbeRunsPath(sessionId) {
+  return path.join(resolvePendingProbeRunsDir(), `${sanitizePendingSessionId(sessionId)}.json`);
+}
+
+function readPendingProbeRuns(sessionId) {
+  const filePath = pendingProbeRunsPath(sessionId);
+  if (!fs.existsSync(filePath)) {
+    return { runs: [] };
+  }
+  try {
+    const parsed = JSON.parse(fs.readFileSync(filePath, "utf8"));
+    return parsed && typeof parsed === "object" ? { runs: asArray(parsed.runs), ...parsed } : { runs: [] };
+  } catch {
+    return { runs: [] };
+  }
+}
+
+function writePendingProbeRuns(sessionId, data) {
+  const pendingDir = resolvePendingProbeRunsDir();
+  fs.mkdirSync(pendingDir, { recursive: true });
+  const filePath = pendingProbeRunsPath(sessionId);
+  const tempPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
+  fs.writeFileSync(tempPath, `${JSON.stringify(data, null, 2)}\n`);
+  fs.renameSync(tempPath, filePath);
+}
+
+function recordPendingProbeRun(
+  sessionId,
+  { runId = null, labwareSlot = null, labwareLoadName = null, mode = null, probeResults = [] } = {},
+) {
+  const slotName = labwareSlot ? String(labwareSlot).trim().toUpperCase() : null;
+  const pending = readPendingProbeRuns(sessionId);
+  const wells = asArray(probeResults)
+    .map(result => ({
+      slot_name: slotName,
+      well_name: String(result?.well || "").trim().toUpperCase(),
+      probe_result: result,
+      applied: false,
+    }))
+    .filter(entry => entry.slot_name && entry.well_name);
+  if (wells.length === 0) {
+    return;
+  }
+  pending.runs.push({
+    run_id: runId,
+    recorded_at: new Date().toISOString(),
+    labware_slot: slotName,
+    labware_load_name: labwareLoadName || null,
+    mode: mode || null,
+    wells,
+  });
+  writePendingProbeRuns(sessionId, pending);
+}
+
+function getPendingProbeWritebackWells(sessionId) {
+  const pending = readPendingProbeRuns(sessionId);
+  const entries = [];
+  for (const run of pending.runs || []) {
+    for (const well of run.wells || []) {
+      if (!well.applied) {
+        entries.push({
+          slot_name: well.slot_name,
+          well_name: well.well_name,
+          run_id: run.run_id || null,
+          mode: run.mode || null,
+        });
+      }
+    }
+  }
+  return entries;
+}
+
+function clearPendingProbeWell(sessionId, slotName, wellName, runId = null) {
+  const normalizedSlot = String(slotName || "").trim().toUpperCase();
+  const normalizedWell = String(wellName || "").trim().toUpperCase();
+  const pending = readPendingProbeRuns(sessionId);
+  let changed = false;
+  for (const run of pending.runs || []) {
+    if (runId && run.run_id !== runId) {
+      continue;
+    }
+    for (const well of run.wells || []) {
+      if (well.slot_name === normalizedSlot && well.well_name === normalizedWell && !well.applied) {
+        well.applied = true;
+        well.applied_at = new Date().toISOString();
+        changed = true;
+      }
+    }
+  }
+  pending.runs = asArray(pending.runs).filter(run => asArray(run.wells).some(well => !well.applied));
+  if (changed) {
+    writePendingProbeRuns(sessionId, pending);
+  }
+}
+
+function callHeightMmToVolumeUl(args = {}) {
+  const fn = probeLib.heightMmToVolumeUl;
+  if (typeof fn !== "function") {
+    return null;
+  }
+  return fn(args);
+}
+
+async function writeObservedProbeResults({ sessionId, context, sources }) {
+  const appliedSources = [];
+  const blockedSources = [];
+  let stateRevision = readSessionState(sessionId).state_revision;
+
+  for (const source of sources) {
+    const slotName = String(source.slot_name || "").trim().toUpperCase();
+    const wellName = String(source.well_name || "").trim().toUpperCase();
+    const containerKey = liquidContainerKey({ slotName, wellName });
+    const sessionStateBefore = readSessionState(sessionId);
+    const existing =
+      sessionStateBefore.liquid_tracking?.containers?.[containerKey] ||
+      sessionStateBefore.liquid_tracking?.sources?.[containerKey] ||
+      {};
+    const currentTrust = existing.trust_level || "declared";
+
+    if (!canOverwriteTrust(currentTrust, "observed")) {
+      blockedSources.push({
+        container_key: containerKey,
+        blocked_by: "trust_downgrade_blocked",
+        trust_level: currentTrust,
+      });
+      continue;
+    }
+
+    let volumeUl = null;
+    if (source.observed_height_mm !== null && source.observed_height_mm !== undefined) {
+      const conversion = callHeightMmToVolumeUl({
+        height_mm: source.observed_height_mm,
+        labware_load_name: source.labware_load_name || existing.labware_load_name || context.labwareLoadName || null,
+        well_name: wellName,
+      });
+      if (conversion) {
+        volumeUl = conversion.volume_ul ?? null;
+      }
+    }
+
+    const { state } = mutateSessionState(sessionId, sessionState => {
+      setLiquidContainerState(sessionState, {
+        slot_name: slotName,
+        well_name: wellName,
+        labware_load_name: source.labware_load_name || existing.labware_load_name || context.labwareLoadName || null,
+        volume_ul: volumeUl,
+        observed_presence: source.observed_presence ?? null,
+        observed_height_mm: source.observed_height_mm ?? null,
+        observed_probe_mode: source.observed_probe_mode || context.mode || null,
+        trust_level: "observed",
+        observed_source: source.observed_source || "live_probe",
+        observed_at: source.observed_at || new Date().toISOString(),
+        observed_run_id: source.observed_run_id || context.runId || null,
+        notes: source.notes || null,
+        role: existing.role || "source",
+        why: "apply_liquid_probe_results",
+      });
+      return sessionState;
+    });
+    stateRevision = state.state_revision;
+    appliedSources.push(source);
+    clearPendingProbeWell(sessionId, slotName, wellName, source.observed_run_id || context.runId || null);
+  }
+
+  return {
+    applied_count: appliedSources.length,
+    applied_sources: appliedSources,
+    blocked_sources: blockedSources,
+    state_revision: stateRevision,
+  };
+}
+
+function substitutionPatchForSuffixMonitor(patch = null) {
+  if (!patch || typeof patch !== "object") {
+    return null;
+  }
+  const fromKey = patch.failed_source_key || patch.from_key || patch.fromKey || null;
+  const toKey = patch.replacement_source_key || patch.to_key || patch.toKey || null;
+  if (!fromKey || !toKey) {
+    return patch;
+  }
+  return {
+    ...patch,
+    type: patch.type || "replace_source",
+    from_key: fromKey,
+    to_key: toKey,
+  };
+}
+
+function evaluateLiveLiquidGateSuffix({
+  sessionState,
+  recoverySteps = null,
+  errorStepIndex = null,
+  substitutionPlan = null,
+} = {}) {
+  const basePlan = substitutionPlan ? { ...substitutionPlan } : {
+    auto_resume_eligible: false,
+    suffix_sufficient: false,
+    final_auto_resume_eligible: false,
+    patch: null,
+  };
+  if (!Array.isArray(recoverySteps) || recoverySteps.length === 0) {
+    const plan = setSuffixSufficiencyOnPlan(basePlan, {
+      ok: false,
+      suffix_sufficient: false,
+      violations: [],
+    });
+    return {
+      suffix_sufficient: false,
+      blocked_reason: "suffix_steps_unavailable",
+      plan,
+      suffix_result: null,
+      violations: [],
+    };
+  }
+  const suffixResult = evaluateSuffixSufficiency({
+    sessionState,
+    steps: recoverySteps,
+    errorStepIndex,
+    patch: substitutionPatchForSuffixMonitor(substitutionPlan?.patch),
+  });
+  const plan = setSuffixSufficiencyOnPlan(basePlan, suffixResult);
+  return {
+    suffix_sufficient: plan.suffix_sufficient === true,
+    final_auto_resume_eligible: plan.final_auto_resume_eligible === true,
+    blocked_reason: plan.suffix_sufficient === true ? null : "suffix_plan_not_sufficient",
+    plan,
+    suffix_result: suffixResult,
+    violations: suffixResult.violations || [],
+  };
+}
+
+function enrichProbeResultsForWriteback({ probeResults = [], labwareSlot = null, labwareLoadName = null, mode = null } = {}) {
+  const slotName = labwareSlot ? String(labwareSlot).trim().toUpperCase() : null;
+  return asArray(probeResults).map(result => ({
+    ...result,
+    slot_name: slotName,
+    labware_load_name: labwareLoadName || null,
+    height_mm: mode === "measure_height" ? result?.value ?? null : null,
+    observed_presence: mode === "measure_height" ? null : result?.value ?? null,
+    raw_value: result?.value ?? null,
+  }));
+}
 const DEFAULT_CONTINUATION_PROTOCOL_DIR = path.join(ARTIFACTS_DIR, "continuation-protocols");
 const DEFAULT_LIQUID_SUBSTITUTION_PROTOCOL_DIR = path.join(ARTIFACTS_DIR, "liquid-substitution-protocols");
 const REQUIRED_RUNTIME_TOOLS = [
@@ -365,6 +627,53 @@ const TOOL_DEFINITIONS = [
         },
       },
       required: ["sources"],
+    },
+  },
+  {
+    name: "apply_liquid_probe_results",
+    description:
+      "Write live probe observations into session liquid container state with trust_level=observed. Supports single-well writeback or batch apply from probe_wells artifacts. Bookkeeping only; does not move the robot. Call after probe_wells when pending_state_writeback is true.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        session_id: { type: "string" },
+        slot_name: { type: "string", description: "Deck slot such as D3" },
+        well_name: { type: "string", description: "Well name such as A1 (single-well mode)" },
+        labware_load_name: { type: "string" },
+        labware_slot: { type: "string", description: "Alias for slot_name in batch mode" },
+        actual_volume_ul: { type: "number", description: "Explicit observed volume in microliters" },
+        height_mm: { type: "number", description: "Measured liquid height; converted via heightMmToVolumeUl when volume omitted" },
+        run_id: { type: "string", description: "Probe run id for audit linkage" },
+        observed_presence: { type: "boolean", description: "Presence-only observation when volume is unknown" },
+        force: {
+          type: "boolean",
+          default: false,
+          description: "Allow overwriting higher trust levels when true",
+        },
+        probe_results: {
+          type: "array",
+          description: "Batch mode: probe_wells results to apply",
+          items: {
+            type: "object",
+            properties: {
+              well: { type: "string" },
+              mode: { type: "string" },
+              success: { type: "boolean" },
+              value: {},
+            },
+            required: ["well"],
+          },
+        },
+        probe_artifact_path: {
+          type: "string",
+          description: "Optional JSON artifact from probe_wells live execution.",
+        },
+        generated_protocol_path: { type: "string" },
+        mode: {
+          type: "string",
+          enum: ["detect_presence", "require_presence", "measure_height"],
+        },
+      },
     },
   },
   {
@@ -1208,6 +1517,12 @@ const TOOL_DEFINITIONS = [
         },
         api_level: { type: "string", default: "2.24" },
         liquid_presence_detection: { type: "boolean", default: true },
+        auto_apply_to_session: {
+          type: "boolean",
+          default: false,
+          description:
+            "When execute_on_robot is true, write probe_results into session liquid_tracking via apply_liquid_probe_results.",
+        },
         execute_on_robot: { type: "boolean", default: false },
         output_path: { type: "string" },
         timeout_ms: { type: "integer", default: 1800000 },
@@ -1403,12 +1718,21 @@ const TOOL_DEFINITIONS = [
         outbox_dir: { type: "string" },
         notify_adapters: {
           type: "array",
-          items: { type: "string", enum: ["claudecode", "claude", "codex", "cursor", "cli", "webhook"] },
+          items: {
+            type: "string",
+            enum: ["claudecode", "claude", "codex", "cursor", "piagent", "opencode", "cli", "webhook"],
+          },
           description: "Adapters to deliver pending outbox sentinels to after the loop ends.",
         },
         notify_limit: { type: "integer", default: 20 },
         host_adapter_dir: { type: "string" },
         webhook_url: { type: "string" },
+        zero_llm_when_no_error: {
+          type: "boolean",
+          default: false,
+          description:
+            "When true, suppress LLM guidance on ticks with no actionable error. Defaults from OPENTRONS_ZERO_LLM_WHEN_NO_ERROR when omitted.",
+        },
       },
       required: ["run_id"],
     },
@@ -1479,7 +1803,7 @@ const TOOL_DEFINITIONS = [
   {
     name: "runtime_deliver_outbox",
     description:
-      "Deliver pending runtime outbox events to configured host adapters: claudecode, codex, cursor, cli, or webhook.",
+      "Deliver pending runtime outbox events to configured host adapters: claudecode, codex, cursor, piagent, opencode, cli, or webhook.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1489,7 +1813,7 @@ const TOOL_DEFINITIONS = [
           type: "array",
           items: {
             type: "string",
-            enum: ["claudecode", "codex", "cursor", "cli", "webhook"],
+            enum: ["claudecode", "codex", "cursor", "piagent", "opencode", "cli", "webhook"],
           },
         },
         limit: { type: "integer", default: 20 },
@@ -1687,7 +2011,7 @@ const TOOL_DEFINITIONS = [
           type: "array",
           items: {
             type: "string",
-            enum: ["claudecode", "codex", "cursor", "cli", "webhook"],
+            enum: ["claudecode", "codex", "cursor", "piagent", "opencode", "cli", "webhook"],
           },
           description:
             "Optional host adapters to deliver newly pending outbox events after the monitor tick.",
@@ -1843,6 +2167,19 @@ const TOOL_DEFINITIONS = [
           description:
             "When true, expected-present sources with observed_presence=false become a warning that permits only targeted no-aspirate probe_wells evidence collection, not resume.",
         },
+        recovery_steps: {
+          type: "array",
+          description:
+            "Optional Virtual Lab State steps for suffix sufficiency preflight during substitution auto-resume gating.",
+        },
+        error_step_index: {
+          type: "integer",
+          description: "Failed step index for suffix replay; required with recovery_steps for suffix gating.",
+        },
+        failed_source_key: { type: "string", description: "Optional substitution context for suffix gating." },
+        failed_slot_name: { type: "string" },
+        failed_well_name: { type: "string" },
+        preferred_source_key: { type: "string" },
       },
       required: ["robot_ip"],
     },
@@ -2689,6 +3026,22 @@ function buildLiveLiquidGateNextAction({ failedCheckNames = [], warningCheckName
       reason: "required_liquid_sources_missing_or_mismatched",
     };
   }
+  if (failed.has("pending_probe_writeback")) {
+    return {
+      recommended_next_action: "apply_pending_probe_writeback",
+      allowed_next_tools: ["apply_liquid_probe_results", "live_liquid_recovery_gate"],
+      human_required: false,
+      reason: "pending_probe_writeback",
+    };
+  }
+  if (failed.has("suffix_plan_not_sufficient")) {
+    return {
+      recommended_next_action: "review_suffix_recovery_plan",
+      allowed_next_tools: ["plan_liquid_source_substitution", "validate_virtual_lab_state_steps", "live_liquid_recovery_gate"],
+      human_required: true,
+      reason: "suffix_plan_not_sufficient",
+    };
+  }
   if (warned.has("source_map_requirements")) {
     return {
       recommended_next_action: "run_observed_mismatch_reprobe",
@@ -2804,6 +3157,41 @@ function buildLiveLiquidGateResolutionPlan({
         "Each required entry expected_presence matches the gate requirement.",
         "No required expected-present source has observed_presence=false from a live probe.",
       ],
+    });
+  }
+  if (failed.has("pending_probe_writeback")) {
+    const pendingCheck = checksByName.get("pending_probe_writeback") || {};
+    add({
+      check_name: "pending_probe_writeback",
+      severity: "blocker",
+      action: "apply_pending_probe_writeback",
+      human_required: false,
+      allowed_next_tools: ["apply_liquid_probe_results", "live_liquid_recovery_gate"],
+      acceptance_criteria: [
+        "Each pending probe well has a matching apply_liquid_probe_results writeback.",
+        "Pending probe writeback clears before live liquid watcher/probe re-runs.",
+      ],
+      pending_probe_wells: pendingCheck.pending_probe_wells || [],
+    });
+  }
+  if (failed.has("suffix_plan_not_sufficient")) {
+    const suffixCheck = checksByName.get("suffix_plan_not_sufficient") || {};
+    add({
+      check_name: "suffix_plan_not_sufficient",
+      severity: "blocker",
+      action: "review_suffix_recovery_plan",
+      human_required: true,
+      allowed_next_tools: [
+        "plan_liquid_source_substitution",
+        "validate_virtual_lab_state_steps",
+        "live_liquid_recovery_gate",
+      ],
+      acceptance_criteria: [
+        "Suffix replay passes Virtual Lab State validation after the substitution patch.",
+        "final_auto_resume_eligible is true only when suffix_sufficient and auto_resume_eligible are both true.",
+      ],
+      violations: suffixCheck.violations || [],
+      caution: "Suffix preflight failure is a severe warning; do not auto-resume until violations are resolved.",
     });
   }
   if (warned.has("source_map_requirements")) {
@@ -2960,6 +3348,7 @@ function buildLiveLiquidRecoveryGateResult({
   invalidSourcePlan = null,
   sessionId = DEFAULT_SESSION_ID,
   allowObservedMismatchReprobe = false,
+  suffixEvaluation = null,
 } = {}) {
   const selfTest = selfTestResult?.data || {};
   const robotStatus = robotStatusResult?.data || {};
@@ -2972,6 +3361,63 @@ function buildLiveLiquidRecoveryGateResult({
   const sourceIdentityCheck = buildLiquidSourceIdentityMetadataGateCheck(sourceMapCheck, {
     sessionId,
   });
+  const pendingProbeWells = getPendingProbeWritebackWells(sessionId);
+  const pendingProbeCheck = buildGateCheck(
+    "pending_probe_writeback",
+    pendingProbeWells.length === 0 ? "pass" : "fail",
+    pendingProbeWells.length === 0
+      ? "No pending live probe writebacks remain."
+      : "One or more live probe wells still require apply_liquid_probe_results writeback.",
+    {
+      pending_probe_wells: pendingProbeWells,
+      pending_probe_count: pendingProbeWells.length,
+    },
+  );
+  const suffixCheck = (() => {
+    if (!suffixEvaluation) {
+      return null;
+    }
+    if (suffixEvaluation.blocked_reason === "suffix_steps_unavailable") {
+      return buildGateCheck(
+        "suffix_plan_not_sufficient",
+        "warn",
+        "Suffix recovery steps were not available for preflight.",
+        {
+          blocked_reason: "suffix_steps_unavailable",
+          suffix_sufficient: false,
+          substitution_plan: suffixEvaluation.plan || null,
+        },
+      );
+    }
+    if (suffixEvaluation.suffix_sufficient === true) {
+      return buildGateCheck(
+        "suffix_plan_not_sufficient",
+        "pass",
+        "Suffix replay passed Virtual Lab State validation.",
+        {
+          suffix_sufficient: true,
+          final_auto_resume_eligible: suffixEvaluation.final_auto_resume_eligible === true,
+          substitution_plan: suffixEvaluation.plan || null,
+          violations: [],
+        },
+      );
+    }
+    return buildGateCheck(
+      "suffix_plan_not_sufficient",
+      "fail",
+      "Suffix replay failed Virtual Lab State validation; auto-resume is blocked.",
+      {
+        blocked_reason: "suffix_plan_not_sufficient",
+        suffix_sufficient: false,
+        final_auto_resume_eligible: false,
+        substitution_plan: suffixEvaluation.plan || null,
+        violations: (suffixEvaluation.violations || []).map(violation => ({
+          ...violation,
+          step_index: violation.step_index ?? violation.step?.index ?? null,
+        })),
+      },
+    );
+  })();
   const checks = [
     buildGateCheck(
       "loaded_runtime_recovery_self_test",
@@ -3028,6 +3474,8 @@ function buildLiveLiquidRecoveryGateResult({
     sourcePlanCheck,
     sourceMapCheck,
     sourceIdentityCheck,
+    pendingProbeCheck,
+    ...(suffixCheck ? [suffixCheck] : []),
   ];
   const failedChecks = checks.filter(check => check.status === "fail");
   const warningChecks = checks.filter(check => check.status === "warn");
@@ -3044,10 +3492,22 @@ function buildLiveLiquidRecoveryGateResult({
     sessionId,
   });
   const operatorRequest = buildLiveLiquidGateOperatorRequest(resolutionPlan);
+  const blockedBy =
+    failedCheckNames.includes("pending_probe_writeback")
+      ? "pending_probe_writeback"
+      : failedCheckNames.includes("suffix_plan_not_sufficient")
+        ? "suffix_plan_not_sufficient"
+        : null;
 
   return {
     status: failedChecks.length > 0 ? "blocked" : warningChecks.length > 0 ? "warn" : "pass",
     ok_for_live_liquid_rerun: failedChecks.length === 0,
+    blocked_by: blockedBy,
+    pending_probe_wells: pendingProbeWells,
+    substitution_plan: suffixEvaluation?.plan || null,
+    suffix_sufficient: suffixEvaluation?.suffix_sufficient ?? null,
+    final_auto_resume_eligible: suffixEvaluation?.final_auto_resume_eligible ?? null,
+    suffix_violations: suffixEvaluation?.violations || null,
     source_plan: sourcePlan || null,
     allow_observed_mismatch_reprobe: allowObservedMismatchReprobe,
     checks,
@@ -3068,6 +3528,12 @@ function buildLiveLiquidRecoveryGateResult({
         : null,
       warningCheckNames.includes("source_identity_metadata")
         ? "Fill and validate runs/self-recovery/artifacts/liquid-source-identity-draft.md before semantic liquid recovery or source substitution."
+        : null,
+      failedCheckNames.includes("pending_probe_writeback")
+        ? "Apply apply_liquid_probe_results for each pending probe well before repeating live liquid watcher/probe tests."
+        : null,
+      failedCheckNames.includes("suffix_plan_not_sufficient")
+        ? "Resolve suffix replay violations before any substitution auto-resume."
         : null,
       attachedTips.length > 0 ? "Clear the attached pipette tip state before any liquid watcher/probe re-run." : null,
       failedChecks.length === 0
@@ -4545,6 +5011,157 @@ const TOOL_HANDLERS = {
       stateRevision: state.state_revision,
       sessionId,
     };
+  },
+
+  async apply_liquid_probe_results(args) {
+    const hasBatchInput =
+      (Array.isArray(args.probe_results) && args.probe_results.length > 0) ||
+      Boolean(args.probe_artifact_path || args.probe_artifact);
+    if (hasBatchInput) {
+      const result = await applyLiquidProbeResults(args, {
+        writeObservedProbeResults,
+        summarizeLiquidSourceMap: TOOL_HANDLERS.summarize_liquid_source_map.bind(TOOL_HANDLERS),
+      });
+
+      recordToolResultLog({
+        toolName: "apply_liquid_probe_results",
+        eventKind: "liquid_probe_writeback",
+        args,
+        result,
+        fallbackSessionId: result.sessionId || args.session_id || DEFAULT_SESSION_ID,
+        fallbackStatus: "pass",
+        summary: `Applied live probe writeback for ${result.data.applied_count} well(s).`,
+        data: result.data,
+      });
+
+      return result;
+    }
+
+    const sessionId = args.session_id || DEFAULT_SESSION_ID;
+    const slotName = String(args.slot_name || "").trim().toUpperCase();
+    const wellName = String(args.well_name || "").trim().toUpperCase();
+    if (!slotName || !wellName) {
+      throw new Error("apply_liquid_probe_results requires slot_name and well_name.");
+    }
+
+    const containerKey = liquidContainerKey({ slotName, wellName });
+    const sessionStateBefore = readSessionState(sessionId);
+    const existing =
+      sessionStateBefore.liquid_tracking?.containers?.[containerKey] ||
+      sessionStateBefore.liquid_tracking?.sources?.[containerKey] ||
+      {};
+    const expectedPresence = existing.expected_presence ?? null;
+
+    let volumeUl = null;
+    let method = "presence_only";
+    let observedPresence = args.observed_presence;
+
+    if (args.actual_volume_ul !== undefined && args.actual_volume_ul !== null) {
+      volumeUl = Number(args.actual_volume_ul);
+      method = "explicit";
+    } else if (args.height_mm !== undefined && args.height_mm !== null) {
+      const conversion = callHeightMmToVolumeUl({
+        height_mm: args.height_mm,
+        labware_load_name: args.labware_load_name || existing.labware_load_name || null,
+        well_name: wellName,
+      });
+      if (!conversion) {
+        throw new Error(
+          "apply_liquid_probe_results received height_mm but heightMmToVolumeUl is unavailable or could not convert.",
+        );
+      }
+      volumeUl = conversion.volume_ul ?? null;
+      method = conversion.method || "height_conversion";
+    } else if (observedPresence === true || observedPresence === false) {
+      volumeUl = null;
+      method = "presence_only";
+    } else {
+      throw new Error(
+        "apply_liquid_probe_results requires actual_volume_ul, height_mm, or observed_presence.",
+      );
+    }
+
+    if (observedPresence === undefined || observedPresence === null) {
+      if (volumeUl !== null && Number.isFinite(volumeUl)) {
+        observedPresence = volumeUl > 0;
+      } else if (args.height_mm !== undefined && args.height_mm !== null) {
+        observedPresence = true;
+      }
+    }
+
+    const currentTrust = existing.trust_level || "declared";
+    if (!canOverwriteTrust(currentTrust, "observed") && args.force !== true) {
+      return {
+        data: {
+          blocked_by: "trust_downgrade_blocked",
+          trust_level: currentTrust,
+          attempted_trust_level: "observed",
+          container_key: containerKey,
+          session_id: sessionId,
+        },
+        stateRevision: sessionStateBefore.state_revision,
+        sessionId,
+      };
+    }
+
+    const observedAt = new Date().toISOString();
+    const runId = args.run_id || null;
+    const { state } = mutateSessionState(sessionId, sessionState => {
+      setLiquidContainerState(sessionState, {
+        slot_name: slotName,
+        well_name: wellName,
+        labware_load_name: args.labware_load_name || existing.labware_load_name || null,
+        volume_ul: volumeUl,
+        observed_presence: observedPresence ?? null,
+        trust_level: "observed",
+        observed_source: "live_probe",
+        observed_at: observedAt,
+        observed_run_id: runId,
+        role: existing.role || "source",
+        why: "apply_liquid_probe_results",
+      });
+      return sessionState;
+    });
+
+    clearPendingProbeWell(sessionId, slotName, wellName, runId);
+
+    const updated =
+      state.liquid_tracking?.containers?.[containerKey] ||
+      state.liquid_tracking?.sources?.[containerKey] ||
+      {};
+    const observedPresenceMismatch =
+      (expectedPresence === true || expectedPresence === false) &&
+      (observedPresence === true || observedPresence === false) &&
+      expectedPresence !== observedPresence;
+
+    const result = {
+      data: {
+        trust_level: updated.trust_level || "observed",
+        volume_ul: volumeUl,
+        method,
+        observed_presence: observedPresence ?? null,
+        observed_presence_mismatch: observedPresenceMismatch,
+        session_id: sessionId,
+        container_key: containerKey,
+        observed_at: observedAt,
+        observed_run_id: runId,
+      },
+      stateRevision: state.state_revision,
+      sessionId,
+    };
+
+    recordToolResultLog({
+      toolName: "apply_liquid_probe_results",
+      eventKind: "liquid_probe_writeback",
+      args,
+      result,
+      fallbackSessionId: sessionId,
+      fallbackStatus: "pass",
+      summary: `Applied live probe writeback for ${containerKey} (${method}).`,
+      data: result.data,
+    });
+
+    return result;
   },
 
   async get_liquid_source_map(args) {
@@ -6613,16 +7230,52 @@ const TOOL_HANDLERS = {
       },
     });
     const probeResults = extractProbeResultsFromCommands(rawCommands);
+    const mode = args.mode || "detect_presence";
+    const sessionId = args.session_id || runResult.sessionId || DEFAULT_SESSION_ID;
+    const enrichedProbeResults = enrichProbeResultsForWriteback({
+      probeResults,
+      labwareSlot: args.labware_slot,
+      labwareLoadName: args.labware_load_name,
+      mode,
+    });
+    const needsWriteback = PROBE_STATE_WRITEBACK_MODES.has(mode);
+    let applyResult = null;
+    if (args.auto_apply_to_session === true && probeResults.length > 0) {
+      applyResult = await TOOL_HANDLERS.apply_liquid_probe_results({
+        session_id: sessionId,
+        probe_results: probeResults,
+        generated_protocol_path: outputPath,
+        slot_name: args.labware_slot,
+        labware_load_name: args.labware_load_name,
+        run_id: runResult.runId || null,
+        mode,
+      });
+    } else if (needsWriteback) {
+      recordPendingProbeRun(sessionId, {
+        runId: runResult.runId || null,
+        labwareSlot: args.labware_slot,
+        labwareLoadName: args.labware_load_name,
+        mode,
+        probeResults,
+      });
+    }
     const result = {
       data: {
-        mode: args.mode || "detect_presence",
+        mode,
         generated_protocol_path: outputPath,
         wells,
         execute_on_robot: true,
         simulation,
         parsed_simulation_output: parsedSimulationOutput,
         run_protocol: runResult.data,
-        probe_results: probeResults,
+        probe_results: enrichedProbeResults,
+        apply_liquid_probe_results: applyResult?.data || null,
+        ...(needsWriteback && args.auto_apply_to_session !== true
+          ? {
+              pending_state_writeback: true,
+              required_next_tool: "apply_liquid_probe_results",
+            }
+          : {}),
       },
       hardwareSnapshot: runResult.hardwareSnapshot,
       stateRevision: runResult.stateRevision,
@@ -6884,7 +7537,14 @@ const TOOL_HANDLERS = {
   },
 
   async runtime_watch_loop(args) {
-    const result = await runtimeWatchLoop(args, {
+    const zeroLlmWhenNoError =
+      args.zero_llm_when_no_error === true || process.env.OPENTRONS_ZERO_LLM_WHEN_NO_ERROR === "1";
+    const result = await runtimeWatchLoop(
+      {
+        ...args,
+        zero_llm_when_no_error: zeroLlmWhenNoError,
+      },
+      {
       readSnapshot: async stepArgs =>
         collectRunExecutionSnapshot({
           robotIp: stepArgs.robot_ip,
@@ -6898,7 +7558,8 @@ const TOOL_HANDLERS = {
           stepArgs.session_id || stepArgs.run_id,
         ),
       executeRecovery: executeProtocolRecovery,
-    });
+      },
+    );
 
     recordToolResultLog({
       toolName: "runtime_watch_loop",
@@ -7229,6 +7890,35 @@ const TOOL_HANDLERS = {
       requiredSources: args.required_sources || [],
     });
     const { requiredSources, invalidSourcePlan } = sourceRequirementResolution;
+    const recoverySteps = Array.isArray(args.recovery_steps)
+      ? args.recovery_steps
+      : Array.isArray(args.virtual_lab_steps)
+        ? args.virtual_lab_steps
+        : null;
+    const errorStepIndex = args.error_step_index ?? args.errorStepIndex ?? null;
+    const hasSubstitutionContext = Boolean(
+      args.failed_source_key ||
+        args.failed_slot_name ||
+        args.failed_well_name ||
+        (Array.isArray(recoverySteps) && recoverySteps.length > 0),
+    );
+    const substitutionPlan = hasSubstitutionContext
+      ? buildLiquidSourceSubstitutionPlan({
+          sessionState,
+          failedSourceKey: args.failed_source_key,
+          failedSlotName: args.failed_slot_name,
+          failedWellName: args.failed_well_name,
+          preferredSourceKey: args.preferred_source_key,
+        })
+      : null;
+    const suffixEvaluation = hasSubstitutionContext
+      ? evaluateLiveLiquidGateSuffix({
+          sessionState,
+          recoverySteps,
+          errorStepIndex,
+          substitutionPlan,
+        })
+      : null;
     const gate = buildLiveLiquidRecoveryGateResult({
       robotIp: args.robot_ip,
       selfTestResult,
@@ -7240,6 +7930,7 @@ const TOOL_HANDLERS = {
       invalidSourcePlan,
       sessionId,
       allowObservedMismatchReprobe: args.allow_observed_mismatch_reprobe === true,
+      suffixEvaluation,
     });
     const result = {
       data: gate,
@@ -7278,6 +7969,11 @@ const TOOL_HANDLERS = {
           gate.checks.find(check => check.name === "source_map_requirements")?.required_sources || [],
         source_identity_metadata:
           gate.checks.find(check => check.name === "source_identity_metadata") || null,
+        blocked_by: gate.blocked_by || null,
+        pending_probe_wells: gate.pending_probe_wells || [],
+        suffix_sufficient: gate.suffix_sufficient,
+        final_auto_resume_eligible: gate.final_auto_resume_eligible,
+        suffix_violations: gate.suffix_violations,
       },
     });
 
