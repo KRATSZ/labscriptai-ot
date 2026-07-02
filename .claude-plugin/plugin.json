@@ -13,6 +13,9 @@
   "license": "SEE LICENSE IN LICENSE",
   "keywords": ["opentrons", "labscriptai", "mcp", "robotics", "protocol-authoring"],
   "defaultEnabled": true,
+  "experimental": {
+    "monitors": "./monitors/monitors.json"
+  },
   "skills": "./skills/",
   "mcpServers": "./.claude-plugin/mcp.json",
   "interface": {

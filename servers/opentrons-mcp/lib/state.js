@@ -31,6 +31,28 @@ export const COLUMN_MAJOR_WELL_ORDER_96 = Array.from({ length: 12 }, (_, columnI
 
 export const LIQUID_TRUST_LEVELS = Object.freeze(["declared", "simulated", "observed", "reconciled"]);
 
+export const TRUST_LEVEL_RANK = Object.freeze({
+  declared: 0,
+  simulated: 1,
+  observed: 2,
+  reconciled: 3,
+});
+
+export function canOverwriteTrust(currentTrust, newTrust) {
+  const currentRank = TRUST_LEVEL_RANK[normalizeTrustLevel(currentTrust, "declared")] ?? TRUST_LEVEL_RANK.declared;
+  const newRank = TRUST_LEVEL_RANK[normalizeTrustLevel(newTrust, "declared")] ?? TRUST_LEVEL_RANK.declared;
+  return newRank >= currentRank;
+}
+
+function trustLevelFromRank(rank) {
+  for (const level of LIQUID_TRUST_LEVELS) {
+    if (TRUST_LEVEL_RANK[level] === rank) {
+      return level;
+    }
+  }
+  return "declared";
+}
+
 export const MAX_STATE_HISTORY_ENTRIES = 2000;
 
 function sanitizeSessionId(sessionId = DEFAULT_SESSION_ID) {
@@ -150,7 +172,7 @@ function sameJsonValue(left, right) {
   return JSON.stringify(left ?? null) === JSON.stringify(right ?? null);
 }
 
-export function appendStateHistoryEntry(sessionState, { step = null, field, oldValue, newValue, why = null, trustLevel = null } = {}) {
+export function appendStateHistoryEntry(sessionState, { step = null, field, oldValue, newValue, why = null, trustLevel = null, derivedFrom = null } = {}) {
   if (!field || sameJsonValue(oldValue, newValue)) {
     return null;
   }
@@ -166,6 +188,9 @@ export function appendStateHistoryEntry(sessionState, { step = null, field, oldV
     why: why || null,
     trust_level: trustLevel ? normalizeTrustLevel(trustLevel) : null,
   };
+  if (derivedFrom !== null && derivedFrom !== undefined) {
+    entry.derived_from = normalizeTrustLevel(derivedFrom, "declared");
+  }
   sessionState.state_history.push(entry);
   if (sessionState.state_history.length > MAX_STATE_HISTORY_ENTRIES) {
     const overflow = sessionState.state_history.length - MAX_STATE_HISTORY_ENTRIES;
@@ -211,6 +236,8 @@ function normalizeLiquidContainerEntry(key, entry = {}, { defaultRole = "source"
     dead_volume_ul: deadVolumeUl,
     expected_presence: entry.expected_presence ?? entry.expectedPresence ?? null,
     observed_presence: entry.observed_presence ?? entry.observedPresence ?? null,
+    observed_height_mm: normalizeLiquidNumber(entry.observed_height_mm ?? entry.observedHeightMm, null),
+    observed_probe_mode: entry.observed_probe_mode || entry.observedProbeMode || null,
     observed_at: entry.observed_at || entry.observedAt || null,
     observed_run_id: entry.observed_run_id || entry.observedRunId || null,
     observed_source: entry.observed_source || entry.observedSource || null,
@@ -501,6 +528,8 @@ function recordContainerFieldChanges(sessionState, { key, before = {}, after = {
     "dead_volume_ul",
     "expected_presence",
     "observed_presence",
+    "observed_height_mm",
+    "observed_probe_mode",
     "observed_at",
     "observed_run_id",
     "observed_source",
@@ -559,6 +588,10 @@ export function setLiquidContainerState(sessionState, container = {}) {
       dead_volume_ul: container.dead_volume_ul ?? container.deadVolumeUl ?? current.dead_volume_ul ?? null,
       expected_presence: container.expected_presence ?? container.expectedPresence ?? current.expected_presence ?? null,
       observed_presence: container.observed_presence ?? container.observedPresence ?? current.observed_presence ?? null,
+      observed_height_mm:
+        container.observed_height_mm ?? container.observedHeightMm ?? current.observed_height_mm ?? null,
+      observed_probe_mode:
+        container.observed_probe_mode ?? container.observedProbeMode ?? current.observed_probe_mode ?? null,
       observed_at: container.observed_at ?? container.observedAt ?? current.observed_at ?? null,
       observed_run_id: container.observed_run_id ?? container.observedRunId ?? current.observed_run_id ?? null,
       observed_source: container.observed_source ?? container.observedSource ?? current.observed_source ?? null,
@@ -691,16 +724,54 @@ function setPipetteTipAttached(state, pipetteId, attached, step, why) {
   };
 }
 
-function setContainerVolume(state, containerKey, nextVolumeUl, step, why, trustLevel = "simulated") {
+export function setContainerVolume(
+  state,
+  containerKey,
+  nextVolumeUl,
+  step,
+  why,
+  trustLevel = "simulated",
+  mode = "absolute",
+  violations = null,
+) {
   const tracking = ensureLiquidTracking(state);
   const container = tracking.containers[containerKey];
   const beforeVolume = container.volume_ul ?? null;
-  const beforeTrust = container.trust_level ?? null;
+  const beforeTrust = normalizeTrustLevel(container.trust_level, "declared");
+  const newTrustLevel = normalizeTrustLevel(trustLevel, "simulated");
+
+  if (mode === "absolute" && !canOverwriteTrust(beforeTrust, newTrustLevel) && step?.force !== true) {
+    const violation = buildViolation(
+      step,
+      "trust_downgrade_blocked",
+      `Existing trust=${beforeTrust} cannot be overwritten by ${newTrustLevel}.`,
+      {
+        container_key: containerKey,
+        current_trust: beforeTrust,
+        attempted_trust: newTrustLevel,
+      },
+    );
+    if (Array.isArray(violations)) {
+      violations.push(violation);
+    }
+    return container;
+  }
+
   container.volume_ul = normalizeLiquidNumber(nextVolumeUl, null);
-  container.trust_level = normalizeTrustLevel(trustLevel, "simulated");
+  if (mode === "delta") {
+    const cappedRank = Math.min(
+      TRUST_LEVEL_RANK[beforeTrust] ?? TRUST_LEVEL_RANK.declared,
+      TRUST_LEVEL_RANK.simulated,
+    );
+    container.trust_level = trustLevelFromRank(cappedRank);
+  } else {
+    container.trust_level = newTrustLevel;
+  }
   container.updated_at = new Date().toISOString();
   tracking.containers[containerKey] = container;
   state.liquid_tracking = normalizeLiquidTracking(tracking);
+
+  const historyDerivedFrom = mode === "delta" ? beforeTrust : null;
   appendStateHistoryEntry(state, {
     step,
     field: `liquid_tracking.containers.${containerKey}.volume_ul`,
@@ -708,6 +779,7 @@ function setContainerVolume(state, containerKey, nextVolumeUl, step, why, trustL
     newValue: container.volume_ul,
     why,
     trustLevel: container.trust_level,
+    derivedFrom: historyDerivedFrom,
   });
   appendStateHistoryEntry(state, {
     step,
@@ -716,6 +788,7 @@ function setContainerVolume(state, containerKey, nextVolumeUl, step, why, trustL
     newValue: container.trust_level,
     why,
     trustLevel: container.trust_level,
+    derivedFrom: historyDerivedFrom,
   });
   return container;
 }
@@ -994,13 +1067,13 @@ export function applyStep(sessionState, step = {}) {
       if (sourceKey) {
         const source = tracking.containers[sourceKey];
         if (source && source.volume_ul !== null) {
-          setContainerVolume(nextState, sourceKey, Number(source.volume_ul) - volumeUl, step, `${type}:aspirate`, trustLevel);
+          setContainerVolume(nextState, sourceKey, Number(source.volume_ul) - volumeUl, step, `${type}:aspirate`, trustLevel, "delta", violations);
         }
       }
       if (targetKey) {
         const target = ensureLiquidTracking(nextState).containers[targetKey];
         if (target && target.volume_ul !== null) {
-          setContainerVolume(nextState, targetKey, Number(target.volume_ul) + volumeUl, step, `${type}:dispense`, trustLevel);
+          setContainerVolume(nextState, targetKey, Number(target.volume_ul) + volumeUl, step, `${type}:dispense`, trustLevel, "delta", violations);
         }
       }
     }
@@ -1050,7 +1123,7 @@ export function applyStep(sessionState, step = {}) {
     if (violations.length === 0 && volumeUl > 0) {
       const target = ensureLiquidTracking(nextState).containers[targetKey];
       if (target && target.volume_ul !== null) {
-        setContainerVolume(nextState, targetKey, Number(target.volume_ul) + volumeUl, step, "blow_out:dispense", "simulated");
+        setContainerVolume(nextState, targetKey, Number(target.volume_ul) + volumeUl, step, "blow_out:dispense", "simulated", "delta", violations);
       }
     }
     return { state: nextState, violations };

@@ -30,14 +30,48 @@ Added `mix`, `blow_out`, `load_labware`, `load_pipette`, and no-op handling for 
 
 This is the `/loop` + `/goal` pattern, but the goal runtime lives in the MCP server (state, verify, budget, levels, hard-stop, multi-backend outbox) — not faked in a Skill + CLI. The host IDE watches its adapter outbox file and wakes the agent on each sentinel.
 
+### Phase V1.7 — Trust monotonicity guard (complete + tested)
+
+- **Goal.** Prevent lower-trust volume writes (e.g. `simulated` absolute) from overwriting higher-trust container state (`observed`, `reconciled`). Delta-mode aspirate/dispense may derive a capped trust level but must not silently downgrade committed observations.
+- **Key files.** `lib/state.js` (`TRUST_LEVEL_RANK`, `canOverwriteTrust`, `setContainerVolume(..., mode)`); `test/state.test.js`.
+- **Status.** **done** — monotonic guard enforced; `trust_downgrade_blocked` violation emitted unless `step.force === true`.
+- **Evidence.** `servers/opentrons-mcp/test/state.test.js` (`setContainerVolume absolute mode blocks simulated overwrite of observed trust`); `servers/opentrons-mcp/test/suffix-e2e-scenario.test.js` (lock 1 scenario).
+- **Hard constraints.** Never bypass trust rank for routine simulation or reconcile writes; operator `force` is the only escape hatch and must be auditable in `state_history`.
+
+### Phase V2-plumbing — pLLD writeback loop (`apply_liquid_probe_results`) (in progress — parallel workers)
+
+- **Goal.** Close the probe loop: `probe_wells` (live pLLD / `measure_height`) returns tactile evidence but does **not** commit Virtual Lab State until `apply_liquid_probe_results` writes `trust_level:"observed"` volume back into the session. `probe_wells` must surface `pending_state_writeback:true` and `required_next_tool:"apply_liquid_probe_results"`.
+- **Key files.** `lib/probe.js` (height→volume conversion), `index.js` (`apply_liquid_probe_results` MCP handler, `probe_wells` response fields), `live_liquid_recovery_gate` (`blocked_by: "pending_probe_writeback"`).
+- **Status.** **in progress (parallel workers)** — gate resolution plan already lists `apply_liquid_probe_results` in `allowed_next_tools`; dedicated handler + writeback gate check landing in parallel.
+- **Evidence (partial).** `servers/opentrons-mcp/index.js` (observed-mismatch reprobe handoff); `servers/opentrons-mcp/test/suffix-e2e-scenario.test.js` (lock 2 scenario with handler stub fallback).
+- **Hard constraints.** No auto-resume after live probe until writeback succeeds; probe protocols remain no-aspirate/no-dispense; live motion still requires `OPENTRONS_ENABLE_PROBE_WELLS=1`.
+
+### Phase V2.5 — Suffix Plan Sufficiency Monitor (complete + tested)
+
+- **Goal.** Before unattended source substitution auto-resume, replay the patched protocol suffix against session state at the error step. `final_auto_resume_eligible = auto_resume_eligible && suffix_sufficient`; insufficient suffix → `blocked_by: "suffix_plan_not_sufficient"`.
+- **Key files.** `lib/suffix-monitor.js` (`evaluateSuffixSufficiency`), `lib/liquid-source-substitution.js` (`setSuffixSufficiencyOnPlan`, `applyFinalAutoResumeGates`), `live_liquid_recovery_gate` integration.
+- **Status.** **done** — suffix replay + plan gating implemented and unit-tested.
+- **Evidence.** `servers/opentrons-mcp/test/suffix-monitor.test.js`; `servers/opentrons-mcp/test/liquid-source-substitution.test.js` (`setSuffixSufficiencyOnPlan`); `servers/opentrons-mcp/test/suffix-e2e-scenario.test.js` (lock 3 scenario).
+- **Hard constraints.** Suffix check is pure software (no robot motion); hard-stop violation types (`collision`, `stall`, `hard_stop`) still stop the watch loop — suffix sufficiency does not override them.
+
+### Phase Q2.1 — Zero-LLM heartbeat throttling (in progress — parallel workers)
+
+- **Goal.** `runtime_watch_loop` option `zero_llm_when_no_error` suppresses host-agent wake on benign ticks. Outbox entries carry `wake` (boolean) and `kind` ∈ {`heartbeat`, `error`, `blocked`, `hard_stop`, `needs_user`, `completed`}. Heartbeats set `wake:false`; `error` / `blocked` set `wake:true`.
+- **Key files.** `lib/runtime-watch/watch-loop.js`, `lib/runtime-outbox.js`, `test/runtime-watch-loop.test.js`.
+- **Status.** **in progress (parallel workers)** — baseline auto-wake loop (Phase Q2) is complete; wake/kind discrimination landing in parallel.
+- **Evidence (partial).** `servers/opentrons-mcp/test/runtime-watch-loop.test.js` (one sentinel per tick); docs/MCP_TOOLS.md (wake/kind contract).
+- **Hard constraints.** `needs_user` and `hard_stop` must always wake (`wake:true`); zero-LLM throttle must not hide blockers or skip operator opt-in gates.
+
 ## What remains
 
 | Gap | Detail | Risk |
 |-----|--------|------|
+| **pLLD writeback loop (Phase V2-plumbing)** | `apply_liquid_probe_results` handler + `pending_probe_writeback` gate check still landing in parallel workers. | Medium; blocks unattended auto-resume after live probe until writeback is committed. |
+| **Zero-LLM heartbeat throttling (Phase Q2.1)** | `zero_llm_when_no_error`, outbox `wake`/`kind` fields still landing in parallel workers. | Low–medium; reduces IDE noise but must not hide real blockers. |
 | **Typed protocol IR (Phase V3)** | `applyStep` consumes generic step JSON; there is no `protocol.py → steps` lowering layer. Callers still construct steps manually. | Long-term; validate with `bundled-library/` round-trip first. |
 | **`applyStep` module-action semantics** | Module steps are treated as no-ops (no temperature/shake state tracked). | Low; only matters if protocols depend on module timing. |
 | **`state_history` sampling** | Capped at 2000 entries (newest kept); no per-field sampling for very long sessions. | Low. |
-| **Real-machine V2 regression** | Runtime-watch + auto-wake tooling is built and unit-tested, but the end-to-end live sequence (reload verify → readonly snapshot → L0 tip recovery → liquid gate → substitution → `runtime_watch_loop` auto-wake) is not yet captured in a single dated `runs/self-recovery/<date>-report.md`. | Medium; needs hardware. |
+| **Real-machine V2 regression** | Runtime-watch + auto-wake tooling is built and unit-tested, but the end-to-end live sequence (reload verify → readonly snapshot → L0 tip recovery → liquid gate → substitution → probe writeback → suffix gate → `runtime_watch_loop` auto-wake) is not yet captured in a single dated `runs/self-recovery/<date>-report.md`. | Medium; needs hardware. |
 
 ## Hard constraints for the next agent
 

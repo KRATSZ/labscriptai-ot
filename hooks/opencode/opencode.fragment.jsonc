@@ -1,0 +1,15 @@
+{
+  // Merge into opencode.jsonc — replace <OPENTRONS_PLUGIN_ROOT> and <PLUGIN_DATA>.
+  "mcpServers": {
+    "opentrons-lab": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["<OPENTRONS_PLUGIN_ROOT>/servers/opentrons-mcp/index.js"],
+      "env": {
+        "OPENTRONS_PLUGIN_ROOT": "<OPENTRONS_PLUGIN_ROOT>",
+        "PLUGIN_DATA": "<PLUGIN_DATA>"
+      }
+    }
+  },
+  "plugin": ["<OPENTRONS_PLUGIN_ROOT>/hooks/opencode/labscriptai-outbox-wake.ts"]
+}

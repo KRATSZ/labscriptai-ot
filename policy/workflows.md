@@ -12,6 +12,8 @@ user intent / SOP
   →  doctor_local_runtime → simulate_protocol (virtual_lab_steps) → parse_simulation_output
   →  (fix loop if failed)
   →  live_readiness_check (robot_ip, session_id?, file_path?) when the operator wants a read-only live gate
+  →  (optional Flex LPD) probe_wells simulate → operator confirm + OPENTRONS_ENABLE_PROBE_WELLS=1
+       → probe_wells execute_on_robot → apply_liquid_probe_results → live_liquid_recovery_gate
   →  return status: ready | needs_confirmation | blocked
   →  run_protocol (robot_ip, file_path, session_id) only after confirmation
   →  runtime_watch_loop (run_id) for unattended auto-wake until COMPLETE/BLOCKED
@@ -118,6 +120,21 @@ run_protocol → (run_id)
 ```
 robot_status → module_status → reconcile_state (if anything looks wrong)
 ```
+
+## Optional Flex liquid probe (LPD, opt-in live motion)
+
+Use when source wells have uncertain fill height, recovery needs observed liquid evidence, or the operator requests pre-run probing. **Default off** — requires explicit operator confirmation for live motion.
+
+```
+probe_wells (execute_on_robot=false) → parse simulation
+  → operator confirm + OPENTRONS_ENABLE_PROBE_WELLS=1
+  → probe_wells (execute_on_robot=true, auto_apply_to_session=true optional)
+  → apply_liquid_probe_results (if not auto-applied)
+  → live_liquid_recovery_gate
+  → run_protocol (only after gate pass + operator opt-in)
+```
+
+Bookkeeping only until `execute_on_robot=true`: `apply_liquid_probe_results` never moves the robot. See [probe-wells-live-validation.md](../docs/runbooks/probe-wells-live-validation.md).
 
 ## Optional deck vision (observation-only)
 

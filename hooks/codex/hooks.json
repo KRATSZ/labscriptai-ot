@@ -1,0 +1,34 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"${PLUGIN_ROOT}\" && OPENTRONS_PLUGIN_ROOT=\"${PLUGIN_ROOT}\" PLUGIN_DATA=\"${PLUGIN_DATA}\" node scripts/consume-runtime-outbox.mjs --host codex --hook-event SessionStart --session-id \"${OPENTRONS_SESSION_ID:-self-recovery-liquid}\""
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"${PLUGIN_ROOT}\" && OPENTRONS_PLUGIN_ROOT=\"${PLUGIN_ROOT}\" PLUGIN_DATA=\"${PLUGIN_DATA}\" node scripts/consume-runtime-outbox.mjs --host codex --hook-event UserPromptSubmit --session-id \"${OPENTRONS_SESSION_ID:-self-recovery-liquid}\""
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"${PLUGIN_ROOT}\" && OPENTRONS_PLUGIN_ROOT=\"${PLUGIN_ROOT}\" PLUGIN_DATA=\"${PLUGIN_DATA}\" node scripts/consume-runtime-outbox.mjs --host codex --hook-event Stop --session-id \"${OPENTRONS_SESSION_ID:-self-recovery-liquid}\""
+          }
+        ]
+      }
+    ]
+  }
+}

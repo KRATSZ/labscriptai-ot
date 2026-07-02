@@ -1,0 +1,4 @@
+{
+  "extensions": ["<OPENTRONS_PLUGIN_ROOT>/hooks/piagent/pi-outbox-wake.ts"],
+  "skills": ["<OPENTRONS_PLUGIN_ROOT>/skills"]
+}

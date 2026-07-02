@@ -272,6 +272,30 @@ Run deterministic Virtual Lab State checks against proposed protocol steps befor
 
 ## L3 — Live control — opt-in motion and runs
 
+### `apply_liquid_probe_results` [L3]
+
+Commit live pLLD / liquid-presence probe observations into Virtual Lab State. **Mandatory** after any live `probe_wells` run that collected tactile evidence — probing alone does not update session volume or trust.
+
+**When to call.** Immediately after `probe_wells` when the response includes `pending_state_writeback: true` and `required_next_tool: "apply_liquid_probe_results"`. Re-run `live_liquid_recovery_gate` only after writeback succeeds.
+
+**Parameters:**
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `session_id` | yes | Session whose VLS containers are updated |
+| `slot_name` | yes | Deck slot of the probed labware (e.g. `D3`) |
+| `well_name` | yes | Well within the labware (e.g. `A2`) |
+| `labware_load_name` | optional | Labware definition used for height→volume geometry |
+| `actual_volume_ul` | optional | Direct observed volume (µL); preferred when already computed |
+| `height_mm` | optional | Measured liquid height (mm); converted to volume when `actual_volume_ul` omitted |
+| `run_id` | optional | Probe run id for audit linkage |
+| `observed_presence` | optional | Boolean presence from `detect_presence` / `require_presence` modes |
+| `force` | optional | Operator escape hatch to overwrite higher trust (audited in `state_history`) |
+
+**Returns (data):** `trust_level: "observed"`, `volume_ul`, `method` (`direct` \| `height_to_volume`), `observed_presence_mismatch` (when source-map expected presence disagrees), `container_key` (e.g. `D3.A2`).
+
+**Gate interaction.** While a probe result awaits writeback, `live_liquid_recovery_gate` may return `blocked_by: "pending_probe_writeback"` even when other checks pass.
+
 ### `cleanup_motion` [L3]
 
 Execute openGripperJaw, moveToMaintenancePosition, and conditional home in a maintenance context.
@@ -354,7 +378,11 @@ Enqueue moveLabware with gripper strategy and poll to terminal status.
 
 Experimental liquid probing helper that generates a temporary protocol, simulates it locally, and can be explicitly enabled for live robot execution later.
 
+After a **live** probe run, the response includes `pending_state_writeback: true` and `required_next_tool: "apply_liquid_probe_results"`. Probe motion collects evidence only; Virtual Lab State volume/trust is committed by the follow-up writeback tool.
+
 **Parameters:** `robot_ip` (optional), `pipette_name`, `mount`, `tiprack_load_name`, `tiprack_slot`, `starting_tip` (optional), `labware_load_name`, `labware_slot`, `trash_slot` (optional), `wells`, `mode` (optional), `api_level` (optional), `liquid_presence_detection` (optional), `execute_on_robot` (optional), `output_path` (optional), `timeout_ms` (optional), `poll_interval_ms` (optional), `page_length` (optional), `session_id` (optional), `workspace_root` (optional), `api_root` (optional), `shared_data_root` (optional), `python_executable` (optional), `extra_args` (optional)
+
+**Live response fields (writeback contract):** `pending_state_writeback` (boolean), `required_next_tool` (`"apply_liquid_probe_results"`), `probe_results` (parsed `PROBE_RESULT:` comments).
 
 ### `recover_tip_pickup` [L3]
 
@@ -378,7 +406,40 @@ Bounded runtime watch poll for a live protocol run. Polls run status, executes o
 
 Goal-driven auto-wake loop that reuses `runtime_watch_poll` on a budgeted schedule (`max_turns`, `max_runtime_ms`, `interval_ms`) and emits one outbox sentinel per tick for host-adapter wake (`claudecode`/`cursor`/`codex`/`cli`/`webhook`). Persists `goal-state.json` per run (`resume=true` continues an active goal). Returns `goal_status` ∈ {`COMPLETE`, `BLOCKED`, `BUDGET_LIMITED`}; `COMPLETE` requires a `completed` tick or the verify callback. Inherits the L0–L4 safety model: only L0 whitelist fixes auto-execute; `needs_user`/`hard_stop` stop the loop and emit a BLOCKED sentinel. Default `self_fix_mode=observe` (no robot motion); guarded L0 self-fix requires `allow_l4_execution=true` + `operator_opt_in=true`.
 
-**Parameters:** `run_id`, `robot_ip` (optional), `session_id` (optional), `goal_id` (optional), `goal_prompt` (optional), `max_turns` (optional), `max_runtime_ms` (optional), `interval_ms` (optional), `max_block_ms` (optional), `poll_interval_ms` (optional), `page_length` (optional), `tiprack_slots` (optional), `tip_binding_mode` (optional), `protocol_source` (optional), `file_path` (optional), `protocol_path` (optional), `module_wait_timeout_ms` (optional), `module_poll_interval_ms` (optional), `max_attempts_per_failed_command` (optional), `unreachable_threshold` (optional), `resume` (optional), `self_fix_mode` (optional), `allow_l4_execution` (optional), `operator_opt_in` (optional), `watch_dir` (optional), `outbox_dir` (optional), `notify_adapters` (optional), `notify_limit` (optional), `host_adapter_dir` (optional), `webhook_url` (optional)
+Set `zero_llm_when_no_error=true` to suppress host-agent wake on benign ticks (see outbox `wake`/`kind` below). Blockers and `needs_user`/`hard_stop` always wake regardless of this flag.
+
+**Parameters:** `run_id`, `robot_ip` (optional), `session_id` (optional), `goal_id` (optional), `goal_prompt` (optional), `max_turns` (optional), `max_runtime_ms` (optional), `interval_ms` (optional), `max_block_ms` (optional), `poll_interval_ms` (optional), `page_length` (optional), `tiprack_slots` (optional), `tip_binding_mode` (optional), `protocol_source` (optional), `file_path` (optional), `protocol_path` (optional), `module_wait_timeout_ms` (optional), `module_poll_interval_ms` (optional), `max_attempts_per_failed_command` (optional), `unreachable_threshold` (optional), `resume` (optional), `self_fix_mode` (optional), `allow_l4_execution` (optional), `operator_opt_in` (optional), `zero_llm_when_no_error` (optional), `watch_dir` (optional), `outbox_dir` (optional), `notify_adapters` (optional), `notify_limit` (optional), `host_adapter_dir` (optional), `webhook_url` (optional)
+
+### Outbox wake / kind semantics (`runtime_watch_loop`, `runtime_get_outbox`, `runtime_deliver_outbox`)
+
+Each outbox entry may include:
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `wake` | boolean | Whether the host adapter should wake the agent. `false` for heartbeats; `true` for actionable events. |
+| `kind` | string | Event class: `heartbeat` \| `blocked` \| `hard_stop` \| `needs_user` \| `completed` |
+
+**Wake policy (default):**
+
+- `kind: "heartbeat"` (run still `running`, no new error) → `wake: false` — host may log but should not spawn a new agent turn.
+- `kind: "blocked"` → `wake: true` — agent should review and act (includes unreachable / goal-blocked ticks; runtime errors surface here or via `needs_user` / `hard_stop`).
+- `kind: "needs_user"` or `kind: "hard_stop"` → `wake: true` — loop stopped; operator decision required.
+- `kind: "completed"` → `wake: true` once — goal finished; confirm via `experiment_history`.
+
+When `zero_llm_when_no_error=true`, only entries with `wake: true` should trigger host wake; heartbeats remain in the outbox for audit.
+
+### Suffix sufficiency & auto-resume (liquid source substitution)
+
+Before unattended auto-resume after a same-liquid source substitution, the server replays the **patched protocol suffix** from the error step index using `evaluateSuffixSufficiency` (`lib/suffix-monitor.js`). A `replace_source` patch (`from_key` → `to_key`) is applied to remaining steps and validated against session container volumes.
+
+| Field | Meaning |
+|-------|---------|
+| `suffix_sufficient` | `true` when patched suffix replays with zero VLS violations |
+| `auto_resume_eligible` | `true` when replacement source has `observed_presence: true` |
+| `final_auto_resume_eligible` | `auto_resume_eligible && suffix_sufficient` — required for unattended continuation |
+| `blocked_by: "suffix_plan_not_sufficient"` | Patched suffix still violates volume/capacity checks |
+
+Use `plan_liquid_source_substitution` / `prepare_liquid_source_substitution_recovery` to obtain the plan; sufficiency is evaluated before `live_liquid_recovery_gate` clears for auto-resume. This check is read-only (no robot motion).
 
 ### `upload_protocol` [L3]
 

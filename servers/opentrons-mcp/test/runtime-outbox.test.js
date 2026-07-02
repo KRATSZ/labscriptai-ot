@@ -218,3 +218,41 @@ test("runtime outbox delivers to host adapter files and can be acked", async () 
     0,
   );
 });
+
+test("runtime outbox delivers to piagent and opencode host adapter files", async () => {
+  const root = tempRoot();
+  const outboxDir = path.join(root, "outbox");
+  const hostAdapterDir = path.join(root, "host-adapters");
+  const monitor = await runRuntimeRecoveryMonitor(
+    {
+      robot_ip: "10.0.0.2",
+      session_id: "pi-opencode-session",
+      run_id: "run-1",
+      levels: ["L2"],
+    },
+    baseDependencies(),
+  );
+  publishMonitorNotifications({ monitor, outboxDir });
+
+  const delivery = await deliverRuntimeOutbox({
+    sessionId: "pi-opencode-session",
+    adapters: ["piagent", "opencode"],
+    outboxDir,
+    hostAdapterDir,
+  });
+
+  assert.equal(delivery.status, "delivered");
+  assert.equal(delivery.delivered.length, 2);
+
+  const piagentPath = path.join(hostAdapterDir, "piagent", "pi-opencode-session.jsonl");
+  const opencodePath = path.join(hostAdapterDir, "opencode", "pi-opencode-session.jsonl");
+  assert.ok(fs.existsSync(piagentPath));
+  assert.ok(fs.existsSync(opencodePath));
+
+  const piagentLine = JSON.parse(fs.readFileSync(piagentPath, "utf8").trim().split("\n")[0]);
+  const opencodeLine = JSON.parse(fs.readFileSync(opencodePath, "utf8").trim().split("\n")[0]);
+  assert.equal(piagentLine.adapter, "piagent");
+  assert.equal(opencodeLine.adapter, "opencode");
+  assert.equal(piagentLine.event.session_id, "pi-opencode-session");
+  assert.equal(opencodeLine.event.requires_attention, true);
+});

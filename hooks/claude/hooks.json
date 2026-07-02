@@ -1,0 +1,41 @@
+{
+  "description": "LabscriptAI OT — consume runtime outbox and inject goal continuation",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"${CLAUDE_PLUGIN_ROOT}\" && OPENTRONS_PLUGIN_ROOT=\"${CLAUDE_PLUGIN_ROOT}\" PLUGIN_DATA=\"${CLAUDE_PLUGIN_DATA}\" node scripts/consume-runtime-outbox.mjs --host claudecode --hook-event SessionStart --session-id \"${OPENTRONS_SESSION_ID:-self-recovery-liquid}\"",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"${CLAUDE_PLUGIN_ROOT}\" && OPENTRONS_PLUGIN_ROOT=\"${CLAUDE_PLUGIN_ROOT}\" PLUGIN_DATA=\"${CLAUDE_PLUGIN_DATA}\" node scripts/consume-runtime-outbox.mjs --host claudecode --hook-event UserPromptSubmit --session-id \"${OPENTRONS_SESSION_ID:-self-recovery-liquid}\"",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"${CLAUDE_PLUGIN_ROOT}\" && OPENTRONS_PLUGIN_ROOT=\"${CLAUDE_PLUGIN_ROOT}\" PLUGIN_DATA=\"${CLAUDE_PLUGIN_DATA}\" node scripts/consume-runtime-outbox.mjs --host claudecode --hook-event Stop --session-id \"${OPENTRONS_SESSION_ID:-self-recovery-liquid}\"",
+            "timeout": 20
+          }
+        ]
+      }
+    ]
+  }
+}

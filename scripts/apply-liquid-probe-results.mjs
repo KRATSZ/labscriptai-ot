@@ -2,9 +2,7 @@
 /**
  * Apply live liquid probe observations to the session source map.
  *
- * This records observed_presence separately from operator/source-map
- * expected_presence, so mismatches remain visible instead of silently changing
- * experimental intent.
+ * Thin CLI wrapper around servers/opentrons-mcp TOOL_HANDLERS.apply_liquid_probe_results.
  */
 import fs from "fs";
 import path from "path";
@@ -52,69 +50,27 @@ function requireString(value, name) {
   return normalized;
 }
 
-function inferSlotFromProtocolPath(protocolPath) {
-  const text = protocolPath && fs.existsSync(protocolPath) ? fs.readFileSync(protocolPath, "utf8") : "";
-  const match = text.match(/protocol\.load_labware\([^,\n]+,\s*["']([A-D][1-4])["']/i);
-  return match ? match[1].toUpperCase() : null;
-}
-
-function inferLabwareFromProtocolPath(protocolPath) {
-  const text = protocolPath && fs.existsSync(protocolPath) ? fs.readFileSync(protocolPath, "utf8") : "";
-  const match = text.match(/protocol\.load_labware\(["']([^"']+)["'],\s*["'][A-D][1-4]["']/i);
-  return match ? match[1] : null;
-}
-
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const artifactPath = path.resolve(requireString(args.probe_artifact, "--probe-artifact"));
   const artifact = JSON.parse(fs.readFileSync(artifactPath, "utf8"));
-  const probeResults = Array.isArray(artifact.probe_results) ? artifact.probe_results : [];
-  if (probeResults.length === 0) {
-    throw new Error("Probe artifact does not contain probe_results.");
-  }
-
-  const generatedProtocolPath = artifact.generated_protocol_path || null;
-  const slotName = String(args.slot_name || inferSlotFromProtocolPath(generatedProtocolPath) || "").toUpperCase();
-  if (!slotName) {
-    throw new Error("--slot is required when it cannot be inferred from generated_protocol_path.");
-  }
-  const labwareLoadName = args.labware_load_name || inferLabwareFromProtocolPath(generatedProtocolPath) || null;
-  const observedAt = new Date().toISOString();
-  const runId = artifact.run_id || artifact.summary?.run_id || null;
 
   const { TOOL_HANDLERS } = await import(path.join(PLUGIN_ROOT, "servers", "opentrons-mcp", "index.js"));
-  const sources = probeResults.map(result => ({
-    slot_name: slotName,
-    well_name: result.well,
-    labware_load_name: labwareLoadName,
-    observed_presence: result.value === true,
-    observed_at: observedAt,
-    observed_run_id: runId,
-    observed_source: "live_probe",
-    notes: result.value === true
-      ? `Live probe ${runId || "unknown-run"} observed liquid present.`
-      : `Live probe ${runId || "unknown-run"} observed no liquid.`,
-  }));
-
-  const recordResult = await TOOL_HANDLERS.record_liquid_source_map({
+  const result = await TOOL_HANDLERS.apply_liquid_probe_results({
     session_id: args.session_id,
-    sources,
-  });
-  const summaryResult = await TOOL_HANDLERS.summarize_liquid_source_map({
-    session_id: args.session_id,
+    probe_artifact_path: artifactPath,
+    probe_results: Array.isArray(artifact.probe_results) ? artifact.probe_results : undefined,
+    generated_protocol_path: artifact.generated_protocol_path || null,
+    slot_name: args.slot_name || undefined,
+    labware_load_name: args.labware_load_name || undefined,
+    run_id: artifact.run_id || artifact.summary?.run_id || null,
+    mode: artifact.mode || undefined,
   });
 
   const payload = {
-    status: "completed",
-    session_id: args.session_id,
+    ...result.data,
     probe_artifact_path: artifactPath,
-    run_id: runId,
-    slot_name: slotName,
-    labware_load_name: labwareLoadName,
-    applied_count: sources.length,
-    applied_sources: sources,
-    record_result: recordResult,
-    source_map_summary: summaryResult.data,
+    record_result: result.data.record_result,
   };
 
   if (args.out) {
@@ -124,18 +80,24 @@ async function main() {
     payload.output_path = outPath;
   }
 
-  console.log(JSON.stringify({
-    status: payload.status,
-    session_id: payload.session_id,
-    run_id: payload.run_id,
-    slot_name: payload.slot_name,
-    applied_count: payload.applied_count,
-    observed_presence_mismatch_count: payload.source_map_summary.observed_presence_mismatch_count,
-    observed_presence_mismatch_keys:
-      payload.source_map_summary.observed_presence_mismatch_sources?.map(source => source.key) || [],
-    ready_for_semantic_recovery: payload.source_map_summary.ready_for_semantic_recovery,
-    output_path: payload.output_path || null,
-  }, null, 2));
+  console.log(
+    JSON.stringify(
+      {
+        status: payload.status,
+        session_id: payload.session_id,
+        run_id: payload.run_id,
+        slot_name: payload.slot_name,
+        applied_count: payload.applied_count,
+        observed_presence_mismatch_count: payload.source_map_summary?.observed_presence_mismatch_count,
+        observed_presence_mismatch_keys:
+          payload.source_map_summary?.observed_presence_mismatch_sources?.map(source => source.key) || [],
+        ready_for_semantic_recovery: payload.source_map_summary?.ready_for_semantic_recovery,
+        output_path: payload.output_path || null,
+      },
+      null,
+      2,
+    ),
+  );
 }
 
 main().catch(error => {
