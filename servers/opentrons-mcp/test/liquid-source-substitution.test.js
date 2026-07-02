@@ -8,6 +8,7 @@ import { TOOL_HANDLERS } from "../index.js";
 import {
   buildLiquidSourceSubstitutionPlan,
   generateLiquidSourceSubstitutionValidationProtocol,
+  setSuffixSufficiencyOnPlan,
   validateLiquidSourceSubstitutionInvariants,
 } from "../lib/liquid-source-substitution.js";
 import { analyzeLiquidProtocolGuards } from "../lib/liquid-protocol-guards.js";
@@ -473,4 +474,103 @@ test("prepare_liquid_source_substitution_recovery writes a fixed no-motion recov
   assert.equal(history.data.entries[0].data.experiment_intent_violation_count, 0);
   assert.equal(history.data.entries[0].data.semantic_invariant_status, "blocked");
   assert.equal(history.data.entries[0].data.liquid_guard_analysis.status, "pass");
+});
+
+test("buildLiquidSourceSubstitutionPlan defaults suffix_sufficient to false", () => {
+  const plan = buildLiquidSourceSubstitutionPlan({
+    sessionState: buildSessionState({
+      "D3.H1": {
+        slot_name: "D3",
+        well_name: "H1",
+        liquid_name: "water",
+        sample_id: "water-d3-h1",
+        expected_presence: true,
+      },
+      "C3.A1": {
+        slot_name: "C3",
+        well_name: "A1",
+        liquid_name: "water",
+        sample_id: "water-c3-a1",
+        expected_presence: true,
+        observed_presence: true,
+      },
+    }),
+    failedSourceKey: "D3.H1",
+  });
+
+  assert.equal(plan.suffix_sufficient, false);
+  assert.equal(plan.suffix_violations, null);
+  assert.equal(plan.auto_resume_eligible, true);
+  assert.equal(plan.final_auto_resume_eligible, false);
+  assert.equal(plan.blocked_reason, "suffix_plan_not_sufficient");
+});
+
+test("setSuffixSufficiencyOnPlan writes suffix result and final auto resume gate", () => {
+  const plan = buildLiquidSourceSubstitutionPlan({
+    sessionState: buildSessionState({
+      "D3.H1": {
+        slot_name: "D3",
+        well_name: "H1",
+        liquid_name: "water",
+        sample_id: "water-d3-h1",
+        expected_presence: true,
+      },
+      "C3.A1": {
+        slot_name: "C3",
+        well_name: "A1",
+        liquid_name: "water",
+        sample_id: "water-c3-a1",
+        expected_presence: true,
+        observed_presence: true,
+      },
+    }),
+    failedSourceKey: "D3.H1",
+  });
+
+  const insufficient = setSuffixSufficiencyOnPlan(plan, {
+    ok: false,
+    violations: [{ code: "aspirate_exceeds_available_volume", step_index: 0 }],
+  });
+  assert.equal(insufficient.suffix_sufficient, false);
+  assert.equal(insufficient.suffix_violations.length, 1);
+  assert.equal(insufficient.final_auto_resume_eligible, false);
+  assert.equal(insufficient.blocked_reason, "suffix_plan_not_sufficient");
+
+  const sufficient = setSuffixSufficiencyOnPlan(plan, {
+    ok: true,
+    violations: [],
+  });
+  assert.equal(sufficient.suffix_sufficient, true);
+  assert.deepEqual(sufficient.suffix_violations, []);
+  assert.equal(sufficient.final_auto_resume_eligible, true);
+  assert.equal(
+    sufficient.blocked_reason,
+    "liquid_source_substitution_ready_for_registered_executor_after_validation_and_live_gate",
+  );
+});
+
+test("final_auto_resume_eligible stays false when suffix sufficiency has not been evaluated", () => {
+  const plan = buildLiquidSourceSubstitutionPlan({
+    sessionState: buildSessionState({
+      "D3.A1": {
+        slot_name: "D3",
+        well_name: "A1",
+        liquid_name: "water",
+        expected_presence: true,
+      },
+      "C3.A1": {
+        slot_name: "C3",
+        well_name: "A1",
+        liquid_name: "water",
+        expected_presence: true,
+        observed_presence: true,
+      },
+    }),
+    failedSourceKey: "D3.A1",
+  });
+
+  assert.equal(plan.auto_resume_eligible, true);
+  assert.equal(plan.suffix_sufficient, false);
+  assert.equal(plan.final_auto_resume_eligible, false);
+  assert.equal(plan.blocked_reason, "suffix_plan_not_sufficient");
 });

@@ -3,10 +3,12 @@ import { randomUUID } from "crypto";
 
 import { watchFilePath } from "./alert-store.js";
 import { runtimeWatchPoll } from "./sentry-step.js";
+import { deliverRuntimeOutbox } from "../runtime-outbox.js";
 import {
-  appendRuntimeOutboxEvent,
-  deliverRuntimeOutbox,
-} from "../runtime-outbox.js";
+  appendWatchLoopOutboxEntry,
+  shouldWakeOnTick,
+  tickOutboxKind,
+} from "./outbox-tick.js";
 
 const DEFAULT_MAX_TURNS = 20;
 const DEFAULT_MAX_RUNTIME_MS = 10 * 60 * 1000;
@@ -108,11 +110,48 @@ function levelForStatus(status) {
   return "L2";
 }
 
-function buildTickSentinelEvent({ goal, turn, status, goalStatus, tick, args }) {
+function buildHeartbeatEvent({ goal, turn, goalStatus }) {
+  const ts = new Date().toISOString();
+  return {
+    kind: "heartbeat",
+    wake: false,
+    session_id: goal.session_id,
+    run_id: goal.run_id,
+    source: "runtime_watch_loop",
+    level: "L2",
+    type: "runtime_watch_loop_heartbeat",
+    severity: "info",
+    status: "running",
+    title: `runtime_watch_loop turn ${turn}: heartbeat`,
+    message: `Goal ${goal.goal_id} turn ${turn} heartbeat; no_error=true.`,
+    message_zh: `目标 ${goal.goal_id} 第 ${turn} 轮心跳；no_error=true。`,
+    requires_attention: false,
+    requires_ack: false,
+    recommended_next_tool: "runtime_watch_poll",
+    no_robot_motion: true,
+    dedupe_key: `${goal.goal_id}:heartbeat:${turn}`,
+    created_at: ts,
+    data: {
+      kind: "heartbeat",
+      wake: false,
+      ts,
+      goal_status: goalStatus,
+      no_error: true,
+      goal_id: goal.goal_id,
+      turn,
+    },
+  };
+}
+
+function buildTickSentinelEvent({ goal, turn, status, goalStatus, tick, zeroLlmWhenNoError }) {
   const tickData = tick?.data || {};
   const recommended = recommendedNextTool(status, tickData);
   const requiresAttention = goalStatus === "blocked";
+  const kind = tickOutboxKind(status, goalStatus);
+  const wake = shouldWakeOnTick(status, goalStatus, zeroLlmWhenNoError);
   return {
+    kind,
+    wake,
     session_id: goal.session_id,
     run_id: goal.run_id,
     source: "runtime_watch_loop",
@@ -129,6 +168,8 @@ function buildTickSentinelEvent({ goal, turn, status, goalStatus, tick, args }) 
     no_robot_motion: true,
     dedupe_key: `${goal.goal_id}:turn:${turn}:${status}`,
     data: {
+      kind,
+      wake,
       goal_id: goal.goal_id,
       turn,
       goal_status: goalStatus,
@@ -136,12 +177,13 @@ function buildTickSentinelEvent({ goal, turn, status, goalStatus, tick, args }) 
       last_event: tickData.last_event || null,
       recommended_next_tool: recommended,
       run_status: tickData.run_status || null,
+      error: tickData.error || null,
     },
   };
 }
 
 function defaultEmitSentinel({ event, outboxDir }) {
-  return appendRuntimeOutboxEvent(event, { outboxDir });
+  return appendWatchLoopOutboxEntry(event, { outboxDir });
 }
 
 export async function runtimeWatchLoop(args = {}, deps = {}) {
@@ -159,6 +201,7 @@ export async function runtimeWatchLoop(args = {}, deps = {}) {
 
   const sessionId = args.session_id || "default";
   const goalPrompt = args.goal_prompt || null;
+  const zeroLlmWhenNoError = args.zero_llm_when_no_error === true;
   const verify = typeof deps.verify === "function" ? deps.verify : null;
   const poll = typeof deps.runtimeWatchPoll === "function" ? deps.runtimeWatchPoll : runtimeWatchPoll;
   const emitSentinel = typeof deps.emitSentinel === "function" ? deps.emitSentinel : defaultEmitSentinel;
@@ -244,16 +287,18 @@ export async function runtimeWatchLoop(args = {}, deps = {}) {
     goal.status = goalStatus;
     goal.updated_at = new Date().toISOString();
 
-    const sentinelEvent = buildTickSentinelEvent({
-      goal,
-      turn,
-      status,
-      goalStatus,
-      tick,
-      args,
-    });
+    const outboxEvent = shouldWakeOnTick(status, goalStatus, zeroLlmWhenNoError)
+      ? buildTickSentinelEvent({
+          goal,
+          turn,
+          status,
+          goalStatus,
+          tick,
+          zeroLlmWhenNoError,
+        })
+      : buildHeartbeatEvent({ goal, turn, goalStatus });
     try {
-      emitSentinel({ event: sentinelEvent, outboxDir });
+      emitSentinel({ event: outboxEvent, outboxDir });
     } catch {
       // Sentinel emission must not abort the loop; the goal-state file still records progress.
     }

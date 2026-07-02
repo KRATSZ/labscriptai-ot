@@ -475,6 +475,8 @@ Host delivery is adapter based:
 | `claudecode` | append JSONL events to a Claude Code mailbox under the host-adapter directory |
 | `codex` | append JSONL events to a Codex mailbox under the host-adapter directory |
 | `cursor` | append JSONL events to a Cursor mailbox under the host-adapter directory |
+| `piagent` | append JSONL events to a Pi Coding Agent mailbox (experimental; see [outbox-wake-pi-opencode.md](./outbox-wake-pi-opencode.md)) |
+| `opencode` | append JSONL events to an OpenCode mailbox (experimental; see [outbox-wake-pi-opencode.md](./outbox-wake-pi-opencode.md)) |
 | `cli` | return a short printable notification message in the delivery result |
 | `webhook` | POST the outbox event to `--webhook-url` or `OPENTRONS_RUNTIME_ALERT_WEBHOOK_URL` |
 
@@ -513,6 +515,68 @@ node scripts/export-runtime-recovery-readiness.mjs \
 ```
 
 This is also read-only. The JSON/Markdown bundle reports `live_liquid_tests_allowed`, `next_tool`, `no_robot_motion`, the latest gate result-log id, whether a local `node ...opentrons-mcp/index.js` server process is running, the latest real-machine blockers, the latest liquid source-substitution validation bundle, the fixed recovery playbook bundle, and any wells still missing liquid identity. The process check intentionally ignores `node -e` / `--input-type=module` commands that merely import `opentrons-mcp/index.js` during tests or local scripts. Treat `live_liquid_tests_allowed=false` or `no_robot_motion=true` as a stop signal for live liquid watcher/probe tests. If `mcp_process.running=false`, reload the MCP client before trying MCP tools again; this usually corresponds to a `Transport closed` client error. If `real_machine.blockers` includes `attached_tip:left`, clear or confirm that physical state before any liquid motion. A source-substitution validation or recovery bundle may report `auto_resume_eligible=true` when a fixed playbook can automatically choose a same-liquid replacement after validation, but readiness still fails closed if the bundle claims `live_execution_allowed=true` or `live_protocol_run_allowed=true` before the live gate and operator opt-in. The result log uses `tool_name=runtime_recovery_readiness_cli` and `event_kind=readiness_bundle`.
+
+---
+
+## Unattended wake (five-host self-watch)
+
+Arm once, then let **Cursor**, **Claude Code**, **Codex**, **Pi**, or **OpenCode** auto-continue when the runtime monitor posts a `wake:true` sentinel — no manual “continue” clicks between goal turns.
+
+### 5-minute enable
+
+1. **Install** (creates host-adapter mailboxes for all five hosts and optional Codex hooks):
+
+```bash
+cd /path/to/labscriptai-ot
+bash install-labscriptai-ot.sh
+export OPENTRONS_PLUGIN_ROOT="$PWD"
+export PLUGIN_DATA="$PWD/.plugin-data"
+export OPENTRONS_SESSION_ID="self-recovery-liquid"   # match your experiment session
+```
+
+2. **Arm background monitor** (delivers to all five adapters by default):
+
+```bash
+bash scripts/arm-runtime-watch.sh
+# prints PID, outbox path, adapter JSONL paths
+# override adapters: OPENTRONS_NOTIFY_ADAPTERS=cursor,claudecode,codex bash scripts/arm-runtime-watch.sh
+```
+
+3. **Wire each host** (one-time per machine):
+
+| Host | Steps |
+|------|-------|
+| **Claude Code CLI** | `/plugin install` this repo → hooks load from `hooks/claude/hooks.json` + Monitor on `opentrons-experiment-goal` → set `OPENTRONS_SESSION_ID` in shell |
+| **Cursor** | Enable plugin hooks (`hooks/cursor/hooks.json`) or symlink to project `.cursor/hooks.json`; set `OPENTRONS_SESSION_ID` |
+| **Codex** | Install merges `~/.codex/hooks.json` if missing → run `codex` → `/hooks` → trust |
+| **Pi** *(experimental)* | Merge `hooks/piagent/settings.fragment.json` into `.pi/settings.json` — see [outbox-wake-pi-opencode.md](outbox-wake-pi-opencode.md) |
+| **OpenCode** *(experimental)* | Merge `hooks/opencode/opencode.fragment.jsonc` into `opencode.jsonc` — see [outbox-wake-pi-opencode.md](outbox-wake-pi-opencode.md) |
+
+4. **Start the agent** — after a run is live, say:
+
+> 用 opentrons-experiment-goal 盯 session **self-recovery-liquid** 到 **BLOCKED** 或 **COMPLETE**
+
+The agent arms `runtime_watch_loop` (or the Claude Monitor ticks `runtime-recovery-monitor.mjs`). On each meaningful event, host **Stop** hooks call `scripts/consume-runtime-outbox.mjs`, which injects a continuation containing `GOAL_STATUS` / `GOAL_REASON` lines per the skill contract.
+
+### Smoke test (no robot)
+
+```bash
+mkdir -p .plugin-data/host-adapters/cursor
+cat >> .plugin-data/host-adapters/cursor/self-recovery-liquid.jsonl <<'EOF'
+{"delivered_at":"2026-07-01T12:00:00Z","adapter":"cursor","event":{"outbox_id":"test-wake-1","session_id":"self-recovery-liquid","kind":"needs_user","wake":true,"message":"test","created_at":"2026-07-01T12:00:00Z"}}
+EOF
+
+OPENTRONS_SESSION_ID=self-recovery-liquid \
+  node scripts/consume-runtime-outbox.mjs --host cursor --hook stop --no-ack --source adapter
+# expect stdout JSON with followup_message containing GOAL_STATUS
+```
+
+### Safety notes
+
+- Consume hooks **only inject continuation prompts** — they do not bypass simulation gate or execute robot motion.
+- `hard_stop` → agent must print `GOAL_STATUS: BLOCKED` and stop; no auto-retry.
+- Liquid recovery still requires `live_liquid_recovery_gate` + operator opt-in.
+- Cursor conversation UUID ≠ `OPENTRONS_SESSION_ID`; always set the experiment session via env or `--session-id`.
 
 ---
 

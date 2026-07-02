@@ -85,6 +85,27 @@ function invariantCheck(name, passed, {
   };
 }
 
+function applyFinalAutoResumeGates(plan) {
+  const autoResumeEligible = plan.auto_resume_eligible === true;
+  const suffixSufficient = plan.suffix_sufficient === true;
+  plan.final_auto_resume_eligible = autoResumeEligible && suffixSufficient;
+  if (autoResumeEligible && !suffixSufficient) {
+    plan.blocked_reason = "suffix_plan_not_sufficient";
+  } else if (autoResumeEligible && suffixSufficient) {
+    plan.blocked_reason = "liquid_source_substitution_ready_for_registered_executor_after_validation_and_live_gate";
+  }
+  return plan;
+}
+
+export function setSuffixSufficiencyOnPlan(plan, suffixResult) {
+  if (!plan) {
+    return plan;
+  }
+  plan.suffix_sufficient = suffixResult?.ok === true;
+  plan.suffix_violations = suffixResult?.violations ?? null;
+  return applyFinalAutoResumeGates(plan);
+}
+
 function sampleIdPolicySatisfied(failedSource = {}, selectedSource = {}) {
   if (isGenericReagentLiquid(failedSource?.liquid_name)) {
     return true;
@@ -257,6 +278,9 @@ export function buildLiquidSourceSubstitutionPlan({
     ready_for_registered_executor: false,
     auto_resume_eligible: false,
     auto_resume_blocker: null,
+    suffix_sufficient: false,
+    suffix_violations: null,
+    final_auto_resume_eligible: false,
     failed_source_key: resolvedFailedKey || null,
     failed_source: failedSource ? sourceWithKey(resolvedFailedKey, failedSource) : null,
     selected_source_key: null,
@@ -337,7 +361,7 @@ export function buildLiquidSourceSubstitutionPlan({
     executor: LIQUID_SOURCE_SUBSTITUTION_PLAYBOOK_ID,
   };
 
-  const planned = {
+  const planned = applyFinalAutoResumeGates({
     ...base,
     status: "planned",
     ready_for_registered_executor: true,
@@ -349,10 +373,10 @@ export function buildLiquidSourceSubstitutionPlan({
     candidate_count: candidates.length,
     patch,
     blocked_reason: autoResumeEligible
-      ? "liquid_source_substitution_ready_for_registered_executor_after_validation_and_live_gate"
+      ? "suffix_plan_not_sufficient"
       : "liquid_source_substitution_requires_validated_presence_before_auto_resume",
     required_next_step: "prepare_liquid_source_substitution_recovery",
-  };
+  });
   return {
     ...planned,
     playbook: summarizeRecoveryPlaybook(LIQUID_SOURCE_SUBSTITUTION_PLAYBOOK_ID),

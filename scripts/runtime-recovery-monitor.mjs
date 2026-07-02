@@ -15,6 +15,17 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PLUGIN_ROOT = path.resolve(process.env.OPENTRONS_PLUGIN_ROOT || path.join(__dirname, ".."));
 const DEFAULT_OUT_DIR = path.join(PLUGIN_ROOT, "runs", "self-recovery", "artifacts");
 const DEFAULT_SESSION_ID = "self-recovery-liquid";
+const DEFAULT_OUTBOX_DIR = path.join(DEFAULT_OUT_DIR, "runtime-outbox");
+const CONFIGURABLE_NOTIFY_ADAPTERS = [
+  "claudecode",
+  "claude",
+  "codex",
+  "cursor",
+  "piagent",
+  "opencode",
+  "cli",
+  "webhook",
+];
 
 function parseCsv(value) {
   return String(value || "")
@@ -45,7 +56,8 @@ function parseArgs(argv) {
     fail_on_attention: false,
     publish_notifications: true,
     include_info_notifications: false,
-    notify_adapters: [],
+    notify_adapters: null,
+    notify_adapters_explicit: false,
     notify_limit: 20,
     outbox_dir: null,
     host_adapter_dir: null,
@@ -109,6 +121,7 @@ function parseArgs(argv) {
       args.include_info_notifications = true;
     } else if (item === "--notify-adapters") {
       args.notify_adapters = parseCsv(argv[index + 1]);
+      args.notify_adapters_explicit = true;
       index += 1;
     } else if (item === "--notify-limit") {
       args.notify_limit = Number(argv[index + 1]);
@@ -211,7 +224,48 @@ function renderMarkdown(payload = {}) {
   return lines.join("\n");
 }
 
+function resolveHostAdapterRoot(args) {
+  return path.resolve(
+    args.host_adapter_dir ||
+      process.env.OPENTRONS_RUNTIME_HOST_ADAPTER_DIR ||
+      path.join(PLUGIN_ROOT, ".plugin-data", "host-adapters"),
+  );
+}
+
+function resolveDefaultOutboxDir(args) {
+  return path.resolve(
+    args.outbox_dir ||
+      process.env.OPENTRONS_RUNTIME_OUTBOX_DIR ||
+      DEFAULT_OUTBOX_DIR,
+  );
+}
+
+function resolveConfiguredNotifyAdapters(args) {
+  if (args.notify_adapters_explicit) {
+    return Array.isArray(args.notify_adapters) ? args.notify_adapters : [];
+  }
+
+  const adapters = new Set(["cli"]);
+  const hostAdapterRoot = resolveHostAdapterRoot(args);
+  for (const adapter of ["claudecode", "claude", "codex", "cursor", "piagent", "opencode"]) {
+    const normalized = adapter === "claude" ? "claudecode" : adapter;
+    if (!CONFIGURABLE_NOTIFY_ADAPTERS.includes(normalized)) {
+      continue;
+    }
+    const adapterDir = path.join(hostAdapterRoot, normalized);
+    if (fs.existsSync(adapterDir)) {
+      adapters.add(normalized);
+    }
+  }
+  if (args.webhook_url || process.env.OPENTRONS_RUNTIME_ALERT_WEBHOOK_URL) {
+    adapters.add("webhook");
+  }
+  return [...adapters];
+}
+
 function buildMonitorRequest(args) {
+  const outboxDir = resolveDefaultOutboxDir(args);
+  const notifyAdapters = resolveConfiguredNotifyAdapters(args);
   return {
     session_id: args.session_id,
     ...(args.robot_ip ? { robot_ip: args.robot_ip } : {}),
@@ -228,11 +282,9 @@ function buildMonitorRequest(args) {
     page_length: Number.isFinite(args.page_length) ? args.page_length : 20,
     publish_notifications: args.publish_notifications !== false,
     include_info_notifications: args.include_info_notifications === true,
-    ...(Array.isArray(args.notify_adapters) && args.notify_adapters.length > 0
-      ? { notify_adapters: args.notify_adapters }
-      : {}),
+    outbox_dir: outboxDir,
+    ...(notifyAdapters.length > 0 ? { notify_adapters: notifyAdapters } : {}),
     notify_limit: Number.isFinite(args.notify_limit) ? args.notify_limit : 20,
-    ...(args.outbox_dir ? { outbox_dir: args.outbox_dir } : {}),
     ...(args.host_adapter_dir ? { host_adapter_dir: args.host_adapter_dir } : {}),
     ...(args.webhook_url ? { webhook_url: args.webhook_url } : {}),
   };

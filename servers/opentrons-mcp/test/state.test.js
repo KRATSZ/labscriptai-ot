@@ -9,8 +9,11 @@ import {
   readSessionState,
   setLiquidContainerState,
   setLiquidSourceState,
+  setContainerVolume,
   validateVirtualLabStateSteps,
   appendStateHistoryEntry,
+  canOverwriteTrust,
+  TRUST_LEVEL_RANK,
   MAX_STATE_HISTORY_ENTRIES,
 } from "../lib/state.js";
 
@@ -366,4 +369,128 @@ test("applyStep strict_volumes re-enables the missing-volume prerequisite error"
     pipette_id: "left",
   });
   assert.deepEqual(permissive.violations, []);
+});
+
+test("TRUST_LEVEL_RANK and canOverwriteTrust enforce monotonic trust", () => {
+  assert.deepEqual(TRUST_LEVEL_RANK, { declared: 0, simulated: 1, observed: 2, reconciled: 3 });
+  assert.equal(canOverwriteTrust("declared", "simulated"), true);
+  assert.equal(canOverwriteTrust("observed", "simulated"), false);
+  assert.equal(canOverwriteTrust("reconciled", "observed"), false);
+  assert.equal(canOverwriteTrust(null, "simulated"), true);
+  assert.equal(canOverwriteTrust("unknown", "declared"), true);
+});
+
+test("setContainerVolume absolute mode blocks simulated overwrite of observed trust", () => {
+  const state = buildState();
+  setLiquidContainerState(state, {
+    container_key: "D3.A1",
+    role: "source",
+    volume_ul: 100,
+    capacity_ul: 200,
+    trust_level: "observed",
+  });
+
+  const violations = [];
+  setContainerVolume(state, "D3.A1", 50, { id: "override" }, "test:absolute", "simulated", "absolute", violations);
+
+  assert.equal(state.liquid_tracking.containers["D3.A1"].volume_ul, 100);
+  assert.equal(state.liquid_tracking.containers["D3.A1"].trust_level, "observed");
+  assert.equal(violations.length, 1);
+  assert.equal(violations[0].code, "trust_downgrade_blocked");
+  assert.match(violations[0].message, /observed/);
+  assert.match(violations[0].message, /simulated/);
+});
+
+test("setContainerVolume absolute mode allows forced downgrade", () => {
+  const state = buildState();
+  setLiquidContainerState(state, {
+    container_key: "D3.A1",
+    role: "source",
+    volume_ul: 100,
+    capacity_ul: 200,
+    trust_level: "observed",
+  });
+
+  const violations = [];
+  setContainerVolume(
+    state,
+    "D3.A1",
+    50,
+    { id: "force-override", force: true },
+    "test:absolute",
+    "simulated",
+    "absolute",
+    violations,
+  );
+
+  assert.deepEqual(violations, []);
+  assert.equal(state.liquid_tracking.containers["D3.A1"].volume_ul, 50);
+  assert.equal(state.liquid_tracking.containers["D3.A1"].trust_level, "simulated");
+});
+
+test("applyStep aspirate on observed source downgrades trust via delta derivation", () => {
+  const state = buildState();
+  state.pipettes.left = { tip_attached: true };
+  setLiquidContainerState(state, {
+    container_key: "D3.A1",
+    role: "source",
+    volume_ul: 100,
+    capacity_ul: 200,
+    dead_volume_ul: 0,
+    trust_level: "observed",
+  });
+
+  const result = applyStep(state, {
+    id: "aspirate-observed",
+    type: "aspirate",
+    source_key: "D3.A1",
+    volume_ul: 25,
+    pipette_id: "left",
+  });
+
+  assert.deepEqual(result.violations, []);
+  assert.equal(result.state.liquid_tracking.containers["D3.A1"].volume_ul, 75);
+  assert.equal(result.state.liquid_tracking.containers["D3.A1"].trust_level, "simulated");
+  const volumeHistory = result.state.state_history.find(
+    history =>
+      history.field === "liquid_tracking.containers.D3.A1.volume_ul" &&
+      history.step?.id === "aspirate-observed",
+  );
+  assert.equal(volumeHistory.derived_from, "observed");
+});
+
+test("setContainerVolume absolute mode allows trust upgrade and blocks reconciled downgrade", () => {
+  const upgradeState = buildState();
+  setLiquidContainerState(upgradeState, {
+    container_key: "D3.A1",
+    role: "source",
+    volume_ul: 80,
+    capacity_ul: 200,
+    trust_level: "declared",
+  });
+  setContainerVolume(upgradeState, "D3.A1", 80, { id: "upgrade" }, "test:upgrade", "simulated", "absolute");
+  assert.equal(upgradeState.liquid_tracking.containers["D3.A1"].trust_level, "simulated");
+
+  const reconciledState = buildState();
+  setLiquidContainerState(reconciledState, {
+    container_key: "C3.A1",
+    role: "destination",
+    volume_ul: 40,
+    capacity_ul: 100,
+    trust_level: "reconciled",
+  });
+  const blocked = [];
+  setContainerVolume(
+    reconciledState,
+    "C3.A1",
+    10,
+    { id: "reconciled-block" },
+    "test:reconciled",
+    "observed",
+    "absolute",
+    blocked,
+  );
+  assert.equal(reconciledState.liquid_tracking.containers["C3.A1"].volume_ul, 40);
+  assert.equal(reconciledState.liquid_tracking.containers["C3.A1"].trust_level, "reconciled");
+  assert.equal(blocked[0].code, "trust_downgrade_blocked");
 });

@@ -1,0 +1,8 @@
+[
+  {
+    "name": "labscriptai-runtime-outbox-publisher",
+    "description": "Ticks runtime_recovery_monitor and delivers to claudecode adapter mailbox",
+    "when": "on-skill-invoke:opentrons-experiment-goal",
+    "command": "cd \"${CLAUDE_PLUGIN_ROOT}\" && export OPENTRONS_PLUGIN_ROOT=\"${CLAUDE_PLUGIN_ROOT}\" PLUGIN_DATA=\"${CLAUDE_PLUGIN_DATA}\" OPENTRONS_SESSION_ID=\"${OPENTRONS_SESSION_ID:-self-recovery-liquid}\" OPENTRONS_ROBOT_IP=\"${OPENTRONS_ROBOT_IP:-}\" && node scripts/runtime-recovery-monitor.mjs --session-id \"$OPENTRONS_SESSION_ID\" ${OPENTRONS_ROBOT_IP:+--robot-ip \"$OPENTRONS_ROBOT_IP\"} --cycles 240 --interval-ms 30000 --notify-adapters claudecode --host-adapter-dir \"$PLUGIN_DATA/host-adapters\" --out \"$PLUGIN_DATA/runtime-recovery-monitor-latest.json\" --markdown-out \"$PLUGIN_DATA/runtime-recovery-monitor-latest.md\""
+  }
+]

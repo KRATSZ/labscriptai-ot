@@ -10,6 +10,7 @@
   "repository": "https://github.com/KRATSZ/labscriptai-ot",
   "license": "SEE LICENSE IN LICENSE",
   "keywords": ["opentrons", "labscriptai", "mcp", "codex", "robotics"],
+  "hooks": "./hooks/codex/hooks.json",
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",
   "policy": "./policy/",

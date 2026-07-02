@@ -9,7 +9,16 @@ const OUTBOX_DIR_ENV = "OPENTRONS_RUNTIME_OUTBOX_DIR";
 const HOST_ADAPTER_DIR_ENV = "OPENTRONS_RUNTIME_HOST_ADAPTER_DIR";
 const WEBHOOK_URL_ENV = "OPENTRONS_RUNTIME_ALERT_WEBHOOK_URL";
 const DEFAULT_SESSION_ID = "default";
-const DEFAULT_ADAPTERS = ["claudecode", "claude", "codex", "cursor", "cli", "webhook"];
+const DEFAULT_ADAPTERS = [
+  "claudecode",
+  "claude",
+  "codex",
+  "cursor",
+  "piagent",
+  "opencode",
+  "cli",
+  "webhook",
+];
 
 function sanitizePart(value, fallback = "default") {
   return String(value || fallback).replace(/[^a-zA-Z0-9._-]/g, "_");
@@ -517,7 +526,7 @@ async function deliverToAdapter(event, adapter, options = {}) {
     };
   }
 
-  if (["claudecode", "codex", "cursor"].includes(adapter)) {
+  if (["claudecode", "codex", "cursor", "piagent", "opencode"].includes(adapter)) {
     const filePath = adapterOutboxPath(adapter, event.session_id, options);
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
     fs.appendFileSync(

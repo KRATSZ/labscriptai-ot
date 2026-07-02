@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      {
+        "command": "node ${CURSOR_PLUGIN_ROOT}/scripts/consume-runtime-outbox.mjs --host cursor --hook sessionStart --session-id \"${OPENTRONS_SESSION_ID:-self-recovery-liquid}\"",
+        "timeout": 15
+      }
+    ],
+    "stop": [
+      {
+        "command": "node ${CURSOR_PLUGIN_ROOT}/scripts/consume-runtime-outbox.mjs --host cursor --hook stop --ack --session-id \"${OPENTRONS_SESSION_ID:-self-recovery-liquid}\"",
+        "loop_limit": null,
+        "timeout": 20
+      }
+    ]
+  }
+}
