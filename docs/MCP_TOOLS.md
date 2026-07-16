@@ -380,7 +380,7 @@ Experimental liquid probing helper that generates a temporary protocol, simulate
 
 After a **live** probe run, the response includes `pending_state_writeback: true` and `required_next_tool: "apply_liquid_probe_results"`. Probe motion collects evidence only; Virtual Lab State volume/trust is committed by the follow-up writeback tool.
 
-**Parameters:** `robot_ip` (optional), `pipette_name`, `mount`, `tiprack_load_name`, `tiprack_slot`, `starting_tip` (optional), `labware_load_name`, `labware_slot`, `trash_slot` (optional), `wells`, `mode` (optional), `api_level` (optional), `liquid_presence_detection` (optional), `execute_on_robot` (optional), `output_path` (optional), `timeout_ms` (optional), `poll_interval_ms` (optional), `page_length` (optional), `session_id` (optional), `workspace_root` (optional), `api_root` (optional), `shared_data_root` (optional), `python_executable` (optional), `extra_args` (optional)
+**Parameters:** `robot_ip` (optional), `pipette_name`, `mount`, `tiprack_load_name`, `tiprack_slot`, `starting_tip` (optional), `labware_load_name`, `labware_slot`, `trash_slot` (optional), `wells`, `mode` (optional), `api_level` (optional), `liquid_presence_detection` (optional), `auto_apply_to_session` (optional), `execute_on_robot` (optional), `output_path` (optional), `timeout_ms` (optional), `poll_interval_ms` (optional), `page_length` (optional), `session_id` (optional), `workspace_root` (optional), `api_root` (optional), `shared_data_root` (optional), `python_executable` (optional), `extra_args` (optional)
 
 **Live response fields (writeback contract):** `pending_state_writeback` (boolean), `required_next_tool` (`"apply_liquid_probe_results"`), `probe_results` (parsed `PROBE_RESULT:` comments).
 
