@@ -27,7 +27,7 @@ command tools (`load_pipette`, `load_labware`, `load_module`,
 `control_temperature_module`, `control_heater_shaker`, `control_thermocycler`,
 `move_labware`, `cleanup_motion`) ->
 camera tools (`camera_status`, `capture_preview_image`, `capture_run_image`,
-`list_data_files`, `download_data_file`, `analyze_image_with_kimi`) ->
+`list_data_files`, `download_data_file`, `vision_check`, `analyze_image_with_ark`, `analyze_image_with_kimi`) ->
 `run_history` / `experiment_history` -> `suggest_recovery_action`
 
 ## Key Rules

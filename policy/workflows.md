@@ -7,15 +7,16 @@ This file is the **single source of truth** for end-to-end and tool-order workfl
 ```
 user intent / SOP
   →  (optional) one blocking clarification round
-  →  protocol-author draft
+  →  protocol-author draft (+ critical_sources in liquid source map)
   →  validate_virtual_lab_state_steps (session_id/initial_state, steps) — pure software gate
   →  doctor_local_runtime → simulate_protocol (virtual_lab_steps) → parse_simulation_output
   →  (fix loop if failed)
-  →  live_readiness_check (robot_ip, session_id?, file_path?) when the operator wants a read-only live gate
-  →  (optional Flex LPD) probe_wells simulate → operator confirm + OPENTRONS_ENABLE_PROBE_WELLS=1
+  →  Phase 3a dashboard: health_check → live_readiness_check → robot_status → module_status → reconcile_state (if needed)
+  →  Phase 3b deck vision: deck_vision_check (YOLO → optional Ark VLM) OR capture_preview_image → vision_check → analyze_image_with_ark
+  →  Phase 3c critical probe: list_critical_probe_targets → probe_wells simulate → operator confirm + OPENTRONS_ENABLE_PROBE_WELLS=1
        → probe_wells execute_on_robot → apply_liquid_probe_results → live_liquid_recovery_gate
   →  return status: ready | needs_confirmation | blocked
-  →  run_protocol (robot_ip, file_path, session_id) only after confirmation
+  →  run_protocol (robot_ip, file_path, session_id) only after confirmation — quiet execution, no vision during run
   →  runtime_watch_loop (run_id) for unattended auto-wake until COMPLETE/BLOCKED
 ```
 
@@ -45,16 +46,102 @@ parse_error (robot_ip, run_id) → suggest_recovery_action (error_category, targ
   → execute_protocol_recovery (run_id, robot_ip, recovery_branch, ...)
 ```
 
-## Live readiness gate (read-only)
+## Live readiness gate (read-only) — Phase 3a dashboard
 
 ```
 health_check
   → live_readiness_check (robot_ip, session_id?, file_path?, run_id?)
+  → robot_status → module_status
+  → reconcile_state (if guidance.reconcile_first or deck drift)
   → if fail: stop and follow recommended_next_tools
-  → if pass/warn: create_run or run_protocol only after operator confirmation
+  → if pass/warn: continue to Phase 3b deck vision
 ```
 
-`health_check` is the developer/environment probe. `live_readiness_check` is the operator-facing live gate.
+`health_check` is the developer/environment probe. `live_readiness_check` is the operator-facing live gate. **No camera or VLM in this step.**
+
+## Preflight deck vision — Phase 3b (YOLO first, Ark VLM second opinion)
+
+Default pre-run visual check. Observation-only — compare with `reconcile_state` and robot APIs (see `policy/safety-policy.md`).
+
+**Setup (once per machine):** See [docs/deck-vision.md](../docs/deck-vision.md).
+
+**Preferred orchestration:**
+
+```
+deck_vision_check (robot_ip, session_id?, expected_layout?)
+  → internally: capture_preview_image → vision_check
+  → if uncertain/mismatched: analyze_image_with_ark (Doubao; ARK_API_KEY in .venv/.env)
+```
+
+**Manual chain (equivalent):**
+
+```
+camera_status → capture_preview_image → vision_check
+  → if escalate: analyze_image_with_ark (or analyze_image_with_kimi when OPENTRONS_VLM_PROVIDER=kimi)
+```
+
+Escalate to VLM when YOLO reports low confidence, ambiguity, or layout mismatches. Skip entire step with `OPENTRONS_PREFLIGHT_VISION=off`. Camera API failure is a surfaced error — do not silently skip.
+
+## Critical-source liquid probe — Phase 3c (no VLM)
+
+Probe only critical source wells (wash buffer, enzyme, etc.) — not full-plate scan.
+
+```
+list_critical_probe_targets (session_id, critical_sources?)
+  → probe_wells (execute_on_robot=false, wells=[...]) → parse simulation
+  → operator confirm + OPENTRONS_ENABLE_PROBE_WELLS=1
+  → probe_wells (execute_on_robot=true) → apply_liquid_probe_results
+  → live_liquid_recovery_gate
+  → run_protocol only after gate pass
+```
+
+Bookkeeping only until `execute_on_robot=true`. See [probe-wells-live-validation.md](../docs/runbooks/probe-wells-live-validation.md).
+
+## Quiet execution — Phase 4
+
+While `run_protocol` / `runtime_watch_poll` / `runtime_watch_loop` is active:
+
+- Do **not** call `capture_preview_image`, `vision_check`, `analyze_image_with_ark`, `deck_vision_check`, or `probe_wells` unless Phase 5 recovery routing requires it.
+- Rely on error codes, `parse_error`, `suggest_recovery_action`, and registered playbooks.
+
+## Recovery trigger routing — Phase 5
+
+After `parse_error` → `suggest_recovery_action`, follow `recovery_channel`:
+
+| Channel | Error leaves (examples) | Next tools |
+|---------|-------------------------|------------|
+| dashboard | DOOR_OPEN, ESTOP_ENGAGED, MODULE_NOT_READY, ROBOT_UNREACHABLE | robot_status, module_status, live_readiness_check |
+| vision | LABWARE_MISMATCH, DECK_COLLISION, SESSION_NEEDS_RECONCILIATION | deck_vision_check, reconcile_state |
+| probe | INSUFFICIENT_VOLUME, AIR_BUBBLE, LIQUID_PROPERTY_ERROR | live_liquid_recovery_gate, list_critical_probe_targets, targeted probe_wells |
+| tip | TIP_PHYSICALLY_MISSING | recover_tip_pickup |
+
+After door/module recovery, re-run Phase 3a before resume. Deck doubt → Phase 3b. Liquid doubt → targeted probe only.
+
+## Optional Flex liquid probe (recovery / re-probe)
+
+Use during recovery or when source fill is uncertain after a run has started. **Not** a substitute for Phase 3c preflight on new runs.
+
+```
+probe_wells (execute_on_robot=false) → parse simulation
+  → operator confirm + OPENTRONS_ENABLE_PROBE_WELLS=1
+  → probe_wells (execute_on_robot=true, auto_apply_to_session=true optional)
+  → apply_liquid_probe_results (if not auto-applied)
+  → live_liquid_recovery_gate
+  → run_protocol (only after gate pass + operator opt-in)
+```
+
+Bookkeeping only until `execute_on_robot=true`: `apply_liquid_probe_results` never moves the robot. See [probe-wells-live-validation.md](../docs/runbooks/probe-wells-live-validation.md).
+
+## Legacy optional deck vision (operator-only ad-hoc)
+
+For ad-hoc visual checks outside the default preflight sequence, the same tool chain applies:
+
+```
+camera_status → capture_preview_image → vision_check (image_path = path returned by capture)
+```
+
+- If the camera API is unavailable on a given Flex build, `camera_status` / capture may fail — surface the error; do not silently skip.
+- For offline validation without a robot, call `vision_check` with a local image path only (see [docs/deck-vision.md](../docs/deck-vision.md)).
 
 ## After MCP restart or host reboot
 
@@ -120,36 +207,6 @@ run_protocol → (run_id)
 ```
 robot_status → module_status → reconcile_state (if anything looks wrong)
 ```
-
-## Optional Flex liquid probe (LPD, opt-in live motion)
-
-Use when source wells have uncertain fill height, recovery needs observed liquid evidence, or the operator requests pre-run probing. **Default off** — requires explicit operator confirmation for live motion.
-
-```
-probe_wells (execute_on_robot=false) → parse simulation
-  → operator confirm + OPENTRONS_ENABLE_PROBE_WELLS=1
-  → probe_wells (execute_on_robot=true, auto_apply_to_session=true optional)
-  → apply_liquid_probe_results (if not auto-applied)
-  → live_liquid_recovery_gate
-  → run_protocol (only after gate pass + operator opt-in)
-```
-
-Bookkeeping only until `execute_on_robot=true`: `apply_liquid_probe_results` never moves the robot. See [probe-wells-live-validation.md](../docs/runbooks/probe-wells-live-validation.md).
-
-## Optional deck vision (observation-only)
-
-Use this **only when the operator explicitly asks** for a visual deck check, camera preview, or image-based confirmation. Vision does **not** replace committed deck truth — compare results with **`reconcile_state`** and robot APIs (see `policy/safety-policy.md`).
-
-**Setup (once per machine):** See [docs/deck-vision.md](../docs/deck-vision.md).
-
-**Tool sequence (MCP `opentrons-lab-mcp`):**
-
-```
-camera_status → capture_preview_image → vision_check (image_path = path returned by capture)
-```
-
-- If the camera API is unavailable on a given Flex build, `camera_status` / capture may fail — surface the error; do not silently skip.
-- For offline validation without a robot, call `vision_check` with a local image path only (see [docs/deck-vision.md](../docs/deck-vision.md)).
 
 ## Protocol Reference Library
 

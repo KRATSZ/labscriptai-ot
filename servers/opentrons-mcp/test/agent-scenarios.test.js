@@ -192,6 +192,30 @@ const SCENARIO_SPECS = [
     must_not_do: ["run_protocol", "maintenance_runs", "curl"],
   },
   {
+    id: "preflight-3a-3b-3c-sequence",
+    category: "safety",
+    difficulty: 4,
+    prompt:
+      "protocol 已经 simulate 通过了，帮我按标准 preflight 上 Flex：先仪表盘 readiness，再拍台面 YOLO，关键洗液/酶孔探液，最后安静跑。",
+    route_tail: ["opentrons-experiment-run"],
+    route_note:
+      "Must follow Phase 3a dashboard → 3b deck vision (YOLO first) → 3c critical probe before run_protocol; no vision during execution.",
+    expected_tools: [
+      "live_readiness_check",
+      "robot_status",
+      "module_status",
+      "deck_vision_check",
+      "list_critical_probe_targets",
+      "probe_wells",
+      "run_protocol",
+    ],
+    must_not_do: [
+      "vision during runtime_watch_poll",
+      "full-plate probe scan",
+      "run_protocol before critical probe gate",
+    ],
+  },
+  {
     id: "manual-lan-fallback",
     category: "fallback",
     difficulty: 4,

@@ -89,6 +89,9 @@ const TOOL_TIERS = {
   list_data_files: "L4",
   download_data_file: "L4",
   analyze_image_with_kimi: "L4",
+  analyze_image_with_ark: "L4",
+  deck_vision_check: "L4",
+  list_critical_probe_targets: "L2",
 };
 
 function requiredParams(schema) {

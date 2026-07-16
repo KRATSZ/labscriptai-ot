@@ -118,6 +118,21 @@ Use `live_readiness_check` as the read-only gate before `create_run` or `play`.
 
 Current rollout is **Flex-first**. OT-2 deck-diff modeling is still explicitly skipped in this build; OT-2 support should not be implied by the new taxonomy alone.
 
+## Recovery trigger routing
+
+After `parse_error` → `suggest_recovery_action`, agents must follow `recovery_channel`:
+
+| Channel | Meaning | Typical error leaves | First tools |
+|---------|---------|----------------------|-------------|
+| `dashboard` | 仪表盘 — door/estop/module/session | DOOR_OPEN, ESTOP_ENGAGED, MODULE_NOT_READY, ROBOT_UNREACHABLE | robot_status, live_readiness_check |
+| `vision` | 眼睛 — deck appearance / layout doubt | LABWARE_MISMATCH, DECK_COLLISION, SESSION_NEEDS_RECONCILIATION | deck_vision_check, reconcile_state |
+| `probe` | 手指 — liquid presence/volume doubt | INSUFFICIENT_VOLUME, AIR_BUBBLE, LIQUID_PROPERTY_ERROR | live_liquid_recovery_gate, targeted probe_wells |
+| `tip` | tip-level recovery | TIP_PHYSICALLY_MISSING | recover_tip_pickup |
+
+`suggest_recovery_action` returns `recovery_channel`, `recovery_channel_label`, `recommended_next_tools`, and `channel_rationale`. Do not call vision during quiet execution unless recovery routing selects the vision channel.
+
+After door/module recovery, re-run Phase 3a dashboard before resume. Deck doubt → vision channel. Liquid doubt → probe channel only (no VLM).
+
 ## Phase 2 / Phase 4 invariants
 
 These rules are implemented in `servers/opentrons-mcp/` and covered by tests under `servers/opentrons-mcp/test/`.

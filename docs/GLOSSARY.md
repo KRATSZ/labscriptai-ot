@@ -16,7 +16,10 @@ Shared vocabulary for operators and agents. For workflow order, see [policy/work
 | **Liquid source map** | Operator-confirmed session bookkeeping for which liquid/sample is expected in a source well. It helps recovery messages preserve sample identity; it does not authorize automatic source-well substitution. |
 | **Runtime recovery monitor** | L1-L4 active monitor tick that combines runtime self-test, robot/module status, run watching, safe-next guidance, liquid gates, and guarded L0 self-fix status. Default observe mode is read-only for run watching. |
 | **Recovery playbook** | Registered fixed recovery contract exposed by `list_recovery_playbooks`: executor tool, watch-mode permission, motion boundary, required gates, and semantic invariants. Agents must not invent live recovery actions outside this registry. |
-| **Vision (observation-only)** | Camera capture and `vision_check` provide hints about deck appearance. Never treat vision output as committed deck truth — always compare with `reconcile_state`. |
+| **Vision (observation-only)** | Camera capture and `vision_check` (YOLO) provide hints about deck appearance. Default preflight uses `deck_vision_check` (YOLO first, Ark VLM second opinion via `analyze_image_with_ark`). Never treat vision output as committed deck truth — always compare with `reconcile_state`. |
+| **Preflight subphases** | Live preflight is ordered: **3a dashboard** (live_readiness_check, no camera), **3b deck vision** (YOLO → optional VLM), **3c critical probe** (targeted probe_wells only). |
+| **Recovery channel** | Routing hint from `suggest_recovery_action`: `dashboard` (门/模块), `vision` (台面), `probe` (液体), `tip` (tip 缺失). |
+| **Quiet execution** | During `run_protocol` / runtime watch, do not call vision or probe unless recovery routing requires it. |
 | **Preflight** | `preflight_run_setup` verifies reconciliation, robot readiness, and (Flex) declared protocol loads vs live deck before play. |
 | **Recovery branch** | Structured fix path from `suggest_recovery_action` (e.g. retry tip pickup). Only `auto_executable` branches may run via `execute_protocol_recovery` without human review. |
 | **Bundled library** | Small curated protocol set in `bundled-library/`. Set `OPENTRONS_PROTOCOL_LIBRARY_PATH` for a full external catalog. |

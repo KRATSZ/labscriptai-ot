@@ -48,7 +48,10 @@ The goal is to lock the intent before protocol authoring or live execution.
 3. **Plate mapping** — 8x12 indexing, orientation vs human "up"; produce
    ASCII or table preview of target wells.
 4. **Protocol alignment** — does well list match preview? Extra/missing wells?
-5. **Tip and liquid strategy**
+5. **Critical sources** — identify wash buffer, enzyme, and other go/no-go
+   source wells for Phase 3c probing. Output `critical_sources` with
+   `slot`, `well`, `role`, and `required: true`.
+6. **Tip and liquid strategy**
    - Same sterile liquid to many wells: one tip + repeated aspirate/dispense
      is acceptable; ask if biosafety requires one tip per well.
    - Minimize motion: batch paths, avoid unnecessary pick/drop.
@@ -57,7 +60,7 @@ The goal is to lock the intent before protocol authoring or live execution.
    - Record `dry_run_on` separately from contamination policy. Default `False`.
      When enabled, require a liquid-free deck and return each tip to its pickup
      position. Returned tips remain used and cannot be assumed clean for a wet run.
-6. **Risks** — overflow, wrong reservoir well, wrong tip rack density,
+7. **Risks** — overflow, wrong reservoir well, wrong tip rack density,
    Flex vs OT-2 naming (requirements, trash, pipette API).
 
 ## Supporting references (read when needed)
@@ -69,16 +72,17 @@ Bundled checklists (extend with lab-specific SOPs as separate files if needed):
 
 ## Required Output
 
-Produce these sections for the downstream author (seven blocks):
+Produce these sections for the downstream author (eight blocks):
 
 1. `intent_summary` — bullet list of non-negotiables.
 2. `biology_constraints` — short bullets; use `unknown` + one question if unspecified. See `references/biology-constraints.md` only when you need the checklist.
 3. `deck_constraints` — robot type, intended slots/load names, pipettes, modules, orientation vs indexing; must match what will be simulated and later `reconcile_state`. See `references/deck-constraints.md` only when needed.
 4. `plate_mask` or `target_wells` — explicit list or grid.
-5. `tip_policy` — e.g. `single_tip_reuse_same_buffer` vs `one_tip_per_destination`;
+5. `critical_sources` — wells that require pre-run LPD probe (wash, enzyme, etc.).
+6. `tip_policy` — e.g. `single_tip_reuse_same_buffer` vs `one_tip_per_destination`;
    include `dry_run_on: false` unless the operator explicitly requests dry mode.
-6. `open_questions` — numbered; block live run until answered if safety-critical.
-7. `recommendation` — `go` | `revise_mapping` | `revise_protocol` | `stop_for_human`.
+7. `open_questions` — numbered; block live run until answered if safety-critical.
+8. `recommendation` — `go` | `revise_mapping` | `revise_protocol` | `stop_for_human`.
 
 **Additionally, always produce `design-notes.json`** following the schema in `opentrons-protocol-author/references/authoring-appendix.md`. For intent-review tasks this is the primary deliverable. Required fields:
 

@@ -317,6 +317,28 @@ function checkVision(pythonExe) {
   }
 }
 
+function checkArkVlm() {
+  const envPath = path.join(PLUGIN_ROOT, ".venv", ".env");
+  let arkKey = process.env.ARK_API_KEY || null;
+  if (!arkKey && fs.existsSync(envPath)) {
+    const content = fs.readFileSync(envPath, "utf8");
+    const match = content.match(/^ARK_API_KEY=(.+)$/m);
+    if (match) {
+      arkKey = match[1].trim().replace(/^['"]|['"]$/g, "");
+    }
+  }
+
+  if (arkKey) {
+    pass("Ark VLM API key", "ARK_API_KEY configured for analyze_image_with_ark");
+  } else {
+    warn(
+      "Ark VLM API key",
+      "ARK_API_KEY not found in environment or .venv/.env",
+      "Set ARK_API_KEY for Phase 3b VLM second opinion (Doubao via Volcengine Ark)."
+    );
+  }
+}
+
 async function checkHealth(pythonExe) {
   process.env.OPENTRONS_PLUGIN_ROOT = PLUGIN_ROOT;
   if (pythonExe && !process.env.OPENTRONS_PYTHON) {
@@ -477,6 +499,7 @@ async function main() {
   checkMcpManifestPaths();
   const pythonExe = checkPython();
   checkVision(pythonExe);
+  checkArkVlm();
   await checkHealth(pythonExe);
   await checkRuntimeRecoverySelfTest();
   printReport();
