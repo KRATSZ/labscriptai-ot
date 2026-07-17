@@ -1,6 +1,4 @@
-import fs from "fs";
-import path from "path";
-
+import { loadAutomationEnvValue } from "./automation-env.js";
 import {
   buildDeckPhotoAnalysisPrompt,
   buildImageDataUrl,
@@ -10,64 +8,54 @@ import {
 
 const DEFAULT_ARK_BASE_URL = "https://ark.cn-beijing.volces.com/api/v3";
 const DEFAULT_ARK_MODEL_ENDPOINT = "ep-20260716144817-n6rgn";
-
-function loadEnvFileValue(envVarName, envFilePath = null) {
-  if (process.env[envVarName]) {
-    return process.env[envVarName];
-  }
-  const candidates = [];
-  if (envFilePath) {
-    candidates.push(path.resolve(envFilePath));
-  }
-  const pluginRoot = process.env.OPENTRONS_PLUGIN_ROOT;
-  if (pluginRoot) {
-    candidates.push(path.join(path.resolve(pluginRoot), ".venv", ".env"));
-  }
-  for (const filePath of candidates) {
-    if (!filePath || !fs.existsSync(filePath)) {
-      continue;
-    }
-    try {
-      const lines = fs.readFileSync(filePath, "utf8").split(/\r?\n/);
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed || trimmed.startsWith("#")) {
-          continue;
-        }
-        const match = trimmed.match(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/);
-        if (match && match[1] === envVarName) {
-          return match[2].replace(/^['"]|['"]$/g, "");
-        }
-      }
-    } catch {
-      // continue
-    }
-  }
-  return null;
-}
+const DEFAULT_ARK_MAX_OUTPUT_TOKENS = 4096;
 
 export function resolveArkApiKey({ apiKey = null } = {}) {
-  return apiKey || loadEnvFileValue("ARK_API_KEY") || null;
+  return apiKey || loadAutomationEnvValue("ARK_API_KEY") || null;
 }
 
 export function resolveArkModelEndpoint({ modelEndpoint = null } = {}) {
   return (
     modelEndpoint ||
     process.env.ARK_MODEL_ENDPOINT ||
-    loadEnvFileValue("ARK_MODEL_ENDPOINT") ||
+    loadAutomationEnvValue("ARK_MODEL_ENDPOINT") ||
     DEFAULT_ARK_MODEL_ENDPOINT
   );
 }
 
 export function resolveArkBaseUrl({ baseUrl = null } = {}) {
-  return baseUrl || process.env.ARK_BASE_URL || loadEnvFileValue("ARK_BASE_URL") || DEFAULT_ARK_BASE_URL;
+  return (
+    baseUrl ||
+    process.env.ARK_BASE_URL ||
+    loadAutomationEnvValue("ARK_BASE_URL") ||
+    DEFAULT_ARK_BASE_URL
+  );
+}
+
+export function buildArkDeckPhotoAnalysisPrompt({
+  prompt = null,
+  expectedLayout = null,
+} = {}) {
+  if (prompt) {
+    return prompt;
+  }
+
+  const basePrompt = buildDeckPhotoAnalysisPrompt({ expectedLayout });
+  return [
+    basePrompt,
+    "",
+    "输出要求（必须遵守）：",
+    "1. 最终回复只能是单个 JSON 对象，不要 markdown，不要解释，不要推理过程。",
+    "2. observed_items 必须是对象数组，每项含 slot、label、confidence、evidence。",
+    "3. 若与 expected_layout 不一致，在 possible_issues 中明确写出槽位差异。",
+  ].join("\n");
 }
 
 export function buildArkResponsesBody({
   modelEndpoint,
   imageDataUrl,
   prompt,
-  maxOutputTokens = 2048,
+  maxOutputTokens = DEFAULT_ARK_MAX_OUTPUT_TOKENS,
 } = {}) {
   if (!modelEndpoint) {
     throw new Error("Ark model endpoint is required.");
@@ -100,22 +88,121 @@ export function buildArkResponsesBody({
   };
 }
 
-export function extractArkResponseText(responseJson) {
+export function extractArkMessageText(responseJson) {
   const output = Array.isArray(responseJson?.output) ? responseJson.output : [];
   const textParts = [];
   for (const item of output) {
     if (item?.type === "message" && Array.isArray(item.content)) {
       for (const block of item.content) {
         if (block?.type === "output_text" && block.text) {
-          textParts.push(block.text);
+          textParts.push(String(block.text));
         }
       }
     }
   }
-  if (textParts.length > 0) {
-    return textParts.join("\n");
+  return textParts.join("\n").trim() || null;
+}
+
+export function extractArkReasoningSummaryText(responseJson) {
+  const output = Array.isArray(responseJson?.output) ? responseJson.output : [];
+  const textParts = [];
+  for (const item of output) {
+    if (item?.type !== "reasoning" || !Array.isArray(item.summary)) {
+      continue;
+    }
+    for (const block of item.summary) {
+      if (block?.type === "summary_text" && block.text) {
+        textParts.push(String(block.text).trim());
+      }
+    }
+  }
+  return textParts.join("\n").trim() || null;
+}
+
+export function extractLastJsonObject(text) {
+  if (!text) {
+    return null;
+  }
+
+  const fencedMatches = [...String(text).matchAll(/```json\s*([\s\S]*?)\s*```/gi)];
+  for (let index = fencedMatches.length - 1; index >= 0; index -= 1) {
+    const candidate = fencedMatches[index]?.[1]?.trim();
+    if (candidate && parseAssistantJson(candidate)) {
+      return candidate;
+    }
+  }
+
+  let start = String(text).lastIndexOf("{");
+  while (start >= 0) {
+    const slice = String(text).slice(start);
+    const parsed = parseAssistantJson(slice);
+    if (parsed) {
+      const match = slice.match(/\{[\s\S]*\}/);
+      return match?.[0] || slice;
+    }
+    start = String(text).lastIndexOf("{", start - 1);
+  }
+
+  return null;
+}
+
+export function extractArkResponseText(responseJson) {
+  const messageText = extractArkMessageText(responseJson);
+  if (messageText) {
+    return messageText;
+  }
+  const reasoningText = extractArkReasoningSummaryText(responseJson);
+  if (reasoningText) {
+    return reasoningText;
   }
   return extractAssistantText(responseJson);
+}
+
+export function resolveArkAssistantPayload(responseJson) {
+  const messageText = extractArkMessageText(responseJson);
+  const reasoningText = extractArkReasoningSummaryText(responseJson);
+  const status = responseJson?.status || null;
+  const incompleteReason = responseJson?.incomplete_details?.reason || null;
+
+  const candidates = [];
+  if (messageText) {
+    candidates.push({ source: "message", text: messageText });
+  }
+  if (reasoningText) {
+    const embeddedJson = extractLastJsonObject(reasoningText);
+    if (embeddedJson) {
+      candidates.push({ source: "reasoning_summary_json", text: embeddedJson });
+    }
+    candidates.push({ source: "reasoning_summary", text: reasoningText });
+  }
+
+  for (const candidate of candidates) {
+    const parsed = parseAssistantJson(candidate.text);
+    if (parsed && typeof parsed === "object") {
+      return {
+        raw_text: candidate.text,
+        parsed_result: parsed,
+        text_source: candidate.source,
+        reasoning_fallback_used: candidate.source !== "message",
+        message_text: messageText,
+        reasoning_summary: reasoningText,
+        status,
+        incomplete_reason: incompleteReason,
+      };
+    }
+  }
+
+  const fallbackText = messageText || reasoningText || null;
+  return {
+    raw_text: fallbackText,
+    parsed_result: parseAssistantJson(fallbackText),
+    text_source: messageText ? "message_unparsed" : reasoningText ? "reasoning_unparsed" : null,
+    reasoning_fallback_used: Boolean(!messageText && reasoningText),
+    message_text: messageText,
+    reasoning_summary: reasoningText,
+    status,
+    incomplete_reason: incompleteReason,
+  };
 }
 
 export async function callArkResponses({
@@ -157,6 +244,32 @@ export async function callArkResponses({
   };
 }
 
+async function requestArkAnalysis({
+  apiKey,
+  baseUrl,
+  modelEndpoint,
+  dataUrl,
+  prompt,
+  maxOutputTokens,
+} = {}) {
+  const body = buildArkResponsesBody({
+    modelEndpoint,
+    imageDataUrl: dataUrl,
+    prompt,
+    maxOutputTokens,
+  });
+  const response = await callArkResponses({
+    apiKey,
+    baseUrl,
+    body,
+  });
+  const payload = resolveArkAssistantPayload(response.json);
+  return {
+    response,
+    payload,
+  };
+}
+
 export async function analyzeImageWithArk({
   imagePath,
   apiKey = null,
@@ -164,29 +277,43 @@ export async function analyzeImageWithArk({
   modelEndpoint = null,
   prompt = null,
   expectedLayout = null,
-  maxOutputTokens = 2048,
+  maxOutputTokens = DEFAULT_ARK_MAX_OUTPUT_TOKENS,
 } = {}) {
   const { dataUrl, imagePath: resolvedImage, mimeType } = buildImageDataUrl(imagePath);
   const resolvedApiKey = resolveArkApiKey({ apiKey });
   const resolvedModel = resolveArkModelEndpoint({ modelEndpoint });
   const resolvedBaseUrl = resolveArkBaseUrl({ baseUrl });
-  const resolvedPrompt = buildDeckPhotoAnalysisPrompt({
+  const resolvedPrompt = buildArkDeckPhotoAnalysisPrompt({
     prompt,
     expectedLayout,
   });
-  const body = buildArkResponsesBody({
+
+  let { response, payload } = await requestArkAnalysis({
+    apiKey: resolvedApiKey,
+    baseUrl: resolvedBaseUrl,
     modelEndpoint: resolvedModel,
-    imageDataUrl: dataUrl,
+    dataUrl,
     prompt: resolvedPrompt,
     maxOutputTokens,
   });
-  const response = await callArkResponses({
-    apiKey: resolvedApiKey,
-    baseUrl: resolvedBaseUrl,
-    body,
-  });
-  const assistantText = extractArkResponseText(response.json);
-  const parsed = parseAssistantJson(assistantText);
+
+  let fallbackUsed = false;
+  if (!payload.parsed_result && (payload.status === "incomplete" || !payload.message_text)) {
+    fallbackUsed = true;
+    const retryPrompt = [
+      resolvedPrompt,
+      "",
+      "上一请求未完成。现在请只输出完整 JSON 对象，不要 reasoning，不要 markdown，不要额外文字。",
+    ].join("\n");
+    ({ response, payload } = await requestArkAnalysis({
+      apiKey: resolvedApiKey,
+      baseUrl: resolvedBaseUrl,
+      modelEndpoint: resolvedModel,
+      dataUrl,
+      prompt: retryPrompt,
+      maxOutputTokens: Math.max(maxOutputTokens, DEFAULT_ARK_MAX_OUTPUT_TOKENS),
+    }));
+  }
 
   return {
     image_path: resolvedImage,
@@ -196,9 +323,15 @@ export async function analyzeImageWithArk({
     resolved_model: response.json?.model || resolvedModel,
     request_id: response.requestId,
     prompt: resolvedPrompt,
-    parsed_result: parsed,
-    raw_text: assistantText,
+    parsed_result: payload.parsed_result,
+    raw_text: payload.raw_text,
+    text_source: payload.text_source,
+    reasoning_fallback_used: payload.reasoning_fallback_used,
+    retry_used: fallbackUsed,
+    message_text: payload.message_text,
+    reasoning_summary: payload.reasoning_summary,
     usage: response.json?.usage || null,
-    status: response.json?.status || null,
+    status: payload.status,
+    incomplete_reason: payload.incomplete_reason,
   };
 }

@@ -39,7 +39,7 @@ See `index.js` for the authoritative tool list and schemas.
 | Core live tools (`robot_status`, `reconcile_state`, recovery chain) | **stable** | See tests under `test/`. |
 | `vision_check` | **beta** | Local inference; observation-only JSON. Install: `uv sync --extra vision`. Checklist: [`../../docs/runbooks/vision-acceptance.md`](../../docs/runbooks/vision-acceptance.md). |
 | `analyze_image_with_kimi` | **beta** | External chat API; deck-level hints, not liquid-volume truth. |
-| `analyze_image_with_ark` | **beta** | Volcengine Ark (Doubao VLM) second opinion; reads `ARK_API_KEY` from env or `.venv/.env`. |
+| `analyze_image_with_ark` | **beta** | Volcengine Ark (Doubao VLM) second opinion; reads `ARK_API_KEY` from env or `automation/.env`. |
 | `deck_vision_check` | **beta** | Preflight orchestration: capture → YOLO → conditional Ark VLM. |
 | `list_critical_probe_targets` | **stable** | Read-only critical well list for Phase 3c LPD probing. |
 | `probe_wells` | **stable (opt-in live)** | Default simulate-only; live motion requires `OPENTRONS_ENABLE_PROBE_WELLS=1` and operator sign-off ([`../../docs/runbooks/probe-wells-live-validation.md`](../../docs/runbooks/probe-wells-live-validation.md)). |

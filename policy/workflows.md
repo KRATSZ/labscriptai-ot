@@ -70,7 +70,7 @@ Default pre-run visual check. Observation-only — compare with `reconcile_state
 ```
 deck_vision_check (robot_ip, session_id?, expected_layout?)
   → internally: capture_preview_image → vision_check
-  → if uncertain/mismatched: analyze_image_with_ark (Doubao; ARK_API_KEY in .venv/.env)
+  → if uncertain/mismatched: analyze_image_with_ark (Doubao; ARK_API_KEY in automation/.env)
 ```
 
 **Manual chain (equivalent):**

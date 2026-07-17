@@ -318,13 +318,25 @@ function checkVision(pythonExe) {
 }
 
 function checkArkVlm() {
-  const envPath = path.join(PLUGIN_ROOT, ".venv", ".env");
+  const envPath = path.join(PLUGIN_ROOT, "automation", ".env");
   let arkKey = process.env.ARK_API_KEY || null;
   if (!arkKey && fs.existsSync(envPath)) {
     const content = fs.readFileSync(envPath, "utf8");
-    const match = content.match(/^ARK_API_KEY=(.+)$/m);
-    if (match) {
-      arkKey = match[1].trim().replace(/^['"]|['"]$/g, "");
+    for (const line of content.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) {
+        continue;
+      }
+      const eqMatch = trimmed.match(/^ARK_API_KEY=(.+)$/);
+      if (eqMatch) {
+        arkKey = eqMatch[1].trim().replace(/^['"]|['"]$/g, "");
+        break;
+      }
+      const colonMatch = trimmed.match(/^ARK_API_KEY\s*:\s*(.+)$/i);
+      if (colonMatch) {
+        arkKey = colonMatch[1].trim().replace(/^['"]|['"]$/g, "");
+        break;
+      }
     }
   }
 
@@ -333,8 +345,8 @@ function checkArkVlm() {
   } else {
     warn(
       "Ark VLM API key",
-      "ARK_API_KEY not found in environment or .venv/.env",
-      "Set ARK_API_KEY for Phase 3b VLM second opinion (Doubao via Volcengine Ark)."
+      "ARK_API_KEY not found in environment or automation/.env",
+      "Set ARK_API_KEY in automation/.env for Phase 3b VLM second opinion (Doubao via Volcengine Ark)."
     );
   }
 }

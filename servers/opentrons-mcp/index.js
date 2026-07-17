@@ -1384,7 +1384,7 @@ const TOOL_DEFINITIONS = [
   {
     name: "analyze_image_with_ark",
     description:
-      "Analyze a local robot deck image with Volcengine Ark (Doubao VLM) using the Responses API. Observation-only; does not mutate session state. Default model endpoint from ARK_MODEL_ENDPOINT or ep-20260716144817-n6rgn; API key from ARK_API_KEY.",
+      "Analyze a local robot deck image with Volcengine Ark (Doubao VLM) using the Responses API. Observation-only; does not mutate session state. Default model endpoint from ARK_MODEL_ENDPOINT or ep-20260716144817-n6rgn; API key from ARK_API_KEY or automation/.env.",
     inputSchema: {
       type: "object",
       properties: {
