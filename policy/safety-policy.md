@@ -26,7 +26,11 @@ This file is the **single source of truth** for safety rules and hard bans in th
 
 ## Vision and camera
 
-Vision / `vision_check` is **observation-only**. It does not mutate session state or override `reconcile_state`. Compare vision output with robot APIs and reconciled deck state before treating it as truth. Use only when the operator asks for a visual check (see skill routing in `AGENTS.md`).
+Vision / `vision_check` / `deck_vision_check` is **observation-only**. It does not mutate session state or override `reconcile_state`. Never treat vision as committed deck truth — always compare with robot APIs and reconciled deck state.
+
+**Default preflight may run observation-only Phase 3b** (unless `OPENTRONS_PREFLIGHT_VISION=off`). Ad-hoc vision outside preflight remains available when useful (see [workflows.md](workflows.md)).
+
+On vision uncertainty or soft mismatch: prefer **auto-reconcile** (`reconcile_state`, re-check APIs) before any human ask. Sensor-aligned agreement (e.g. VLM agrees with expected layout) is a machine **pass**, not a prompt to confirm the subgate. See HumanConfirmBudget in [output-contract.md](output-contract.md).
 
 ## Runtime defaults
 
@@ -36,7 +40,9 @@ Vision / `vision_check` is **observation-only**. It does not mutate session stat
 
 ## Interaction defaults
 
-- Default operator experience: one input → at most one blocking clarification round → one confirmation before live execution.
+- Default operator experience: one input → at most one blocking clarification round → **one** confirmation before live execution (final `run_protocol` / play only).
+- Do **not** stack verbal confirms on passed Phase 3a / 3b / 3c machine subgates. Env / opt-in hard gates (e.g. `OPENTRONS_ENABLE_PROBE_WELLS=1`) remain mandatory and are not replaced by chat.
+- Escalate vs auto-fix: `auto_fixable` → agent tools; `needs_operator_physical_action` → physical fix; `needs_confirmation` → final live only; `blocked` → stop with reason.
 - If a runnable protocol exists, simulation is the default next step.
 - Only block on missing information that changes safety, deck truth, robot type, labware compatibility, or required modules.
 - Safety refusals must include a compliant alternative path.

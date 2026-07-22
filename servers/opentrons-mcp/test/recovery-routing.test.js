@@ -18,6 +18,40 @@ test("resolveRecoveryChannel maps vision and probe leaves", () => {
   assert.equal(resolveRecoveryChannel("TIP_PHYSICALLY_MISSING"), "tip");
 });
 
+test("SESSION_NEEDS_RECONCILIATION recommends reconcile_state first", () => {
+  assert.equal(resolveRecoveryChannel("SESSION_NEEDS_RECONCILIATION"), "reconcile");
+  const guidance = buildRecoveryRoutingGuidance({
+    errorLeaf: "SESSION_NEEDS_RECONCILIATION",
+  });
+  assert.equal(guidance.recovery_channel, "reconcile");
+  assert.equal(guidance.recommended_next_tools[0], "reconcile_state");
+  assert.ok(!guidance.recommended_next_tools[0].includes("camera"));
+  assert.ok(!guidance.recommended_next_tools.includes("deck_vision_check"));
+  assert.ok(!guidance.recommended_next_tools.includes("capture_preview_image"));
+});
+
+test("DECK_COLLISION is manual hard-stop, not vision", () => {
+  assert.equal(resolveRecoveryChannel("DECK_COLLISION"), "manual");
+  const guidance = buildRecoveryRoutingGuidance({ errorLeaf: "DECK_COLLISION" });
+  assert.equal(guidance.recovery_channel, "manual");
+  assert.equal(guidance.resume_allowed, false);
+  assert.ok(!guidance.recommended_next_tools.includes("deck_vision_check"));
+  assert.ok(!guidance.recommended_next_tools.includes("capture_preview_image"));
+});
+
+test("DESTINATION_OCCUPIED stays human slot confirm without camera primary", () => {
+  assert.equal(resolveRecoveryChannel("DESTINATION_OCCUPIED"), "slot_confirm");
+  const enriched = enrichRecoverySuggestion({
+    error_leaf: "DESTINATION_OCCUPIED",
+    action: "manual_only",
+  });
+  assert.equal(enriched.recovery_channel, "slot_confirm");
+  assert.equal(enriched.default_next_step, "suggest_recovery_action");
+  assert.ok(!enriched.recommended_next_tools.includes("deck_vision_check"));
+  assert.ok(!enriched.recommended_next_tools.includes("capture_preview_image"));
+  assert.ok(enriched.recommended_next_tools.includes("get_slot_occupation"));
+});
+
 test("enrichRecoverySuggestion adds routing metadata", () => {
   const enriched = enrichRecoverySuggestion({
     error_leaf: "INSUFFICIENT_VOLUME",

@@ -60,6 +60,71 @@ export function shouldEscalateToVlm(visionResult = {}, { force = false } = {}) {
   };
 }
 
+function isVlmCleanAgree(vlmParsed) {
+  if (!vlmParsed || typeof vlmParsed !== "object") {
+    return false;
+  }
+  const possibleIssues = Array.isArray(vlmParsed.possible_issues) ? vlmParsed.possible_issues : [];
+  return !Boolean(vlmParsed.needs_human_review) && possibleIssues.length === 0;
+}
+
+/**
+ * Layout is consistent when YOLO has no mismatches and VLM (if present) reports
+ * no layout issues. Empty/missing expected_layout is treated as no extra constraint;
+ * VLM is already prompted to put expected_layout diffs into possible_issues.
+ */
+export function isLayoutConsistentWithExpected({
+  yoloMismatches = [],
+  vlmParsed = null,
+  expectedLayout = null,
+} = {}) {
+  if (Array.isArray(yoloMismatches) && yoloMismatches.length > 0) {
+    return false;
+  }
+  if (vlmParsed) {
+    return isVlmCleanAgree(vlmParsed);
+  }
+  const hasExpected =
+    expectedLayout &&
+    typeof expectedLayout === "object" &&
+    Object.keys(expectedLayout).length > 0;
+  // Without VLM, cannot affirm expected layout when one was supplied.
+  return !hasExpected;
+}
+
+function uniqueActions(actions = []) {
+  const seen = new Set();
+  const out = [];
+  for (const action of actions) {
+    const normalized = String(action || "").trim();
+    if (!normalized || seen.has(normalized)) {
+      continue;
+    }
+    seen.add(normalized);
+    out.push(normalized);
+  }
+  return out;
+}
+
+function withoutPrimaryOperatorConfirm(actions = []) {
+  return actions.filter(action => action !== "operator_confirm_deck_layout");
+}
+
+function vlmActionsPreferContinue(actions = []) {
+  return actions.some(action => {
+    const normalized = String(action || "").toLowerCase();
+    return (
+      normalized === "continue_critical_probe" ||
+      normalized === "continue" ||
+      normalized.startsWith("continue_")
+    );
+  });
+}
+
+/**
+ * Phase 3b consensus statuses are machine-judged under HumanConfirmBudget.
+ * Never emit needs_confirmation here — that status is final go-live only.
+ */
 export function summarizeDeckVisionConsensus({
   yoloResult = null,
   vlmResult = null,
@@ -70,12 +135,60 @@ export function summarizeDeckVisionConsensus({
   const vlmParsed = vlmResult?.parsed_result || null;
   const needsHumanReview = Boolean(vlmParsed?.needs_human_review);
   const possibleIssues = Array.isArray(vlmParsed?.possible_issues) ? vlmParsed.possible_issues : [];
+  const vlmCleanAgree = isVlmCleanAgree(vlmParsed);
+  const layoutConsistent = isLayoutConsistentWithExpected({
+    yoloMismatches: mismatches,
+    vlmParsed,
+    expectedLayout,
+  });
+  const vlmActions = Array.isArray(vlmParsed?.recommended_next_actions)
+    ? vlmParsed.recommended_next_actions
+    : [];
 
   let status = "passed";
-  if (mismatches.length > 0 || possibleIssues.length > 0) {
-    status = needsHumanReview ? "blocked" : "needs_confirmation";
+  let recommendedNextActions = [];
+
+  if (mismatches.length > 0) {
+    // Reconcile-able mismatch: auto_fixable so agents run reconcile_state first.
+    // Never primary operator_confirm_deck_layout (vision ≠ deck truth).
+    status = "auto_fixable";
+    recommendedNextActions = uniqueActions([
+      "reconcile_state",
+      ...withoutPrimaryOperatorConfirm(vlmActions),
+    ]);
+  } else if (needsHumanReview) {
+    // True physical / human-review case — not a go-live verbal confirm.
+    // Reconcile still comes first (vision ≠ deck truth); operator_confirm may follow.
+    status = "needs_operator_physical_action";
+    recommendedNextActions = uniqueActions(["reconcile_state", ...vlmActions]);
+  } else if (possibleIssues.length > 0) {
+    // Soft VLM issues with needs_human_review=false: never needs_confirmation.
+    status = "auto_fixable";
+    recommendedNextActions = uniqueActions([
+      "reconcile_state",
+      ...withoutPrimaryOperatorConfirm(vlmActions),
+      ...(vlmActionsPreferContinue(vlmActions) ? ["continue_critical_probe"] : []),
+    ]);
   } else if (escalation?.escalate) {
-    status = vlmParsed ? "needs_confirmation" : "blocked";
+    if (vlmCleanAgree && layoutConsistent) {
+      // YOLO uncertain/escalated but VLM agrees cleanly — pass with audit flags.
+      status = "passed";
+      recommendedNextActions = uniqueActions([...vlmActions, "continue_critical_probe"]);
+    } else if (vlmParsed) {
+      // Residual uncertainty after VLM: auto-reconcile, not go-live confirm.
+      status = "auto_fixable";
+      recommendedNextActions = uniqueActions([
+        "reconcile_state",
+        ...withoutPrimaryOperatorConfirm(vlmActions),
+        "continue_critical_probe",
+      ]);
+    } else {
+      // Escalated with no VLM second opinion — keep auto path open via reconcile.
+      status = "auto_fixable";
+      recommendedNextActions = ["reconcile_state", "deck_vision_check"];
+    }
+  } else {
+    recommendedNextActions = uniqueActions([...vlmActions, "continue_critical_probe"]);
   }
 
   return {
@@ -84,18 +197,16 @@ export function summarizeDeckVisionConsensus({
     vlm_escalated: Boolean(escalation?.escalate),
     vlm_escalate_reasons: escalation?.reasons || [],
     needs_human_review: needsHumanReview,
+    layout_consistent_with_expected: layoutConsistent,
     summary:
       vlmParsed?.summary ||
       yoloResult?.summary ||
       (mismatches.length > 0
         ? `YOLO detected ${mismatches.length} deck mismatches against expected layout.`
         : "Deck vision check completed."),
-    recommended_next_actions: [
-      ...(Array.isArray(vlmParsed?.recommended_next_actions) ? vlmParsed.recommended_next_actions : []),
-      ...(mismatches.length > 0 ? ["reconcile_state", "operator_confirm_deck_layout"] : ["continue_critical_probe"]),
-    ],
+    recommended_next_actions: recommendedNextActions,
     observation_only: true,
-    deck_truth_requires_reconcile: mismatches.length > 0,
+    deck_truth_requires_reconcile: mismatches.length > 0 || status === "auto_fixable",
     expected_layout: expectedLayout || null,
   };
 }

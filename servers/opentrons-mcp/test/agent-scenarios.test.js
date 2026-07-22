@@ -80,9 +80,10 @@ const SCENARIO_SPECS = [
     prompt:
       "这份 protocol 已经本地 simulate 通过了，现在帮我上 Flex 跑，先做 preflight，再 play。",
     route_tail: ["opentrons-experiment-run"],
-    route_note: "先过 simulation gate，再走 live preflight，然后才允许执行。",
+    route_note:
+      "先过 simulation gate，再走 live preflight；passed 子关卡不要口头复确认，只在 run_protocol/play 前做一次 go-live confirm。",
     expected_tools: ["preflight_run_setup", "run_protocol"],
-    must_not_do: ["play without preflight"],
+    must_not_do: ["play without preflight", "ask human after each passed preflight subgate"],
   },
   {
     id: "live-readiness-before-create-run",
@@ -199,7 +200,7 @@ const SCENARIO_SPECS = [
       "protocol 已经 simulate 通过了，帮我按标准 preflight 上 Flex：先仪表盘 readiness，再拍台面 YOLO，关键洗液/酶孔探液，最后安静跑。",
     route_tail: ["opentrons-experiment-run"],
     route_note:
-      "Must follow Phase 3a dashboard → 3b deck vision (YOLO first) → 3c critical probe before run_protocol; no vision during execution.",
+      "Must follow Phase 3a → 3b → 3c before run_protocol; on passed/skip-pass subgates continue without verbal re-confirm; on vision mismatch call reconcile_state before asking human; only one go-live confirm for run_protocol/play (fold probe opt-in there).",
     expected_tools: [
       "live_readiness_check",
       "robot_status",
@@ -213,6 +214,8 @@ const SCENARIO_SPECS = [
       "vision during runtime_watch_poll",
       "full-plate probe scan",
       "run_protocol before critical probe gate",
+      "ask human after passed Phase 3a/3b/3c",
+      "ask human after VLM agree without reconcile_state first on mismatch",
     ],
   },
   {
@@ -234,9 +237,13 @@ const SCENARIO_SPECS = [
       "我想现场 probe wells 来检查液体位置，但先别直接上机，告诉我应该先模拟、确认 deck、再怎么做。",
     route_tail: ["opentrons-experiment-run"],
     route_note:
-      "probe_wells is experimental and observation-only unless operator consent and gating are satisfied.",
+      "probe_wells live still needs OPENTRONS_ENABLE_PROBE_WELLS=1 + explicit opt-in; fold that into the single go-live confirm rather than stacking mid-preflight asks; bookkeeping/writeback is tool-first.",
     expected_tools: ["simulate_protocol", "probe_wells"],
-    must_not_do: ["execute_on_robot: true without operator consent", "treat vision as deck truth"],
+    must_not_do: [
+      "execute_on_robot: true without operator consent",
+      "treat vision as deck truth",
+      "ask human to apply probe results when apply_liquid_probe_results is available",
+    ],
   },
 ];
 

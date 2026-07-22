@@ -45,10 +45,15 @@ Hide internal complexity from the operator. The default interaction model is:
 
 1. One user input
 2. At most one blocking clarification round
-3. One confirmation before live execution
+3. **One** confirmation before live execution (`run_protocol` / play) — not one per preflight subgate
 
 If a runnable protocol exists, the default next step is the simulation gate. Do
 not wait for the user to explicitly ask for simulate.
+
+**Do not over-ask.** After a Phase 3a/3b/3c tool returns `passed` (or skip-pass
+for zero critical wells), continue to the next subphase without verbal
+re-confirmation. Emit status JSON; do not pause the chat to ask “does this look
+good?” when the gate already cleared.
 
 ### Phase 0 — Intent (multi-well / pattern / ambiguous mapping)
 
@@ -89,13 +94,26 @@ not wait for the user to explicitly ask for simulate.
 Finish each sub-gate before the next. Emit `output-contract` status JSON with
 `subphase`: `dashboard` | `deck_vision` | `critical_probe`.
 
+#### Continue-vs-ask (agents must follow)
+
+| Tool / gate result | Agent action |
+|--------------------|--------------|
+| `passed` or skip-pass (incl. zero critical wells) | **CONTINUE** next subphase. No verbal re-confirm. |
+| Vision mismatch / `deck_truth_requires_reconcile` / needs reconcile | Call `reconcile_state` (and other allowed auto tools) **before** asking the human. |
+| Bookkeeping failure (source map missing, pending probe writeback) with tools available | Run the tools (`record_liquid_source_map`, `apply_liquid_probe_results`, …). Do **not** escalate to human as the first reaction. |
+| Hard stop / door / estop / empty critical after tools | **STOP**; escalate with a clear next physical action. |
+| Ready for motion (`run_protocol` / live `probe_wells`) | **One** final human confirmation for go-live. Fold any needed live-probe opt-in (`OPENTRONS_ENABLE_PROBE_WELLS=1`) into that same confirm when Phase 3c requires live probe. |
+
+Keep the simulation gate, hard-stops, and vision **observation-only**. Never treat YOLO/VLM as committed deck truth.
+
 #### Phase 3a — Dashboard (no camera, no VLM)
 
 - `health_check` -> `live_readiness_check` (robot_ip, session_id?, file_path?)
 - `robot_status`, `module_status` — door closed, estop clear, modules ready
-- If `guidance.reconcile_first` -> `reconcile_state`
+- If `guidance.reconcile_first` or session needs reconciliation -> `reconcile_state` (tool-first; do not ask first)
 - **Do not** call `camera_status`, `capture_preview_image`, `vision_check`, or any VLM here
-- **Fail** on `DOOR_OPEN`, `ESTOP_ENGAGED`, `MODULE_NOT_READY`, `SESSION_NEEDS_RECONCILIATION`
+- **Fail** on `DOOR_OPEN`, `ESTOP_ENGAGED`, `MODULE_NOT_READY` (hard blockers)
+- On `passed` / warn-continue -> proceed to 3b **without** asking the operator to re-confirm dashboard
 
 #### Phase 3b — Eyes on deck (YOLO first, Ark VLM second opinion)
 
@@ -106,17 +124,20 @@ Finish each sub-gate before the next. Emit `output-contract` status JSON with
   - `mismatches` against `expected_layout`
   - operator sets `force_vlm=true`
 - Skip when `OPENTRONS_PREFLIGHT_VISION=off`
-- Vision is **observation-only** — compare with `reconcile_state`; never treat as deck truth
+- Vision is **observation-only** — never treat as deck truth
+- On consensus `passed` (YOLO clear, or VLM second opinion agrees / no actionable mismatch) -> continue to 3c **without** verbal re-confirm
+- On mismatch / needs reconcile -> call `reconcile_state` **before** asking the human; only escalate if still blocked after reconcile and allowed auto tools
 - Setup: `policy/workflows.md` *Preflight deck vision*
 
 #### Phase 3c — Critical wells only (no VLM)
 
 - `list_critical_probe_targets` (session_id, critical_sources from intent)
+- If the list is empty (zero critical) -> treat as **skip-pass** and continue toward the single go-live confirm; do not invent a full-plate scan or ask for probe permission
 - Probe **only** returned critical wells — never full-plate scan
-- `probe_wells` simulate first -> operator confirm + `OPENTRONS_ENABLE_PROBE_WELLS=1`
-  -> live probe -> `apply_liquid_probe_results` -> `live_liquid_recovery_gate`
+- `probe_wells` simulate first. Live probe still requires `OPENTRONS_ENABLE_PROBE_WELLS=1` + explicit opt-in, but **do not** add a separate chat confirm for every subgate — fold probe opt-in into the Phase 4 go-live confirmation when possible
+- After live probe: `apply_liquid_probe_results` -> `live_liquid_recovery_gate` (bookkeeping/writeback is tool-first; do not ask the human to “please apply results” when the tool is available)
 - Default mode for go/no-go: `require_presence`
-- Empty critical source -> **blocked**, do not `run_protocol`
+- Empty critical source after probe/gate -> **blocked**, do not `run_protocol`
 
 - After MCP/host restart or when the operator is lost: prefer **`safe_next_action`**
   for `recommended_next_tool` and `operator_steps`; fall back to **`restart_review`**
@@ -125,6 +146,7 @@ Finish each sub-gate before the next. Emit `output-contract` status JSON with
 
 ### Phase 4 — Execute (quiet by default)
 
+- **Single go-live confirmation** happens here (once): short ready-state summary + ask to start `run_protocol` / play. If live critical probe is still pending and allowed, include probe opt-in + `OPENTRONS_ENABLE_PROBE_WELLS=1` in **this same** confirmation — do not stack earlier Phase 3 chat confirms.
 - `run_protocol` (file_path, robot_ip, session_id).
 - Simulation gate also runs inside this tool.
 - After a successful `run_protocol` call that returns a `run_id`, immediately call `runtime_watch_poll` for that run.
@@ -133,12 +155,12 @@ Finish each sub-gate before the next. Emit `output-contract` status JSON with
 - **Quiet execution contract:** while the run is active, do **not** call
   `capture_preview_image`, `vision_check`, `analyze_image_with_ark`, `deck_vision_check`,
   or `probe_wells` unless Phase 5 recovery routing explicitly requires it.
-- **For unattended / "keep going until done" runs**, arm `runtime_watch_loop` instead of repeated manual polls (see `opentrons-experiment-goal`). It reuses `runtime_watch_poll` on a budgeted schedule, persists `goal-state.json`, and emits outbox sentinels so the host IDE can auto-wake. Default `self_fix_mode=observe`; guarded L0 self-fix requires `allow_l4_execution=true` + `operator_opt_in=true`.
+- **For unattended / "keep going until done" runs**, arm `runtime_watch_loop` instead of repeated manual polls (see `opentrons-experiment-goal`). It reuses `runtime_watch_poll` on a budgeted schedule, persists `goal-state.json`, and emits outbox sentinels so the host IDE can auto-wake. Default `self_test_mode=observe`; guarded L0 self-fix requires `allow_l4_execution=true` + `operator_opt_in=true`.
 - Before this phase, give the operator a short ready-state summary rather than a
   long internal trace.
 - Include the resolved `dry_run_on` value in that summary. If `True`, require
   operator confirmation that no liquids are loaded and that the returned-tip
-  rack will be replaced or segregated before any wet run.
+  rack will be replaced or segregated before any wet run (same go-live turn when possible).
 
 ### Phase 5 — Failure / Recovery (trigger routing)
 
@@ -149,13 +171,15 @@ Finish each sub-gate before the next. Emit `output-contract` status JSON with
 | Channel | Trigger examples | Tools |
 |---------|------------------|-------|
 | **dashboard** | door open, estop, module not ready | `robot_status`, `module_status`, `live_readiness_check` |
-| **vision** | deck moved, labware mismatch, collision suspect | `deck_vision_check` or capture+vision+ark, then `reconcile_state` |
+| **vision** | deck moved, labware mismatch (appearance doubt) | `deck_vision_check` or capture+vision+ark, then **`reconcile_state` before asking human** |
+| **reconcile** | SESSION_NEEDS_RECONCILIATION / state mismatch | `reconcile_state` first — not camera/VLM-first |
+| **manual** | DECK_COLLISION (hard-stop) | stop; physical check; re-run live_readiness — **does not enter vision channel** |
 | **probe** | liquidNotFound, INSUFFICIENT_VOLUME | `live_liquid_recovery_gate`, targeted `probe_wells` only |
 | **tip** | TIP_PHYSICALLY_MISSING | `recover_tip_pickup` / L0 retry |
 
 - Execute only branches that come back with `auto_executable: true`: `execute_protocol_recovery` / `recover_tip_pickup`.
-- Hard stops and DESTINATION_OCCUPIED human-review rules per `policy/safety-policy.md` and `policy/error-response.md`.
-- After door/module recovery, re-run Phase 3a before resume; deck doubt -> Phase 3b; liquid doubt -> targeted probe only.
+- Hard stops (`DECK_COLLISION`, etc.) and DESTINATION_OCCUPIED human-review rules per `policy/safety-policy.md` and `policy/error-response.md`. `DECK_COLLISION` is manual hard-stop — do **not** route it to vision.
+- After door/module recovery, re-run Phase 3a before resume; deck appearance doubt -> Phase 3b; liquid doubt -> targeted probe only.
 
 ### Phase 6 — Audit
 

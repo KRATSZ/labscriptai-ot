@@ -8,6 +8,8 @@ import {
   summarizeDeckVisionConsensus,
 } from "../lib/deck-vision-preflight.js";
 
+const PHASE3B_FORBIDDEN_GO_LIVE_STATUS = "needs_confirmation";
+
 test("shouldEscalateToVlm triggers on mismatches", () => {
   const result = shouldEscalateToVlm({
     mismatches: [{ slot: "D3", reason: "expected_occupied_but_empty" }],
@@ -28,16 +30,150 @@ test("shouldEscalateToVlm stays false on clean YOLO output", () => {
   assert.equal(result.escalate, false);
 });
 
-test("summarizeDeckVisionConsensus marks needs_confirmation when mismatches exist", () => {
+test("summarizeDeckVisionConsensus mismatch → auto_fixable + reconcile_state first", () => {
   const consensus = summarizeDeckVisionConsensus({
     yoloResult: {
       mismatches: [{ slot: "C2", reason: "label_mismatch" }],
       summary: "mismatch",
     },
+    vlmResult: {
+      parsed_result: {
+        summary: "possible empty C2",
+        possible_issues: [],
+        needs_human_review: false,
+        recommended_next_actions: ["operator_confirm_deck_layout", "reconcile_state"],
+      },
+    },
+    escalation: { escalate: true, reasons: ["mismatch:C2:label_mismatch"] },
   });
 
-  assert.equal(consensus.status, "needs_confirmation");
+  assert.equal(consensus.status, "auto_fixable");
+  assert.notEqual(consensus.status, PHASE3B_FORBIDDEN_GO_LIVE_STATUS);
   assert.equal(consensus.yolo_mismatch_count, 1);
+  assert.equal(consensus.recommended_next_actions[0], "reconcile_state");
+  assert.ok(!consensus.recommended_next_actions.includes("operator_confirm_deck_layout"));
+  assert.equal(consensus.deck_truth_requires_reconcile, true);
+});
+
+test("YOLO low_confidence + VLM clean agree → passed (not needs_confirmation)", () => {
+  const consensus = summarizeDeckVisionConsensus({
+    yoloResult: {
+      mismatches: [],
+      uncertainties: ["low_confidence"],
+      summary: "low confidence on D3",
+    },
+    vlmResult: {
+      parsed_result: {
+        summary: "96-well plate present on D3",
+        possible_issues: [],
+        needs_human_review: false,
+        recommended_next_actions: ["continue_critical_probe"],
+      },
+    },
+    escalation: {
+      escalate: true,
+      reasons: ["uncertainty:low_confidence"],
+    },
+    expectedLayout: { D3: "corning_96_wellplate_360ul_flat" },
+  });
+
+  assert.equal(consensus.status, "passed");
+  assert.equal(consensus.vlm_escalated, true);
+  assert.equal(consensus.needs_human_review, false);
+  assert.equal(consensus.layout_consistent_with_expected, true);
+  assert.notEqual(consensus.status, PHASE3B_FORBIDDEN_GO_LIVE_STATUS);
+});
+
+test("VLM possible_issues + needs_human_review=false must not yield needs_confirmation", () => {
+  const consensus = summarizeDeckVisionConsensus({
+    yoloResult: {
+      mismatches: [],
+      uncertainties: [],
+      summary: "ok",
+    },
+    vlmResult: {
+      parsed_result: {
+        summary: "minor glare on tip rack label",
+        possible_issues: ["glare_on_tip_rack_label"],
+        needs_human_review: false,
+        recommended_next_actions: ["continue_critical_probe"],
+      },
+    },
+    escalation: { escalate: true, reasons: ["forced_by_operator"] },
+  });
+
+  assert.notEqual(consensus.status, PHASE3B_FORBIDDEN_GO_LIVE_STATUS);
+  assert.ok(
+    consensus.status === "auto_fixable" || consensus.status === "passed",
+    `expected auto_fixable or passed, got ${consensus.status}`,
+  );
+  assert.equal(consensus.needs_human_review, false);
+  assert.equal(consensus.recommended_next_actions[0], "reconcile_state");
+});
+
+test("Phase 3b consensus never uses needs_confirmation for mismatch/uncertainty cases", () => {
+  const cases = [
+    summarizeDeckVisionConsensus({
+      yoloResult: { mismatches: [{ slot: "A1", reason: "empty" }], summary: "mismatch" },
+      escalation: { escalate: true, reasons: ["mismatch:A1:empty"] },
+    }),
+    summarizeDeckVisionConsensus({
+      yoloResult: { mismatches: [], uncertainties: ["ambiguous_class"], summary: "uncertain" },
+      vlmResult: {
+        parsed_result: {
+          summary: "unclear tip rack",
+          possible_issues: ["ambiguous_tip_rack"],
+          needs_human_review: false,
+          recommended_next_actions: ["continue_critical_probe"],
+        },
+      },
+      escalation: { escalate: true, reasons: ["uncertainty:ambiguous_class"] },
+    }),
+    summarizeDeckVisionConsensus({
+      yoloResult: { mismatches: [], uncertainties: ["low_confidence"], summary: "low conf" },
+      vlmResult: {
+        parsed_result: {
+          summary: "still uncertain",
+          possible_issues: [],
+          needs_human_review: false,
+          recommended_next_actions: ["reconcile_state"],
+        },
+      },
+      escalation: { escalate: true, reasons: ["uncertainty:low_confidence"] },
+      expectedLayout: { B2: "opentrons_96_tiprack_300ul" },
+    }),
+    summarizeDeckVisionConsensus({
+      yoloResult: { mismatches: [], uncertainties: ["vision_process_failed"], summary: "failed" },
+      escalation: { escalate: true, reasons: ["uncertainty:vision_process_failed"] },
+    }),
+  ];
+
+  for (const consensus of cases) {
+    assert.notEqual(
+      consensus.status,
+      PHASE3B_FORBIDDEN_GO_LIVE_STATUS,
+      `Phase 3b must not return needs_confirmation; got status=${consensus.status} summary=${consensus.summary}`,
+    );
+  }
+});
+
+test("needs_human_review true → needs_operator_physical_action (not needs_confirmation)", () => {
+  const consensus = summarizeDeckVisionConsensus({
+    yoloResult: { mismatches: [], summary: "ok" },
+    vlmResult: {
+      parsed_result: {
+        summary: "labware looks shifted; rearrange required",
+        possible_issues: ["labware_shifted"],
+        needs_human_review: true,
+        recommended_next_actions: ["operator_confirm_deck_layout"],
+      },
+    },
+    escalation: { escalate: true, reasons: ["forced_by_operator"] },
+  });
+
+  assert.equal(consensus.status, "needs_operator_physical_action");
+  assert.notEqual(consensus.status, PHASE3B_FORBIDDEN_GO_LIVE_STATUS);
+  assert.equal(consensus.recommended_next_actions[0], "reconcile_state");
 });
 
 test("buildDeckVisionPreflightResult records vlm escalation", () => {
@@ -52,6 +188,9 @@ test("buildDeckVisionPreflightResult records vlm escalation", () => {
   assert.equal(result.vlm_used, true);
   assert.equal(result.sensors_used[1], "analyze_image_with_ark");
   assert.equal(result.subphase, "deck_vision");
+  assert.equal(result.consensus.status, "auto_fixable");
+  assert.notEqual(result.consensus.status, PHASE3B_FORBIDDEN_GO_LIVE_STATUS);
+  assert.equal(result.consensus.recommended_next_actions[0], "reconcile_state");
 });
 
 test("isPreflightVisionEnabled respects OPENTRONS_PREFLIGHT_VISION=off", () => {

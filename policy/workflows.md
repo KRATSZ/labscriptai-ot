@@ -12,13 +12,26 @@ user intent / SOP
   →  doctor_local_runtime → simulate_protocol (virtual_lab_steps) → parse_simulation_output
   →  (fix loop if failed)
   →  Phase 3a dashboard: health_check → live_readiness_check → robot_status → module_status → reconcile_state (if needed)
+       → machine-judged: passed | blocked | needs_operator_physical_action (no verbal re-confirm)
   →  Phase 3b deck vision: deck_vision_check (YOLO → optional Ark VLM) OR capture_preview_image → vision_check → analyze_image_with_ark
-  →  Phase 3c critical probe: list_critical_probe_targets → probe_wells simulate → operator confirm + OPENTRONS_ENABLE_PROBE_WELLS=1
+       → sensor-aligned (e.g. VLM agrees) → passed; uncertainty → auto_fixable (reconcile first); mismatch needing hands → needs_operator_physical_action
+  →  Phase 3c critical probe: list_critical_probe_targets → probe_wells simulate
+       → OPENTRONS_ENABLE_PROBE_WELLS=1 hard gate (blocked if unset; not a verbal subgate confirm)
        → probe_wells execute_on_robot → apply_liquid_probe_results → live_liquid_recovery_gate
-  →  return status: ready | needs_confirmation | blocked
-  →  run_protocol (robot_ip, file_path, session_id) only after confirmation — quiet execution, no vision during run
+  →  return status: passed (subgates) | auto_fixable | needs_operator_physical_action | blocked
+       | needs_confirmation (final go-live only — HumanConfirmBudget)
+  →  run_protocol (robot_ip, file_path, session_id) only after that single confirmation — quiet execution, no vision during run
   →  runtime_watch_loop (run_id) for unattended auto-wake until COMPLETE/BLOCKED
 ```
+
+## HumanConfirmBudget (go-live)
+
+Phase **3a / 3b / 3c** statuses are machine-judged. Agents must **not** verbally re-confirm each passed subgate.
+
+The **only** go-live verbal confirmation is the final `run_protocol` / play confirmation. It may bundle `dry_run_on` and whether the live-probe env opt-in is already set. Do **not** remove the `OPENTRONS_ENABLE_PROBE_WELLS=1` (or equivalent) hard gate — unset env → `blocked`, not a chat substitute.
+
+Escalate vs auto-fix: `auto_fixable` (agent tools, prefer reconcile) → `needs_operator_physical_action` (hands-on) → `needs_confirmation` (final live only) → `blocked`. See [output-contract.md](output-contract.md).
+
 
 ## Protocol validation only (no live robot)
 
@@ -36,8 +49,9 @@ If the user only wants validation or labware inspection, stop after the check an
 - Ask at most one clarification round before drafting.
 - Only block on missing information that would change safety, deck truth, robot compatibility, or module choice.
 - New protocols expose `dry_run_on=false`. Before a physical run, report the
-  resolved value. If true, confirm the deck and labware are clean and liquid-free;
-  returned tips must be segregated or replaced before a wet run.
+  resolved value as part of the **single** final go-live confirmation (HumanConfirmBudget).
+  If true, that confirm must cover clean/liquid-free deck and labware; returned tips
+  must be segregated or replaced before a wet run.
 
 ## Error recovery (live robot)
 
@@ -61,7 +75,7 @@ health_check
 
 ## Preflight deck vision — Phase 3b (YOLO first, Ark VLM second opinion)
 
-Default pre-run visual check. Observation-only — compare with `reconcile_state` and robot APIs (see `policy/safety-policy.md`).
+Default pre-run visual check (observation-only). Never deck truth — compare with `reconcile_state` and robot APIs (see `policy/safety-policy.md`). On uncertainty, auto-reconcile / re-check before asking a human.
 
 **Setup (once per machine):** See [docs/deck-vision.md](../docs/deck-vision.md).
 
@@ -71,6 +85,9 @@ Default pre-run visual check. Observation-only — compare with `reconcile_state
 deck_vision_check (robot_ip, session_id?, expected_layout?)
   → internally: capture_preview_image → vision_check
   → if uncertain/mismatched: analyze_image_with_ark (Doubao; ARK_API_KEY in automation/.env)
+  → if VLM/sensors align with expected layout: status=passed (continue; no human re-confirm)
+  → if still uncertain vs session: status=auto_fixable → reconcile_state first
+  → if physical rearrange/refill needed: status=needs_operator_physical_action
 ```
 
 **Manual chain (equivalent):**
@@ -80,19 +97,19 @@ camera_status → capture_preview_image → vision_check
   → if escalate: analyze_image_with_ark (or analyze_image_with_kimi when OPENTRONS_VLM_PROVIDER=kimi)
 ```
 
-Escalate to VLM when YOLO reports low confidence, ambiguity, or layout mismatches. Skip entire step with `OPENTRONS_PREFLIGHT_VISION=off`. Camera API failure is a surfaced error — do not silently skip.
+Escalate to VLM when YOLO reports low confidence, ambiguity, or layout mismatches. Sensor-aligned agreement (e.g. VLM agrees) is a **pass**, not `needs_confirmation`. Skip entire step with `OPENTRONS_PREFLIGHT_VISION=off`. Camera API failure is a surfaced error — do not silently skip.
 
 ## Critical-source liquid probe — Phase 3c (no VLM)
 
-Probe only critical source wells (wash buffer, enzyme, etc.) — not full-plate scan.
+Probe only critical source wells (wash buffer, enzyme, etc.) — not full-plate scan. Machine-judged; do not add a separate verbal “confirm probe?” before the final go-live confirm.
 
 ```
 list_critical_probe_targets (session_id, critical_sources?)
   → probe_wells (execute_on_robot=false, wells=[...]) → parse simulation
-  → operator confirm + OPENTRONS_ENABLE_PROBE_WELLS=1
+  → require OPENTRONS_ENABLE_PROBE_WELLS=1 (hard gate; blocked if unset)
   → probe_wells (execute_on_robot=true) → apply_liquid_probe_results
   → live_liquid_recovery_gate
-  → run_protocol only after gate pass
+  → continue; final verbal confirm only at run_protocol / play (HumanConfirmBudget)
 ```
 
 Bookkeeping only until `execute_on_robot=true`. See [probe-wells-live-validation.md](../docs/runbooks/probe-wells-live-validation.md).
@@ -111,11 +128,13 @@ After `parse_error` → `suggest_recovery_action`, follow `recovery_channel`:
 | Channel | Error leaves (examples) | Next tools |
 |---------|-------------------------|------------|
 | dashboard | DOOR_OPEN, ESTOP_ENGAGED, MODULE_NOT_READY, ROBOT_UNREACHABLE | robot_status, module_status, live_readiness_check |
-| vision | LABWARE_MISMATCH, DECK_COLLISION, SESSION_NEEDS_RECONCILIATION | deck_vision_check, reconcile_state |
+| vision | LABWARE_MISMATCH, DESTINATION_UNAVAILABLE, SLOT_NOT_ADDRESSABLE | deck_vision_check, reconcile_state |
+| reconcile | SESSION_NEEDS_RECONCILIATION, STATE_MISMATCH | reconcile_state first (not camera/VLM-first) |
+| manual | DECK_COLLISION (hard-stop) | stop; physical check; re-run live_readiness_check — does **not** enter vision channel |
 | probe | INSUFFICIENT_VOLUME, AIR_BUBBLE, LIQUID_PROPERTY_ERROR | live_liquid_recovery_gate, list_critical_probe_targets, targeted probe_wells |
 | tip | TIP_PHYSICALLY_MISSING | recover_tip_pickup |
 
-After door/module recovery, re-run Phase 3a before resume. Deck doubt → Phase 3b. Liquid doubt → targeted probe only.
+After door/module recovery, re-run Phase 3a before resume. Deck appearance doubt → vision channel. Session/state mismatch → reconcile-first. `DECK_COLLISION` is hard-stop/manual (no vision auto-recovery). Liquid doubt → targeted probe only.
 
 ## Optional Flex liquid probe (recovery / re-probe)
 
@@ -123,18 +142,18 @@ Use during recovery or when source fill is uncertain after a run has started. **
 
 ```
 probe_wells (execute_on_robot=false) → parse simulation
-  → operator confirm + OPENTRONS_ENABLE_PROBE_WELLS=1
+  → require OPENTRONS_ENABLE_PROBE_WELLS=1 (hard gate; blocked if unset)
   → probe_wells (execute_on_robot=true, auto_apply_to_session=true optional)
   → apply_liquid_probe_results (if not auto-applied)
   → live_liquid_recovery_gate
-  → run_protocol (only after gate pass + operator opt-in)
+  → run_protocol only after gate pass + final go-live confirmation (HumanConfirmBudget)
 ```
 
 Bookkeeping only until `execute_on_robot=true`: `apply_liquid_probe_results` never moves the robot. See [probe-wells-live-validation.md](../docs/runbooks/probe-wells-live-validation.md).
 
-## Legacy optional deck vision (operator-only ad-hoc)
+## Legacy optional deck vision (ad-hoc outside default preflight)
 
-For ad-hoc visual checks outside the default preflight sequence, the same tool chain applies:
+Default Phase 3b already runs observation-only vision during preflight. For ad-hoc visual checks outside that sequence, the same tool chain applies:
 
 ```
 camera_status → capture_preview_image → vision_check (image_path = path returned by capture)

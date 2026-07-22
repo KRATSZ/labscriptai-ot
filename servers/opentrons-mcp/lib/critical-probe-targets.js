@@ -1,9 +1,8 @@
+// Narrow defaults: sample/reagent need explicit critical/probe_required flags.
 const DEFAULT_CRITICAL_ROLES = new Set([
   "wash_buffer",
   "wash",
   "enzyme",
-  "reagent",
-  "sample",
   "critical",
 ]);
 
@@ -47,13 +46,13 @@ export function listCriticalProbeTargets({
     : [];
 
   if (explicitTargets.length > 0) {
-    return {
+    return withProbeGateStatus({
       probe_policy: "critical_sources_only",
       targets: explicitTargets,
       target_count: explicitTargets.length,
       source: "explicit_argument",
       fallback_used: false,
-    };
+    });
   }
 
   const sources = sessionState?.liquid_tracking?.sources || {};
@@ -96,7 +95,7 @@ export function listCriticalProbeTargets({
     observed_presence: entry.observed_presence,
   }));
 
-  return {
+  return withProbeGateStatus({
     probe_policy: sessionState?.liquid_tracking?.probe_policy || "critical_sources_only",
     targets,
     target_count: targets.length,
@@ -104,6 +103,34 @@ export function listCriticalProbeTargets({
     fallback_used: fallbackUsed,
     wells: targets.map(entry => entry.well_name),
     probe_groups: groupTargetsBySlot(targets),
+  });
+}
+
+/**
+ * Zero critical targets → skip/pass this gate (no probe confirmation path).
+ */
+export function withProbeGateStatus(summary = {}) {
+  const targetCount = Number(summary.target_count ?? summary.targets?.length ?? 0);
+  if (targetCount === 0) {
+    return {
+      ...summary,
+      target_count: 0,
+      targets: Array.isArray(summary.targets) ? summary.targets : [],
+      gate_status: "passed",
+      probe_gate: "skipped",
+      skip_reason: "no_critical_targets",
+      recommended_next_actions: ["continue_live_preflight"],
+      no_probe_confirmation: true,
+    };
+  }
+  return {
+    ...summary,
+    target_count: targetCount,
+    gate_status: "needs_probe",
+    probe_gate: "required",
+    skip_reason: null,
+    recommended_next_actions: ["probe_wells"],
+    no_probe_confirmation: false,
   };
 }
 
