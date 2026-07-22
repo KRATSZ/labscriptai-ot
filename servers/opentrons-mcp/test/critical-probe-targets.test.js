@@ -5,14 +5,22 @@ import { listCriticalProbeTargets } from "../lib/critical-probe-targets.js";
 
 test("listCriticalProbeTargets prefers explicit critical_sources argument", () => {
   const result = listCriticalProbeTargets({
-    criticalSources: [{ slot: "D3", well: "A1", role: "wash_buffer" }],
+    criticalSources: [
+      { slot: "D3", well: "A1", role: "wash_buffer", labware_load_name: "nest_12_reservoir_15ml" },
+      { slot: "D3", well: "A2", role: "enzyme" },
+    ],
   });
 
-  assert.equal(result.target_count, 1);
+  assert.equal(result.target_count, 2);
   assert.equal(result.targets[0].slot_name, "D3");
   assert.equal(result.targets[0].well_name, "A1");
   assert.equal(result.source, "explicit_argument");
   assert.equal(result.probe_gate, "required");
+  assert.deepEqual(result.wells, ["A1", "A2"]);
+  assert.equal(result.probe_groups.length, 1);
+  assert.equal(result.probe_groups[0].labware_slot, "D3");
+  assert.deepEqual(result.probe_groups[0].wells, ["A1", "A2"]);
+  assert.equal(result.probe_groups[0].labware_load_name, "nest_12_reservoir_15ml");
 });
 
 test("listCriticalProbeTargets filters session source map by critical role", () => {
@@ -93,6 +101,43 @@ test("sample/reagent become critical only when explicitly flagged", () => {
 
   assert.equal(result.target_count, 1);
   assert.equal(result.targets[0].role, "sample");
+});
+
+test("critical/probe_required sources listed without expected_presence", () => {
+  const result = listCriticalProbeTargets({
+    sessionState: {
+      liquid_tracking: {
+        sources: {
+          "D3.A1": {
+            slot_name: "D3",
+            well_name: "A1",
+            role: "wash_buffer",
+            // expected_presence intentionally omitted
+          },
+          "C2.A1": {
+            slot_name: "C2",
+            well_name: "A1",
+            role: "sample",
+            probe_required: true,
+          },
+          "B1.A1": {
+            slot_name: "B1",
+            well_name: "A1",
+            role: "enzyme",
+            expected_presence: false,
+          },
+        },
+      },
+    },
+  });
+
+  assert.equal(result.target_count, 2);
+  assert.ok(result.targets.some(t => t.key === "D3.A1"));
+  assert.ok(result.targets.some(t => t.key === "C2.A1"));
+  assert.ok(!result.targets.some(t => t.key === "B1.A1"));
+  assert.equal(result.probe_gate, "required");
+  assert.ok(Array.isArray(result.probe_groups));
+  assert.ok(result.probe_groups.length >= 1);
 });
 
 test("zero critical targets skip/pass the probe gate", () => {

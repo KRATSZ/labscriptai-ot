@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   buildDeckVisionPreflightResult,
   isPreflightVisionEnabled,
+  runVlmSecondOpinion,
   shouldEscalateToVlm,
   summarizeDeckVisionConsensus,
 } from "../lib/deck-vision-preflight.js";
@@ -28,6 +29,18 @@ test("shouldEscalateToVlm stays false on clean YOLO output", () => {
   });
 
   assert.equal(result.escalate, false);
+});
+
+test("shouldEscalateToVlm triggers on YOLO needs_human_review alone", () => {
+  const result = shouldEscalateToVlm({
+    mismatches: [],
+    uncertainties: [],
+    needs_human_review: true,
+    summary: "review recommended",
+  });
+
+  assert.equal(result.escalate, true);
+  assert.ok(result.reasons.includes("yolo_needs_human_review"));
 });
 
 test("summarizeDeckVisionConsensus mismatch → auto_fixable + reconcile_state first", () => {
@@ -174,6 +187,95 @@ test("needs_human_review true → needs_operator_physical_action (not needs_conf
   assert.equal(consensus.status, "needs_operator_physical_action");
   assert.notEqual(consensus.status, PHASE3B_FORBIDDEN_GO_LIVE_STATUS);
   assert.equal(consensus.recommended_next_actions[0], "reconcile_state");
+});
+
+test("YOLO needs_human_review without VLM never silently passes", () => {
+  const consensus = summarizeDeckVisionConsensus({
+    yoloResult: {
+      mismatches: [],
+      uncertainties: [],
+      needs_human_review: true,
+      summary: "review recommended with empty mismatch list",
+    },
+    escalation: { escalate: true, reasons: ["yolo_needs_human_review"] },
+  });
+
+  assert.notEqual(consensus.status, "passed");
+  assert.notEqual(consensus.status, PHASE3B_FORBIDDEN_GO_LIVE_STATUS);
+  assert.equal(consensus.status, "auto_fixable");
+  assert.equal(consensus.yolo_needs_human_review, true);
+  assert.equal(consensus.needs_human_review, true);
+  assert.equal(consensus.recommended_next_actions[0], "reconcile_state");
+  assert.equal(consensus.deck_truth_requires_reconcile, true);
+});
+
+test("YOLO needs_human_review + VLM clean agree can pass", () => {
+  const consensus = summarizeDeckVisionConsensus({
+    yoloResult: {
+      mismatches: [],
+      uncertainties: [],
+      needs_human_review: true,
+      summary: "review recommended",
+    },
+    vlmResult: {
+      parsed_result: {
+        summary: "deck looks correct",
+        possible_issues: [],
+        needs_human_review: false,
+        recommended_next_actions: ["continue_critical_probe"],
+      },
+    },
+    escalation: { escalate: true, reasons: ["yolo_needs_human_review"] },
+  });
+
+  assert.equal(consensus.status, "passed");
+  assert.equal(consensus.needs_human_review, false);
+  assert.notEqual(consensus.status, PHASE3B_FORBIDDEN_GO_LIVE_STATUS);
+});
+
+test("runVlmSecondOpinion swallows Ark/API failures and returns null result", async () => {
+  const { vlmResult, vlmError } = await runVlmSecondOpinion({
+    escalate: true,
+    provider: "ark",
+    imagePath: "/tmp/deck.jpg",
+    analyzeArk: async () => {
+      throw new Error("Ark API key is required. Pass api_key or set ARK_API_KEY.");
+    },
+  });
+
+  assert.equal(vlmResult, null);
+  assert.equal(vlmError.provider, "ark");
+  assert.equal(vlmError.recoverable, true);
+  assert.match(vlmError.message, /ARK_API_KEY/);
+});
+
+test("VLM failure metadata still yields auto_fixable consensus path", async () => {
+  const { vlmResult, vlmError } = await runVlmSecondOpinion({
+    escalate: true,
+    provider: "ark",
+    imagePath: "/tmp/deck.jpg",
+    analyzeArk: async () => {
+      throw new Error("Ark request failed: 401 Unauthorized");
+    },
+  });
+  const result = buildDeckVisionPreflightResult({
+    imagePath: "/tmp/deck.jpg",
+    yoloResult: {
+      mismatches: [{ slot: "D3", reason: "expected_occupied_but_empty" }],
+      summary: "mismatch",
+    },
+    vlmResult,
+    vlmError,
+    escalation: { escalate: true, reasons: ["mismatch:D3:expected_occupied_but_empty"] },
+    provider: "ark",
+  });
+
+  assert.equal(result.vlm_used, false);
+  assert.equal(result.vlm_error.recoverable, true);
+  assert.equal(result.vlm_provider, "ark");
+  assert.equal(result.consensus.status, "auto_fixable");
+  assert.equal(result.consensus.recommended_next_actions[0], "reconcile_state");
+  assert.notEqual(result.consensus.status, PHASE3B_FORBIDDEN_GO_LIVE_STATUS);
 });
 
 test("buildDeckVisionPreflightResult records vlm escalation", () => {

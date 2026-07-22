@@ -145,6 +145,7 @@ import {
   buildDeckVisionPreflightResult,
   isPreflightVisionEnabled,
   resolveVlmProvider,
+  runVlmSecondOpinion,
   shouldEscalateToVlm,
 } from "./lib/deck-vision-preflight.js";
 import { ARTIFACTS_DIR, DATA_DIR } from "./lib/paths.js";
@@ -7087,30 +7088,20 @@ const TOOL_HANDLERS = {
 
     const escalation = shouldEscalateToVlm(yoloResult, { force: Boolean(args.force_vlm) });
     const provider = resolveVlmProvider({ provider: args.vlm_provider });
-    let vlmResult = null;
-
-    if (escalation.escalate && provider !== "off") {
-      if (provider === "kimi") {
-        vlmResult = (
-          await TOOL_HANDLERS.analyze_image_with_kimi({
-            image_path: imagePath,
-            expected_layout: args.expected_layout,
-          })
-        ).data;
-      } else {
-        vlmResult = (
-          await TOOL_HANDLERS.analyze_image_with_ark({
-            image_path: imagePath,
-            expected_layout: args.expected_layout,
-          })
-        ).data;
-      }
-    }
+    const { vlmResult, vlmError } = await runVlmSecondOpinion({
+      escalate: escalation.escalate,
+      provider,
+      imagePath,
+      expectedLayout: args.expected_layout,
+      analyzeArk: payload => TOOL_HANDLERS.analyze_image_with_ark(payload),
+      analyzeKimi: payload => TOOL_HANDLERS.analyze_image_with_kimi(payload),
+    });
 
     const result = buildDeckVisionPreflightResult({
       imagePath,
       yoloResult,
       vlmResult,
+      vlmError,
       escalation,
       expectedLayout: args.expected_layout,
       provider,
