@@ -1231,7 +1231,7 @@ const TOOL_DEFINITIONS = [
   {
     name: "drop_attached_tip",
     description:
-      "Safely drop an already attached pipette tip in a maintenance context after a stopped or recovery run. Refuses when robot_status does not confirm a tip on the requested mount.",
+      "Safely drop an already attached pipette tip in a maintenance context after a stopped or recovery run. Refuses when robot_status does not confirm a tip on the requested mount. Defaults to trash-centered drop (alternate_drop_location=false) to avoid offsetting outside the chute.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1242,6 +1242,12 @@ const TOOL_DEFINITIONS = [
         pipette_id: { type: "string" },
         labware_id: { type: "string" },
         well_name: { type: "string" },
+        alternate_drop_location: {
+          type: "boolean",
+          default: false,
+          description:
+            "When true, offset XY from trash center (higher collision risk). Default false = trash-centered drop.",
+        },
         session_id: { type: "string" },
         timeout_ms: { type: "integer", default: 30000 },
         poll_interval_ms: { type: "integer", default: 500 },
@@ -6032,6 +6038,7 @@ const TOOL_HANDLERS = {
       throw new Error("drop_attached_tip could not resolve pipetteId from loadPipette.");
     }
 
+    const alternateDropLocation = args.alternate_drop_location === true;
     const moveToDropResult = await enqueueAndPollCommand({
       robotIp: args.robot_ip,
       contextType,
@@ -6039,6 +6046,7 @@ const TOOL_HANDLERS = {
       commandPayload: buildMoveToAddressableAreaForDropTipCommand({
         pipetteId: loadedPipetteId,
         intent: "fixit",
+        alternateDropLocation,
       }),
       timeoutMs,
       pollIntervalMs,

@@ -399,7 +399,9 @@ export function buildMoveToAddressableAreaForDropTipCommand({
   pipetteId,
   addressableAreaName = "movableTrashA3",
   offset = null,
-  alternateDropLocation = true,
+  // Trash-centered drop by default. alternateDropLocation=true offsets XY and can
+  // land outside the chute (stall/collision), especially from a low-Z probe pose.
+  alternateDropLocation = false,
   ignoreTipConfiguration = true,
   intent = "fixit",
   key = null,

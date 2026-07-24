@@ -132,9 +132,13 @@ After `parse_error` → `suggest_recovery_action`, follow `recovery_channel`:
 | reconcile | SESSION_NEEDS_RECONCILIATION, STATE_MISMATCH | reconcile_state first (not camera/VLM-first) |
 | manual | DECK_COLLISION (hard-stop) | stop; physical check; re-run live_readiness_check — does **not** enter vision channel |
 | probe | INSUFFICIENT_VOLUME, AIR_BUBBLE, LIQUID_PROPERTY_ERROR | live_liquid_recovery_gate, list_critical_probe_targets, targeted probe_wells |
-| tip | TIP_PHYSICALLY_MISSING | recover_tip_pickup |
+| tip | TIP_PHYSICALLY_MISSING | tip-budget gate → `recover_tip_pickup` only if remaining tips ≥ remaining pickups; else STOP |
 
 After door/module recovery, re-run Phase 3a before resume. Deck appearance doubt → vision channel. Session/state mismatch → reconcile-first. `DECK_COLLISION` is hard-stop/manual (no vision auto-recovery). Liquid doubt → targeted probe only.
+
+**FIX/STOP gates** (tip budget, time window, contamination, precious mid-fault, waste-path retry, same-identity reserve proposal) are defined in [error-response.md](error-response.md) § Agent FIX/STOP decision gates and mirrored in `skills/opentrons-experiment-run/SKILL.md` Phase 5. Channel routing alone is not enough.
+
+On probe-channel `INSUFFICIENT_VOLUME` / `liquidNotFound`: call `live_liquid_recovery_gate`, then `plan_liquid_source_substitution` when a same-identity reserve may exist; present the FIX proposal for operator confirmation — never silent swap. Short reserve → STOP.
 
 ## Optional Flex liquid probe (recovery / re-probe)
 

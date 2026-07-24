@@ -334,9 +334,9 @@ Create either a protocol run context or a maintenance-run context before enqueue
 
 ### `drop_attached_tip` [L3]
 
-Safely drop an already attached pipette tip in a maintenance context after a stopped or recovery run. Refuses when robot_status does not confirm a tip on the requested mount.
+Safely drop an already attached pipette tip in a maintenance context after a stopped or recovery run. Refuses when robot_status does not confirm a tip on the requested mount. Defaults to trash-centered drop (`alternate_drop_location=false`) to avoid offsetting outside the chute.
 
-**Parameters:** `robot_ip` (optional), `context_id`, `mount` (optional), `pipette_name` (optional), `pipette_id` (optional), `labware_id` (optional), `well_name` (optional), `session_id` (optional), `timeout_ms` (optional), `poll_interval_ms` (optional)
+**Parameters:** `robot_ip` (optional), `context_id`, `mount` (optional), `pipette_name` (optional), `pipette_id` (optional), `labware_id` (optional), `well_name` (optional), `alternate_drop_location` (optional, default `false`), `session_id` (optional), `timeout_ms` (optional), `poll_interval_ms` (optional)
 
 ### `execute_protocol_recovery` [L3]
 
