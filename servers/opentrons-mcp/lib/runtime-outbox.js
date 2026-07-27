@@ -158,6 +158,16 @@ function normalizeOutboxEvent(event = {}) {
   const dedupeKey =
     event.dedupe_key ||
     `${sessionId}:${runId || "session"}:${type}:${shortHash(stableJson(event.data || {}))}`;
+  const kind = event.kind ?? event.data?.kind ?? null;
+  const wake =
+    event.wake === true ? true : event.wake === false ? false : null;
+  const data = { ...(event.data || {}) };
+  if (kind != null && data.kind == null) {
+    data.kind = kind;
+  }
+  if (wake != null && data.wake == null) {
+    data.wake = wake;
+  }
   return {
     outbox_id: event.outbox_id || randomUUID(),
     created_at: createdAt,
@@ -182,7 +192,9 @@ function normalizeOutboxEvent(event = {}) {
     ack_selection: event.ack_selection ?? null,
     deliveries: event.deliveries || {},
     delivery_status: event.delivery_status || "pending",
-    data: event.data || {},
+    kind,
+    wake,
+    data,
   };
 }
 
@@ -259,6 +271,7 @@ export function ackRuntimeOutboxEvent({
       acked_at: new Date().toISOString(),
       ack_note: note,
       ack_selection: selection,
+      delivery_status: "acked",
     };
     return matched;
   });
@@ -529,14 +542,30 @@ async function deliverToAdapter(event, adapter, options = {}) {
   if (["claudecode", "codex", "cursor", "piagent", "opencode"].includes(adapter)) {
     const filePath = adapterOutboxPath(adapter, event.session_id, options);
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    fs.appendFileSync(
-      filePath,
-      `${JSON.stringify({
-        delivered_at: new Date().toISOString(),
-        adapter,
-        event,
-      })}\n`,
-    );
+    const payload = {
+      delivered_at: new Date().toISOString(),
+      adapter,
+      event,
+    };
+    const line = `${JSON.stringify(payload)}\n`;
+    const existing = fs.existsSync(filePath) ? fs.readFileSync(filePath, "utf8") : "";
+    const tempPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
+    fs.writeFileSync(tempPath, existing + line);
+    fs.renameSync(tempPath, filePath);
+    const lastLine = fs.readFileSync(filePath, "utf8").trim().split("\n").pop();
+    let verified = null;
+    try {
+      verified = JSON.parse(lastLine);
+    } catch {
+      verified = null;
+    }
+    if (verified?.event?.outbox_id !== event.outbox_id) {
+      return {
+        status: "failed",
+        target: filePath,
+        error: "adapter mailbox write verification failed",
+      };
+    }
     return {
       status: "delivered",
       target: filePath,

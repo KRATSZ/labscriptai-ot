@@ -12,6 +12,7 @@ import {
   consumeOnce,
   emitHookResponse,
   emitPollResponse,
+  inferWakeFlag,
   isWakeEvent,
   parseArgs,
   pickLatestActionable,
@@ -77,6 +78,30 @@ test("buildContinuationPrompt includes GOAL_STATUS hint", () => {
   assert.match(prompt, /GOAL_REASON:/);
   assert.match(prompt, /opentrons-experiment-goal/);
   assert.match(prompt, /notify_adapters=\["claudecode"\]/);
+  assert.match(prompt, /kind: needs_user/);
+  assert.match(prompt, /wake: true/);
+});
+
+test("inferWakeFlag infers wake from requires_attention when wake unset", () => {
+  assert.equal(inferWakeFlag({ requires_attention: true }), true);
+  assert.equal(inferWakeFlag({ severity: "hard_stop" }), true);
+  assert.equal(inferWakeFlag({ kind: "heartbeat" }), false);
+  assert.equal(inferWakeFlag({ wake: false, requires_attention: true }), false);
+});
+
+test("buildContinuationPrompt infers wake from severity when wake unset", () => {
+  const prompt = buildContinuationPrompt(
+    {
+      outbox_id: "evt-2",
+      session_id: "sess-b",
+      severity: "hard_stop",
+      requires_attention: true,
+      message: "stop",
+    },
+    "cursor",
+  );
+  assert.match(prompt, /wake: true/);
+  assert.match(prompt, /kind: unknown/);
 });
 
 test("consumeOnce reads adapter mailbox and builds continuation", async () => {
@@ -111,6 +136,94 @@ test("consumeOnce reads adapter mailbox and builds continuation", async () => {
   assert.ok(result.event);
   assert.equal(result.event.outbox_id, "wake-1");
   assert.match(result.continuation, /GOAL_STATUS:/);
+});
+
+test("consumeOnce warns when mailbox event missing from canonical outbox", async () => {
+  const root = tempRoot();
+  const adapterDir = path.join(root, "host-adapters");
+  const sessionId = "orphan-session";
+  const stderrChunks = [];
+  const originalStderr = console.error;
+  console.error = (...args) => {
+    stderrChunks.push(args.join(" "));
+  };
+  try {
+    appendAdapterLine(adapterDir, "cursor", sessionId, {
+      outbox_id: "orphan-1",
+      session_id: sessionId,
+      kind: "needs_user",
+      wake: true,
+      requires_attention: true,
+      message: "orphaned wake",
+      created_at: "2026-07-01T12:00:00Z",
+    });
+
+    const result = await consumeOnce({
+      host: "cursor",
+      session_id: sessionId,
+      source: "adapter",
+      wake_only: true,
+      ack: false,
+      host_adapter_dir: adapterDir,
+      outbox_dir: path.join(root, "runtime-outbox"),
+      limit: 5,
+    });
+
+    assert.ok(result.event);
+    assert.equal(result.event.outbox_id, "orphan-1");
+    assert.match(stderrChunks.join("\n"), /not found in canonical outbox/);
+  } finally {
+    console.error = originalStderr;
+  }
+});
+
+test("delivers wake even when ack fails for missing canonical event", () => {
+  const root = tempRoot();
+  const adapterDir = path.join(root, "host-adapters");
+  const sessionId = "ack-fail-session";
+  appendAdapterLine(adapterDir, "cursor", sessionId, {
+    outbox_id: "missing-canonical",
+    session_id: sessionId,
+    kind: "needs_user",
+    wake: true,
+    message: "ack should fail",
+    created_at: "2026-07-01T12:00:00Z",
+  });
+
+  const result = spawnSync(
+    process.execPath,
+    [
+      CONSUME_SCRIPT,
+      "--host",
+      "cursor",
+      "--hook",
+      "stop",
+      "--source",
+      "adapter",
+      "--session-id",
+      sessionId,
+      "--host-adapter-dir",
+      adapterDir,
+      "--outbox-dir",
+      path.join(root, "runtime-outbox"),
+    ],
+    {
+      cwd: REPO_ROOT,
+      env: {
+        ...process.env,
+        PLUGIN_DATA: root,
+        OPENTRONS_PLUGIN_ROOT: REPO_ROOT,
+      },
+      encoding: "utf8",
+    },
+  );
+
+  assert.equal(result.status, 0);
+  const payload = JSON.parse(result.stdout.trim());
+  assert.ok(payload.followup_message);
+  assert.match(payload.followup_message, /GOAL_STATUS/);
+  assert.match(result.stderr, /ack failed \(wake already delivered\)/);
+  assert.match(result.stderr, /missing-canonical/);
 });
 
 test("readAdapterMailbox unwraps adapter envelope rows", () => {

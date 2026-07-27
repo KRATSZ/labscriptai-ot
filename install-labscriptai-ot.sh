@@ -22,8 +22,12 @@ if [[ "$INSTALL_HOOKS" == "1" && -d "$HOOKS_SRC" ]]; then
   # Claude Code plugin discovery (hooks/ + monitors/ at plugin root)
   if [[ -d "$HOOKS_SRC/claude" ]]; then
     mkdir -p "$PLUGIN_ROOT/hooks" "$PLUGIN_ROOT/monitors"
-    [[ -e "$PLUGIN_ROOT/hooks/hooks.json" ]] || ln -sf claude/hooks.json "$PLUGIN_ROOT/hooks/hooks.json" 2>/dev/null || true
-    [[ -e "$PLUGIN_ROOT/monitors/monitors.json" ]] || ln -sf ../hooks/claude/monitors.json "$PLUGIN_ROOT/monitors/monitors.json" 2>/dev/null || true
+    if [[ ! -e "$PLUGIN_ROOT/hooks/hooks.json" ]]; then
+      ln -sf claude/hooks.json "$PLUGIN_ROOT/hooks/hooks.json"
+    fi
+    if [[ ! -e "$PLUGIN_ROOT/monitors/monitors.json" ]]; then
+      ln -sf ../hooks/claude/monitors.json "$PLUGIN_ROOT/monitors/monitors.json"
+    fi
   fi
 
   # Codex user-level fallback when plugin_hooks feature is off

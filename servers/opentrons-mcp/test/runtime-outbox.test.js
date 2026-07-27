@@ -9,6 +9,7 @@ import { runRuntimeRecoveryMonitor } from "../lib/runtime-monitor.js";
 import { readAlerts } from "../lib/runtime-watch/alert-store.js";
 import {
   ackRuntimeOutboxEvent,
+  appendRuntimeOutboxEvent,
   deliverRuntimeOutbox,
   publishMonitorNotifications,
   readRuntimeOutbox,
@@ -209,6 +210,7 @@ test("runtime outbox delivers to host adapter files and can be acked", async () 
     outboxDir,
   });
   assert.equal(acked.ack_note, "handled");
+  assert.equal(acked.delivery_status, "acked");
   assert.equal(
     readRuntimeOutbox({
       sessionId: "delivery-session",
@@ -255,4 +257,57 @@ test("runtime outbox delivers to piagent and opencode host adapter files", async
   assert.equal(opencodeLine.adapter, "opencode");
   assert.equal(piagentLine.event.session_id, "pi-opencode-session");
   assert.equal(opencodeLine.event.requires_attention, true);
+});
+
+test("normalizeOutboxEvent preserves wake and kind fields", () => {
+  const root = tempRoot();
+  const outboxDir = path.join(root, "outbox");
+  const saved = appendRuntimeOutboxEvent(
+    {
+      session_id: "kind-session",
+      kind: "needs_user",
+      wake: true,
+      requires_attention: true,
+      message: "wake test",
+    },
+    { outboxDir },
+  );
+  assert.equal(saved.kind, "needs_user");
+  assert.equal(saved.wake, true);
+  const [readBack] = readRuntimeOutbox({
+    sessionId: "kind-session",
+    outboxDir,
+    includeAcked: true,
+  });
+  assert.equal(readBack.kind, "needs_user");
+  assert.equal(readBack.wake, true);
+  assert.equal(readBack.data.kind, "needs_user");
+});
+
+test("deliverRuntimeOutbox preserves wake and kind in adapter mailbox", async () => {
+  const root = tempRoot();
+  const outboxDir = path.join(root, "outbox");
+  const hostAdapterDir = path.join(root, "host-adapters");
+  const saved = appendRuntimeOutboxEvent(
+    {
+      session_id: "mailbox-kind-session",
+      kind: "blocked",
+      wake: true,
+      requires_attention: true,
+      message: "blocked wake",
+    },
+    { outboxDir },
+  );
+  const delivery = await deliverRuntimeOutbox({
+    sessionId: "mailbox-kind-session",
+    adapters: ["cursor"],
+    outboxDir,
+    hostAdapterDir,
+  });
+  assert.equal(delivery.status, "delivered");
+  const mailboxPath = path.join(hostAdapterDir, "cursor", "mailbox-kind-session.jsonl");
+  const line = JSON.parse(fs.readFileSync(mailboxPath, "utf8").trim());
+  assert.equal(line.event.outbox_id, saved.outbox_id);
+  assert.equal(line.event.kind, "blocked");
+  assert.equal(line.event.wake, true);
 });
