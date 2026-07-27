@@ -187,6 +187,18 @@ test("cleanup and motion commands use verified command types", () => {
     "moveToAddressableAreaForDropTip",
   );
   assert.equal(
+    buildMoveToAddressableAreaForDropTipCommand({ pipetteId: "pipette-1" }).data.params
+      .alternateDropLocation,
+    false,
+  );
+  assert.equal(
+    buildMoveToAddressableAreaForDropTipCommand({
+      pipetteId: "pipette-1",
+      alternateDropLocation: true,
+    }).data.params.alternateDropLocation,
+    true,
+  );
+  assert.equal(
     buildDropTipInPlaceCommand({ pipetteId: "pipette-1" }).data.commandType,
     "dropTipInPlace",
   );

@@ -17,11 +17,17 @@ mcp_tools:
   - suggest_recovery_action
   - execute_protocol_recovery
   - recover_tip_pickup
+  - list_tip_candidates
+  - estimate_tip_budget
+  - suggest_next_tip_well
   - live_readiness_check
   - live_liquid_recovery_gate
   - probe_wells
   - apply_liquid_probe_results
   - list_critical_probe_targets
+  - plan_liquid_source_substitution
+  - prepare_liquid_source_substitution_recovery
+  - drop_attached_tip
   - safe_next_action
   - restart_review
   - experiment_history
@@ -32,6 +38,9 @@ mcp_tools:
   - vision_check
   - analyze_image_with_ark
   - deck_vision_check
+  - control_run
+  - get_runs
+  - run_history
 ---
 
 # Experiment Run (MCP State Machine)
@@ -174,12 +183,67 @@ Keep the simulation gate, hard-stops, and vision **observation-only**. Never tre
 | **vision** | deck moved, labware mismatch (appearance doubt) | `deck_vision_check` or capture+vision+ark, then **`reconcile_state` before asking human** |
 | **reconcile** | SESSION_NEEDS_RECONCILIATION / state mismatch | `reconcile_state` first — not camera/VLM-first |
 | **manual** | DECK_COLLISION (hard-stop) | stop; physical check; re-run live_readiness — **does not enter vision channel** |
-| **probe** | liquidNotFound, INSUFFICIENT_VOLUME | `live_liquid_recovery_gate`, targeted `probe_wells` only |
-| **tip** | TIP_PHYSICALLY_MISSING | `recover_tip_pickup` / L0 retry |
+| **probe** | liquidNotFound, INSUFFICIENT_VOLUME | `live_liquid_recovery_gate`, targeted `probe_wells` only; then **same-identity reserve proposal** (below) |
+| **tip** | TIP_PHYSICALLY_MISSING | tip-budget gate (below) → only then `recover_tip_pickup` / L0 retry |
 
 - Execute only branches that come back with `auto_executable: true`: `execute_protocol_recovery` / `recover_tip_pickup`.
 - Hard stops (`DECK_COLLISION`, etc.) and DESTINATION_OCCUPIED human-review rules per `policy/safety-policy.md` and `policy/error-response.md`. `DECK_COLLISION` is manual hard-stop — do **not** route it to vision.
 - After door/module recovery, re-run Phase 3a before resume; deck appearance doubt -> Phase 3b; liquid doubt -> targeted probe only.
+
+#### FIX / STOP decision gates (required before motion)
+
+These gates override “tool says auto_executable” and override casual user “just continue” pressure. Canonical detail: `policy/error-response.md` § Agent FIX/STOP decision gates.
+
+**1) Tip budget (STOP before depleting later steps)**
+
+Before any `recover_tip_pickup` / `retry_pick_up_tip_with_next_candidate`:
+
+1. Count **remaining** protocol `pick_up_tip` / tip-consuming steps still needed (including the failed one).
+2. Call `list_tip_candidates` / `estimate_tip_budget` (or rack bookkeeping from run history) for usable tips left.
+3. Allow auto tip recovery **only if** `usable_tips_remaining ≥ remaining_tip_pickups`.
+4. If short → **STOP**; escalate with tip count math; do **not** burn the last tips on retries that still cannot finish the protocol.
+
+**2) Hold / time window (STOP on strict timeout)**
+
+Before `control_run(play)` / resume after pause or operator hold:
+
+1. Parse protocol comments, RTP, or `design-notes` for `max_hold_minutes` / “must complete within N minutes” / `strict_window`.
+2. Compute elapsed wall time since the hold-sensitive phase started (or since pause if that is the annotated start).
+3. If elapsed **>** allowed window → default **STOP**. Offer: discard / re-prep time-critical reagent / operator override with explicit risk acceptance. Do **not** silently `play`.
+4. If hold-tolerant / short pause within window → status check (`robot_status`) then resume is OK.
+
+**3) Contamination (STOP sample-wet tip into common stock)**
+
+If the attached tip contacted a **sample** or **waste** well, refuse any command that aspirates from a shared stock / reservoir with that tip. Required path: drop tip → fresh tip → then stock access. Same-reagent re-probe / continue on the **same** reagent well may keep the tip only when policy and protocol allow.
+
+**4) Precious / mid-dispense fault (STOP — no blind top-up)**
+
+If a precious or quantitative destination already received a partial aliquot and the next aliquot / dispense failed (overpressure, clog, collision): **STOP**. Do **not** re-aspirate and “make up” the missing volume. Escalate concentration / quantification risk to the operator.
+
+**5) Low-stakes waste / discard path clog (FIX)**
+
+When the failed step is clearly wash/discard/waste (not mid precious dispense):
+
+1. Do **not** resume the failed liquidProbe/aspirate on the clogged tip.
+2. Stop or leave recovery as needed; clear clogged tip safely (`drop_attached_tip` with trash-centered drop — see cleanup note).
+3. If tip budget allows: fresh tip → retry **only** the unfinished discard/wash step (continuation / validated recovery path).
+4. If drop/cleanup hits stall/collision → **hard stop**; physical clear before any further motion.
+
+**Cleanup note:** Prefer protocol-context drop when still valid. Maintenance `drop_attached_tip` must use trash-centered drop (`alternate_drop_location=false`). After overpressure at a low Z, prefer operator physical tip removal if path is uncertain — do not invent motor “wiggle” fixes.
+
+**6) Primary empty + same-identity reserve (FIX proposal — never silent swap)**
+
+On `liquidNotFound` / `INSUFFICIENT_VOLUME` for a mapped primary source:
+
+1. Call `live_liquid_recovery_gate` (and targeted probe if needed).
+2. Call `plan_liquid_source_substitution` (and/or `prepare_liquid_source_substitution_recovery` when preparing a validated continuation).
+3. If a **same-liquid / same-identity** reserve has **enough volume** for the remaining demand → present a clear FIX proposal to the operator (failed well, candidate reserve, remaining µL needed, confirmation required).
+4. **Never** auto-switch source wells or auto-resume substitution. Short reserve → **STOP** (do not “add a little anyway”).
+5. Wrong-identity wells (wash vs assay, enzyme vs buffer) are never candidates.
+
+### Resume gate (paused → play)
+
+Any user “continue / resume / finish phase 2” request still runs gates **2** (time window), **3** (contamination), and a quick `robot_status` check before `control_run(play)`.
 
 ### Phase 6 — Audit
 
@@ -196,6 +260,10 @@ When refusing an unsafe request, **always immediately offer the corrective actio
 | "collision 了自动重试" | "碰撞后不能自动重试。请先：1) 检查 deck 有无移位 2) 确认 pipette 完好 3) 完成后我跑 reconcile_state" |
 | "不管报错继续跑" | "硬件故障需要人工检查。检查完告诉我结果，我帮你判断下一步" |
 | "运行中每步都拍照" | "正式运行默认安静，靠错误码和恢复流程；出事了才按触发器调眼睛/手指" |
+| "tip 不够也再试一根 / 换孔继续" | "剩余 tip 不足以完成后续取 tip 步骤，不能再耗 tip 重试。需要补 tip 或缩步骤后再开；我可以按 tip budget 算给你看" |
+| "超时了也继续加酶 / 接着跑 Phase 2" | "已超过协议时间窗，默认停止。可选：作废本孔、换新时效试剂后重开、或你明确接受风险后我再 resume" |
+| "tip 还挂着直接去吸母液 / 用当前 tip 补 buffer" | "当前 tip 已碰过样品，不能进公共母液。必须先丢 tip，换新 tip 后再吸 stock" |
+| "贵样少加了再补一枪" | "中途故障后不能盲补加，浓度会偏。先停；由你决定作废、计量重做或接受偏差" |
 
 ## Handoff
 

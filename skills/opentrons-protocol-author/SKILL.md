@@ -64,8 +64,10 @@ mcp_tools: []
   potentially contaminated; replace or segregate the rack before a wet run.
 - Never silently turn on `dry_run_on` for live execution. Surface the selected
   value in the ready-state summary.
-- **Tip budget is a hard constraint.** Before finalizing, COUNT every `pick_up_tip` / `transfer` / `mix` call and verify total ≤ 96 × number_of_tip_racks. Running out of tips mid-protocol is a fatal simulation failure. If tip budget is tight: use `new_tip="once"` for same-reagent consecutive transfers (NOT for different reagents or different destination types), or add a second tip rack.
+- **Tip budget is a hard constraint.** Before finalizing, COUNT every `pick_up_tip` / `transfer` / `mix` call and verify total ≤ 96 × number_of_tip_racks. Running out of tips mid-protocol is a fatal simulation failure. If tip budget is tight: use `new_tip="once"` for same-reagent consecutive transfers (NOT for different reagents or different destination types), or add a second tip rack. Document `pick_up_tip_count` in `design-notes.json` / comments so live recovery can re-check **remaining** tips vs remaining pickups before `recover_tip_pickup`.
 - **PCR / 96-well tip math example:** 96 wells × 4 reagent additions + 96 mix passes = up to 384 tips. With one 96-tip rack this is IMPOSSIBLE. You MUST either: (a) use `new_tip="once"` within the same reagent step, (b) use multi-channel pipette (96 tips covers a full column), or (c) add multiple tip racks. Always calculate before writing.
+- **Primary / reserve sources:** When a backup well shares liquid identity with the primary, annotate both in protocol comments and `design-notes.json` (`liquid_sources.primary` / `liquid_sources.reserve`, same `liquid_id`, minimum usable µL). Never imply wash/enzyme wells are interchangeable with assay buffer.
+- **Hold / time windows:** If a later phase must finish within a wall-clock window after an earlier phase (enzyme, activated reagent), write a parseable marker such as `max_hold_minutes: N` (protocol comment and/or `design-notes.json` `timing.max_hold_minutes`). Mark hold-tolerant pauses explicitly (`hold_tolerant: true`) so runtime resume can FIX short holds and STOP strict timeouts.
 
 ## Liquid handling (prefer official APIs)
 
@@ -78,6 +80,8 @@ mcp_tools: []
 **Local static check before simulate:** `uv run python skills/opentrons-protocol-verify/scripts/verify_protocol.py preflight <protocol.py>` catches invalid Flex pipette names and flags apiLevel mismatches for RTP / liquid-class features.
 
 **Flex — Liquid Presence Detection (capacitive LLD):** When source fill height is uncertain, reservoir levels are low, or recovery needs liquid confirmation, use `liquid_presence_detection=True` and `detect_liquid_presence` / `require_liquid_presence` / `measure_liquid_height`. See `references/liquid-presence-detection-flex.md` and `assets/flex_liquid_probe_example.py`. Default RTP `use_liquid_probe=False`; live MCP probing uses `list_critical_probe_targets` → `probe_wells` + `apply_liquid_probe_results` (opt-in). Record critical sources in `record_liquid_source_map` with `critical: true` or roles like `wash_buffer` / `enzyme`.
+
+**Per-aspirate LPD (required for multi-draw from one source):** Do **not** call `require_liquid_presence` only once before a loop of several aspirates/transfers from the same well. Guard **each** aspirate (or each `transfer_with_liquid_class` iteration). A single pre-loop probe can pass, then later draws aspirate air with no error — runtime STOP never fires. Pattern in `references/liquid-presence-detection-flex.md`.
 
 ## Pipette range (Flex default path)
 

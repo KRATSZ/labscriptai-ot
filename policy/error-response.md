@@ -137,6 +137,27 @@ After `parse_error` → `suggest_recovery_action`, agents must follow `recovery_
 
 After door/module recovery, re-run Phase 3a dashboard before resume. Deck appearance doubt → vision channel. `SESSION_NEEDS_RECONCILIATION` → reconcile-first. `DECK_COLLISION` → hard-stop/manual (no vision). Liquid doubt → probe channel only (no VLM).
 
+## Agent FIX/STOP decision gates
+
+Channel routing selects tools; these gates select **FIX vs STOP** before any recovery motion or resume. Agents following `opentrons-experiment-run` must apply them even when a tool returns `auto_executable: true`, and even when the operator casually asks to continue.
+
+| Gate | STOP when | FIX when |
+|------|-----------|----------|
+| Tip budget | `usable_tips_remaining < remaining_tip_pickups` | Tip missing **and** remaining tips cover all remaining pickups → `recover_tip_pickup` / L0 retry |
+| Time / hold window | Elapsed hold exceeds protocol `max_hold_minutes` / strict window | Hold-tolerant or elapsed ≤ window → status check then resume |
+| Contamination | Sample/waste-wet tip would enter common stock | Drop tip → fresh tip → then stock; same-reagent continue only when explicitly allowed |
+| Precious mid-fault | Partial aliquot already in precious/quantitative well | Never blind top-up; escalate only |
+| Waste / discard clog | Cleanup collision / tip budget exhausted | Drop clogged tip safely → fresh tip → retry discard only |
+| Volume / primary empty | No same-identity reserve **or** reserve volume short | Propose `plan_liquid_source_substitution` candidate after operator confirm; never auto-swap |
+
+**Tip recovery invariant:** Do not call `recover_tip_pickup` solely because the next candidate well looks free. Re-check tip budget against remaining protocol pickups first (`list_tip_candidates` / `estimate_tip_budget` / rack bookkeeping).
+
+**Resume invariant:** `control_run(play)` after pause is not automatic. Run the time-window and contamination gates; default STOP on strict timeout with explicit operator options (discard / re-prep / accepted-risk override).
+
+**Substitution invariant (unchanged):** Source-map entries and `plan_liquid_source_substitution` do **not** authorize automatic well changes or automatic resume. Agents must still present the FIX proposal and obtain confirmation. Short reserve → STOP.
+
+**Cleanup invariant:** Maintenance `drop_attached_tip` defaults to trash-centered drop (`alternate_drop_location=false`). Stall/collision during cleanup remains a hard stop.
+
 ## Phase 2 / Phase 4 invariants
 
 These rules are implemented in `servers/opentrons-mcp/` and covered by tests under `servers/opentrons-mcp/test/`.

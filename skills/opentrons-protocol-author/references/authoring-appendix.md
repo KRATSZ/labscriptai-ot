@@ -63,7 +63,7 @@ Before outputting your final protocol, verify each item below. Fix any issues fo
 4. **Tip contamination**: Is a new tip used between different reagents and between wells containing different biological material?
 5. **Empty well assumption**: If the protocol adds liquid to wells, does it first remove any pre-existing liquid?
 6. **Pipette accuracy**: Are transfers within 10-90% of the pipette's max volume? Avoid operating at the absolute edge of the range.
-7. **Tip count**: Does the protocol have enough tips for all operations? Calculate explicitly and document in design-notes.
+7. **Tip count**: Does the protocol have enough tips for all operations? Calculate explicitly and document in design-notes (`pick_up_tip_count` when known).
 8. **Dead volume**: Have you accounted for dead volume in source wells/tubes? Total loaded volume = transfer volume + dead volume.
 9. **Liquid class**: On Flex, did you use verified liquid classes (`water` / `ethanol_80` / `glycerol_50`) or document why not? On OT-2, are `rate=` / flow_rate overrides justified per liquid?
 10. **Trash bin**: Flex protocols MUST call `protocol.load_trash_bin("A3")`. OT-2 protocols do not need this.
@@ -72,6 +72,9 @@ Before outputting your final protocol, verify each item below. Fix any issues fo
 13. **Dry-run switch**: Does `dry_run_on` default to `False`, and does every
     tip-release path call the common helper? If enabled for a physical run,
     verify the deck is liquid-free and quarantine the returned-tip rack afterward.
+14. **Per-aspirate LPD**: For multiple aspirates/transfers from the same source well, is `require_liquid_presence` (or equivalent) called **inside** the loop — not only once before the loop?
+15. **Primary / reserve annotation**: If a same-identity reserve exists, are both wells documented with liquid identity and minimum usable volume?
+16. **Time window**: If a phase is time-critical after a prior phase, is `max_hold_minutes` (or `hold_tolerant: true`) written in comments and/or design-notes?
 
 ## design-notes.json schema
 
@@ -92,7 +95,16 @@ When producing `design-notes.json`, use this exact schema. Field types matter:
   },
   "tip_strategy": {
     "policy": "fresh_tip_per_well_per_reagent",
-    "reason": "Prevent cross-contamination between wells and between reagent steps; 96-tip rack has ample capacity"
+    "reason": "Prevent cross-contamination between wells and between reagent steps; 96-tip rack has ample capacity",
+    "pick_up_tip_count": 12
+  },
+  "liquid_sources": {
+    "primary": {"slot": "C2", "well": "A1", "liquid_id": "assay_buffer", "min_usable_ul": 600},
+    "reserve": {"slot": "C2", "well": "A2", "liquid_id": "assay_buffer", "min_usable_ul": 3000}
+  },
+  "timing": {
+    "max_hold_minutes": null,
+    "hold_tolerant": true
   },
   "key_decisions": [
     {"decision": "...", "rationale": "..."}
@@ -105,7 +117,9 @@ When producing `design-notes.json`, use this exact schema. Field types matter:
 
 - `deck_layout` MUST be an object with `description` (string, 10+ chars) and `slots_used` (array of slot strings).
 - `pipette_choice` MUST be an object with `name` and `reason` (string, 5+ chars) fields. NOT a plain string. The `reason` field must explain WHY this pipette was chosen (e.g., "P50 for ≤50 µL accuracy" or "P1000 covers 1 mL transfers with volume splitting").
-- `tip_strategy` MUST be an object with `policy` and `reason` (string, 5+ chars) fields. NOT a plain string. The `reason` field must explain the contamination/tip budget tradeoff (e.g., "new_tip=always prevents cross-contamination; 96 tips sufficient for 8 samples × 3 reagents").
+- `tip_strategy` MUST be an object with `policy` and `reason` (string, 5+ chars) fields. NOT a plain string. The `reason` field must explain the contamination/tip budget tradeoff (e.g., "new_tip=always prevents cross-contamination; 96 tips sufficient for 8 samples × 3 reagents"). Prefer including `pick_up_tip_count` (integer) when tip math is known.
+- `liquid_sources` (optional but required when a reserve exists): `primary` / `reserve` objects with shared `liquid_id` when substitution is allowed; never list wash/enzyme as reserve for assay buffer.
+- `timing` (optional but required for multi-phase time-sensitive protocols): set `max_hold_minutes` (number) for strict windows, or `hold_tolerant: true` for short safe pauses.
 - `key_decisions` MUST be a non-empty array of objects with `decision` and `rationale`.
 - For workflow/safety questions where no protocol is generated, still fill all fields. Use "N/A" only for `robot` if truly inapplicable; always provide meaningful `deck_layout.description`, `pipette_choice.reason`, and `tip_strategy.reason` even when describing why no action was taken.
 

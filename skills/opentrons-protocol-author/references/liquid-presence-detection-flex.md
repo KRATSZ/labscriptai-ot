@@ -37,6 +37,30 @@ pipette.transfer_with_liquid_class(...)       # or building-block aspirate/dispe
 pipette.drop_tip(trash)
 ```
 
+### Multi-draw / loop from the same source (required)
+
+**Wrong:** one `require_liquid_presence` before a `for` loop of several transfers — the first probe can pass while later aspirates pull air with no robot error.
+
+**Right:** guard **every** aspirate / every loop iteration:
+
+```python
+pipette.pick_up_tip()
+for dest in destinations:
+    if use_liquid_probe:
+        pipette.require_liquid_presence(primary)
+    pipette.transfer_with_liquid_class(
+        liquid_class,
+        volume,
+        primary,
+        dest,
+        new_tip="never",
+        trash_location=trash,
+    )
+pipette.drop_tip(trash)
+```
+
+If the protocol documents a same-identity **reserve** well, keep recovery to operator-confirmed substitution (see `plan_liquid_source_substitution`); do not silently switch wells inside the loop.
+
 ### Measure height before aspirate
 
 `transfer_with_liquid_class` does not accept a probed depth directly. For dynamic depth, use building-block commands after probing:
