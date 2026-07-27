@@ -25,7 +25,7 @@ The repository already includes Python-first skills for writing protocols, verif
 
 ## Tool surface (representative)
 
-Live and orchestration tools include: `robot_health`, `robot_status`, `module_status`, `get_slot_occupation`, `list_tip_candidates`, `suggest_next_tip_well`, `is_home_safe`, `preflight_run_setup`, `live_readiness_check`, `reconcile_state`, `parse_error`, `suggest_recovery_action`, `create_run_context`, command helpers (`load_pipette`, `load_labware`, `load_module`, module controls, `move_labware`, `cleanup_motion`), camera/file helpers, `get_protocols`, `upload_protocol`, `run_protocol`, `execute_protocol_recovery`, `recover_tip_pickup`, run control, `run_history`, `experiment_history`, `restart_review`, `safe_next_action`, `probe_wells`, `health_check`, plus simulation tools above. Optional: `vision_check`, `analyze_image_with_kimi`.
+Live and orchestration tools include: `robot_health`, `robot_status`, `module_status`, `get_slot_occupation`, `list_tip_candidates`, `suggest_next_tip_well`, `is_home_safe`, `preflight_run_setup`, `live_readiness_check`, `reconcile_state`, `parse_error`, `suggest_recovery_action`, `create_run_context`, command helpers (`load_pipette`, `load_labware`, `load_module`, module controls, `move_labware`, `cleanup_motion`), camera/file helpers, `get_protocols`, `upload_protocol`, `run_protocol`, `execute_protocol_recovery`, `recover_tip_pickup`, run control, `run_history`, `experiment_history`, `restart_review`, `safe_next_action`, `probe_wells`, `health_check`, plus simulation tools above. Optional: `vision_check`, `analyze_image_with_kimi`, `analyze_image_with_ark`, `deck_vision_check`, `list_critical_probe_targets`.
 
 See `index.js` for the authoritative tool list and schemas.
 
@@ -39,7 +39,11 @@ See `index.js` for the authoritative tool list and schemas.
 | Core live tools (`robot_status`, `reconcile_state`, recovery chain) | **stable** | See tests under `test/`. |
 | `vision_check` | **beta** | Local inference; observation-only JSON. Install: `uv sync --extra vision`. Checklist: [`../../docs/runbooks/vision-acceptance.md`](../../docs/runbooks/vision-acceptance.md). |
 | `analyze_image_with_kimi` | **beta** | External chat API; deck-level hints, not liquid-volume truth. |
-| `probe_wells` | **experimental** | Default simulate-only; live motion requires `OPENTRONS_ENABLE_PROBE_WELLS=1` and operator sign-off ([`../../docs/runbooks/probe-wells-live-validation.md`](../../docs/runbooks/probe-wells-live-validation.md)). |
+| `analyze_image_with_ark` | **beta** | Volcengine Ark (Doubao VLM) second opinion; reads `ARK_API_KEY` from env or `automation/.env`. |
+| `deck_vision_check` | **beta** | Preflight orchestration: capture → YOLO → conditional Ark VLM. |
+| `list_critical_probe_targets` | **stable** | Read-only critical well list for Phase 3c LPD probing. |
+| `probe_wells` | **stable (opt-in live)** | Default simulate-only; live motion requires `OPENTRONS_ENABLE_PROBE_WELLS=1` and operator sign-off ([`../../docs/runbooks/probe-wells-live-validation.md`](../../docs/runbooks/probe-wells-live-validation.md)). |
+| `apply_liquid_probe_results` | **stable** | Bookkeeping only; writes `observed_presence` / `observed_height_mm` from probe results. |
 
 ## Operator runbooks (this repo)
 

@@ -77,7 +77,7 @@ mcp_tools: []
 
 **Local static check before simulate:** `uv run python skills/opentrons-protocol-verify/scripts/verify_protocol.py preflight <protocol.py>` catches invalid Flex pipette names and flags apiLevel mismatches for RTP / liquid-class features.
 
-**Flex — Liquid Presence Detection (capacitive LLD):** When source fill height is uncertain, reservoir levels are low, or recovery needs liquid confirmation, use `liquid_presence_detection=True` and `detect_liquid_presence` / `require_liquid_presence` / `measure_liquid_height`. See `references/liquid-presence-detection-flex.md` and `assets/flex_liquid_probe_example.py`. Default RTP `use_liquid_probe=False`; live MCP probing uses `probe_wells` + `apply_liquid_probe_results` (opt-in).
+**Flex — Liquid Presence Detection (capacitive LLD):** When source fill height is uncertain, reservoir levels are low, or recovery needs liquid confirmation, use `liquid_presence_detection=True` and `detect_liquid_presence` / `require_liquid_presence` / `measure_liquid_height`. See `references/liquid-presence-detection-flex.md` and `assets/flex_liquid_probe_example.py`. Default RTP `use_liquid_probe=False`; live MCP probing uses `list_critical_probe_targets` → `probe_wells` + `apply_liquid_probe_results` (opt-in). Record critical sources in `record_liquid_source_map` with `critical: true` or roles like `wash_buffer` / `enzyme`.
 
 ## Pipette range (Flex default path)
 

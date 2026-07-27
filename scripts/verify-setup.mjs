@@ -359,6 +359,40 @@ function checkVision(pythonExe) {
   }
 }
 
+function checkArkVlm() {
+  const envPath = path.join(PLUGIN_ROOT, "automation", ".env");
+  let arkKey = process.env.ARK_API_KEY || null;
+  if (!arkKey && fs.existsSync(envPath)) {
+    const content = fs.readFileSync(envPath, "utf8");
+    for (const line of content.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) {
+        continue;
+      }
+      const eqMatch = trimmed.match(/^ARK_API_KEY=(.+)$/);
+      if (eqMatch) {
+        arkKey = eqMatch[1].trim().replace(/^['"]|['"]$/g, "");
+        break;
+      }
+      const colonMatch = trimmed.match(/^ARK_API_KEY\s*:\s*(.+)$/i);
+      if (colonMatch) {
+        arkKey = colonMatch[1].trim().replace(/^['"]|['"]$/g, "");
+        break;
+      }
+    }
+  }
+
+  if (arkKey) {
+    pass("Ark VLM API key", "ARK_API_KEY configured for analyze_image_with_ark");
+  } else {
+    warn(
+      "Ark VLM API key",
+      "ARK_API_KEY not found in environment or automation/.env",
+      "Set ARK_API_KEY in automation/.env for Phase 3b VLM second opinion (Doubao via Volcengine Ark)."
+    );
+  }
+}
+
 async function checkHealth(pythonExe) {
   process.env.OPENTRONS_PLUGIN_ROOT = PLUGIN_ROOT;
   if (pythonExe && !process.env.OPENTRONS_PYTHON) {
@@ -520,6 +554,7 @@ async function main() {
   checkMcpManifestPaths();
   const pythonExe = checkPython();
   checkVision(pythonExe);
+  checkArkVlm();
   await checkHealth(pythonExe);
   await checkRuntimeRecoverySelfTest();
   printReport();

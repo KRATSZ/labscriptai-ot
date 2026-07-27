@@ -27,7 +27,7 @@ command tools (`load_pipette`, `load_labware`, `load_module`,
 `control_temperature_module`, `control_heater_shaker`, `control_thermocycler`,
 `move_labware`, `cleanup_motion`) ->
 camera tools (`camera_status`, `capture_preview_image`, `capture_run_image`,
-`list_data_files`, `download_data_file`, `analyze_image_with_kimi`) ->
+`list_data_files`, `download_data_file`, `vision_check`, `analyze_image_with_ark`, `analyze_image_with_kimi`) ->
 `run_history` / `experiment_history` -> `suggest_recovery_action`
 
 ## Key Rules
@@ -40,8 +40,10 @@ camera tools (`camera_status`, `capture_preview_image`, `capture_run_image`,
   treat alternative destinations as human-reviewed. Outside recovery, only
   `execute_protocol_recovery` with explicit slot.
 - Before `home`: use `is_home_safe`.
-- `probe_wells` = experimental. Simulate first. Requires
-  `OPENTRONS_ENABLE_PROBE_WELLS=1` and operator confirmation for live use.
+- `probe_wells` = experimental. Simulate first. Live use still requires
+  `OPENTRONS_ENABLE_PROBE_WELLS=1` + explicit opt-in, but fold that into the
+  single go-live / `run_protocol` confirmation — do not stack a separate chat
+  confirm after every preflight subgate when tools already returned `passed`.
 - Preview images: save to file, reference path in response.
 - Do not infer liquid state from camera output without separate analysis.
 

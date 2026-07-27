@@ -64,6 +64,7 @@ const TOOL_TIERS = {
   create_run: "L3",
   control_run: "L3",
   probe_wells: "L3",
+  apply_liquid_probe_results: "L3",
   upload_protocol: "L3",
   create_run_context: "L3",
   load_pipette: "L3",
@@ -88,6 +89,9 @@ const TOOL_TIERS = {
   list_data_files: "L4",
   download_data_file: "L4",
   analyze_image_with_kimi: "L4",
+  analyze_image_with_ark: "L4",
+  deck_vision_check: "L4",
+  list_critical_probe_targets: "L2",
 };
 
 function requiredParams(schema) {

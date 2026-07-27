@@ -138,6 +138,16 @@ import {
   parseAssistantJson,
   resolveSiliconFlowApiKey,
 } from "./lib/siliconflow.js";
+import { analyzeImageWithArk } from "./lib/vlm-ark.js";
+import { enrichRecoverySuggestion } from "./lib/recovery-routing.js";
+import { listCriticalProbeTargets } from "./lib/critical-probe-targets.js";
+import {
+  buildDeckVisionPreflightResult,
+  isPreflightVisionEnabled,
+  resolveVlmProvider,
+  runVlmSecondOpinion,
+  shouldEscalateToVlm,
+} from "./lib/deck-vision-preflight.js";
 import { ARTIFACTS_DIR, DATA_DIR } from "./lib/paths.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -698,6 +708,38 @@ const TOOL_DEFINITIONS = [
       properties: {
         session_id: { type: "string" },
         slot_name: { type: "string", description: "Optional deck slot filter such as D3" },
+      },
+    },
+  },
+  {
+    name: "list_critical_probe_targets",
+    description:
+      "List critical source wells for preflight LPD probing (wash buffer, enzyme, etc.). Reads session liquid source map critical flags/roles; does not move the robot.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        session_id: { type: "string" },
+        critical_sources: {
+          type: "array",
+          description: "Optional explicit critical source list from intent review.",
+          items: {
+            type: "object",
+            properties: {
+              slot: { type: "string" },
+              slot_name: { type: "string" },
+              well: { type: "string" },
+              well_name: { type: "string" },
+              role: { type: "string" },
+              labware_load_name: { type: "string" },
+              mode: { type: "string", enum: ["detect_presence", "require_presence", "measure_height"] },
+            },
+          },
+        },
+        include_all_expected_present_fallback: {
+          type: "boolean",
+          default: false,
+          description: "When no critical flags exist, optionally fall back to all expected_presence=true sources.",
+        },
       },
     },
   },
@@ -1341,6 +1383,24 @@ const TOOL_DEFINITIONS = [
     },
   },
   {
+    name: "analyze_image_with_ark",
+    description:
+      "Analyze a local robot deck image with Volcengine Ark (Doubao VLM) using the Responses API. Observation-only; does not mutate session state. Default model endpoint from ARK_MODEL_ENDPOINT or ep-20260716144817-n6rgn; API key from ARK_API_KEY or automation/.env.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        image_path: { type: "string" },
+        api_key: { type: "string" },
+        base_url: { type: "string" },
+        model_endpoint: { type: "string" },
+        prompt: { type: "string" },
+        expected_layout: { type: "object" },
+        max_output_tokens: { type: "integer" },
+      },
+      required: ["image_path"],
+    },
+  },
+  {
     name: "vision_check",
     description:
       "Local YOLOE/YOLO vision observation for CHECKDECK or CHECKTIPS (observation-only; does not mutate session state). Uses ultralytics in the project Python env. CHECKDECK maps detections to Flex 12 slots using optional deck homography (deck_corners_norm or labels sidecar optional_deck_corners_norm) or a uniform image-grid fallback; empty slots are geometric (no detection in cell). Default YOLOE prompts are Flex-tuned (colored tip racks, modules, trash). Override with class_prompts + canonical_labels. CHECKTIPS is stubbed pending rack-local analysis.",
@@ -1414,6 +1474,25 @@ const TOOL_DEFINITIONS = [
         },
       },
       required: ["image_path"],
+    },
+  },
+  {
+    name: "deck_vision_check",
+    description:
+      "Preflight deck vision orchestration: capture_preview_image → vision_check (YOLO first) → optional Ark VLM second opinion when uncertain or mismatched. Observation-only; compare with reconcile_state before treating as deck truth. Set OPENTRONS_PREFLIGHT_VISION=off to skip.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        robot_ip: { type: "string", description: "Robot IP or full base URL" },
+        session_id: { type: "string" },
+        expected_layout: { type: "object" },
+        output_path: { type: "string" },
+        force_vlm: { type: "boolean", default: false },
+        vlm_provider: { type: "string", enum: ["ark", "kimi", "off"] },
+        conf_threshold: { type: "number" },
+        weights: { type: "string" },
+      },
+      required: ["robot_ip"],
     },
   },
   {
@@ -5724,7 +5803,8 @@ const TOOL_HANDLERS = {
             targetSlot: args.target_slot,
           })
         : [];
-    const recoverySuggestion = buildRecoverySuggestion({
+    const recoverySuggestion = enrichRecoverySuggestion(
+      buildRecoverySuggestion({
       errorCategory: args.error_category || classification.error_category,
       errorLeaf: classification.error_leaf,
       run: runContext.run,
@@ -5738,7 +5818,8 @@ const TOOL_HANDLERS = {
       tipBindingMode: tipBindingClassification?.mode || null,
       tipBindingClassification,
       sessionState: stateAfterSuggestion,
-    });
+      }),
+    );
     const actionSummary = buildActionSummary({
       recoverySuggestion,
       nextTipSuggestion,
@@ -6871,6 +6952,22 @@ const TOOL_HANDLERS = {
     };
   },
 
+  async analyze_image_with_ark(args) {
+    const result = await analyzeImageWithArk({
+      imagePath: args.image_path,
+      apiKey: args.api_key,
+      baseUrl: args.base_url,
+      modelEndpoint: args.model_endpoint,
+      prompt: args.prompt,
+      expectedLayout: args.expected_layout,
+      maxOutputTokens: args.max_output_tokens,
+    });
+
+    return {
+      data: result,
+    };
+  },
+
   async analyze_image_with_kimi(args) {
     const { dataUrl, imagePath, mimeType } = buildImageDataUrl(args.image_path);
     const apiKey = resolveSiliconFlowApiKey({ apiKey: args.api_key });
@@ -6955,6 +7052,86 @@ const TOOL_HANDLERS = {
 
     return {
       data: result,
+    };
+  },
+
+  async deck_vision_check(args) {
+    if (!isPreflightVisionEnabled()) {
+      return {
+        data: {
+          skipped: true,
+          reason: "OPENTRONS_PREFLIGHT_VISION=off",
+          subphase: "deck_vision",
+          consensus: {
+            status: "passed",
+            summary: "Deck vision preflight skipped by environment flag.",
+            recommended_next_actions: ["list_critical_probe_targets"],
+          },
+        },
+      };
+    }
+
+    const captureResult = await TOOL_HANDLERS.capture_preview_image({
+      robot_ip: args.robot_ip,
+      output_path: args.output_path,
+    });
+    const imagePath = captureResult.data.saved_to;
+    const yoloResult = (
+      await TOOL_HANDLERS.vision_check({
+        mode: "deck",
+        image_path: imagePath,
+        expected_layout: args.expected_layout,
+        conf_threshold: args.conf_threshold,
+        weights: args.weights,
+      })
+    ).data;
+
+    const escalation = shouldEscalateToVlm(yoloResult, { force: Boolean(args.force_vlm) });
+    const provider = resolveVlmProvider({ provider: args.vlm_provider });
+    const { vlmResult, vlmError } = await runVlmSecondOpinion({
+      escalate: escalation.escalate,
+      provider,
+      imagePath,
+      expectedLayout: args.expected_layout,
+      analyzeArk: payload => TOOL_HANDLERS.analyze_image_with_ark(payload),
+      analyzeKimi: payload => TOOL_HANDLERS.analyze_image_with_kimi(payload),
+    });
+
+    const result = buildDeckVisionPreflightResult({
+      imagePath,
+      yoloResult,
+      vlmResult,
+      vlmError,
+      escalation,
+      expectedLayout: args.expected_layout,
+      provider,
+    });
+
+    return {
+      data: result,
+      hardwareSnapshot: captureResult.hardwareSnapshot || null,
+      sessionId: args.session_id || DEFAULT_SESSION_ID,
+    };
+  },
+
+  async list_critical_probe_targets(args) {
+    const sessionId = args.session_id || DEFAULT_SESSION_ID;
+    const sessionState = readSessionState(sessionId);
+    const summary = listCriticalProbeTargets({
+      sessionState,
+      criticalSources: args.critical_sources,
+      includeAllExpectedPresent: Boolean(args.include_all_expected_present_fallback),
+    });
+
+    return {
+      data: {
+        session_id: sessionId,
+        ...summary,
+        no_robot_motion: true,
+        subphase: "critical_probe",
+      },
+      stateRevision: sessionState.state_revision,
+      sessionId,
     };
   },
 
