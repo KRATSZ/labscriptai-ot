@@ -65,7 +65,7 @@ import {
 } from "./lib/labware-offsets.js";
 import { parseSimulationLog, runDoctorTool, runSimulationTool } from "./lib/simulation.js";
 import { analyzeProtocolOnce } from "./lib/analyze-once.js";
-import { runLogicpassCheck } from "./lib/logicpass.js";
+import { runLogicpassCheck, buildLogicpassGateBlock } from "./lib/logicpass.js";
 import { buildProbeWellsProtocol, extractProbeResultsFromCommands } from "./lib/probe.js";
 import * as probeLib from "./lib/probe.js";
 import { applyLiquidProbeResults } from "./lib/liquid-probe-results.js";
@@ -1533,7 +1533,7 @@ const TOOL_DEFINITIONS = [
   {
     name: "run_protocol",
     description:
-      "Upload a protocol, create a run (auto-attaching stored labware offsets), optionally play it, then poll until the run reaches a terminal or intervention-required state.",
+      "Upload a protocol, create a run (auto-attaching stored labware offsets), optionally play it, then poll until the run reaches a terminal or intervention-required state. Gated: local simulation must pass AND LogicPass final_pass_v2 must be true (outcome=pass) before upload/play; fail or unevaluable blocks execution (skip_logicpass_gate=true to opt out deliberately).",
     inputSchema: {
       type: "object",
       properties: {
@@ -1556,6 +1556,11 @@ const TOOL_DEFINITIONS = [
         poll_interval_ms: { type: "integer", default: 1000 },
         page_length: { type: "integer", default: 20 },
         session_id: { type: "string" },
+        skip_logicpass_gate: {
+          type: "boolean",
+          description:
+            "If true, skip the LogicPass (final_pass_v2) gate. Only use for intentional no-gate live diagnostics; default runs are blocked when LogicPass is fail or unevaluable.",
+        },
         skip_preflight: {
           type: "boolean",
           description: "If true, skip the post-run preflight gate and proceed directly to play.",
@@ -2184,7 +2189,7 @@ const TOOL_DEFINITIONS = [
   {
     name: "logicpass_check",
     description:
-      "Run LogicPass on the shared opentrons analyze JSON (vendored labscriptai.benchmark.logicpass). Returns outcome pass, fail, or unevaluable, plus issues with step_index. Does not re-analyze when simulate_protocol already cached this protocol.",
+      "Run LogicPass on the shared opentrons analyze JSON (vendored labscriptai.benchmark.logicpass). Returns outcome pass, fail, or unevaluable, plus issues with step_index. Does not re-analyze when simulate_protocol already cached this protocol. Also reports analyze failure reasons (analyze.reason, never a bare failure) and capacity_sources per labware: source=definition means the real per-well max volume from the installed Opentrons definitions; source=name_hint/unknown means the capacity was guessed from the load name — surface capacity_note and guessed_capacity_labware to the user instead of treating those numbers as fact.",
     inputSchema: {
       type: "object",
       properties: {
@@ -4243,6 +4248,60 @@ async function readRunFailureGuidance(args, runId, sessionId = null) {
   };
 }
 
+function summarizeAnalyzeOutcome(analyzed) {
+  const ok = Boolean(analyzed?.ok);
+  if (ok) {
+    return {
+      ok: true,
+      error_count: 0,
+      errors: [],
+      reason: "",
+    };
+  }
+  const errors = Array.isArray(analyzed?.errors)
+    ? analyzed.errors
+    : Array.isArray(analyzed?.analyze_errors)
+      ? analyzed.analyze_errors
+      : [];
+  const helperError = analyzed?.error || null;
+  const stderr = typeof analyzed?.stderr === "string" ? analyzed.stderr : "";
+  const stdout = typeof analyzed?.stdout === "string" ? analyzed.stdout : "";
+  const errorDetails = errors
+    .slice(0, 5)
+    .map((item) => {
+      const detail = item?.detail || item?.error || item?.errorType || JSON.stringify(item);
+      return String(detail).slice(0, 300);
+    });
+  const parts = [];
+  if (helperError?.error || helperError?.error_type) {
+    parts.push(`${helperError.error_type || "helper_error"}: ${String(helperError.error || "").slice(0, 300)}`);
+  }
+  parts.push(...errorDetails);
+  if (parts.length === 0 && stderr.trim()) {
+    parts.push(truncateForReason(stderr, 600));
+  }
+  if (parts.length === 0 && stdout.trim()) {
+    parts.push(truncateForReason(stdout, 600));
+  }
+  return {
+    ok: false,
+    error_count: analyzed?.error_count ?? errors.length,
+    errors: errors.slice(0, 5),
+    exit_code: analyzed?.exit_code ?? null,
+    python: analyzed?.helper?.runner_python || analyzed?.python || null,
+    stderr: truncateForReason(stderr, 1200),
+    reason: parts.join(" | ") || "analyze 失败但没有返回具体错误信息。",
+  };
+}
+
+function truncateForReason(text, maxChars) {
+  const value = String(text || "").trim();
+  if (value.length <= maxChars) {
+    return value;
+  }
+  return `${value.slice(0, maxChars)}…[截断 ${value.length} 字符]`;
+}
+
 async function enforceSimulationGate(args) {
   const doctor = await runDoctorTool(args);
   if (!doctor?.ok || !doctor?.opentrons_simulate?.ok) {
@@ -4302,10 +4361,47 @@ async function enforceSimulationGate(args) {
     throw error;
   }
 
+  let logicpassVerdict = null;
+  if (args.skip_logicpass_gate !== true) {
+    let logicpassError = null;
+    try {
+      const wrap = await TOOL_HANDLERS.logicpass_check({
+        protocol_path: args.file_path,
+        python_executable: args.python_executable,
+      });
+      logicpassVerdict = wrap?.data || null;
+    } catch (error) {
+      logicpassError = String(error?.message || error);
+    }
+
+    const gate = buildLogicpassGateBlock({
+      verdict: logicpassVerdict,
+      gateError: logicpassError,
+      doctor,
+      simulation,
+      parsed,
+    });
+    if (gate.blocked) {
+      throw gate.error;
+    }
+  }
+
   return {
     doctor,
     simulation,
     parsed,
+    logicpass: args.skip_logicpass_gate === true
+      ? { skipped: true, final_pass_v2: null }
+      : {
+          skipped: false,
+          outcome: logicpassVerdict?.outcome ?? null,
+          logic_pass: Boolean(logicpassVerdict?.logic_pass),
+          final_pass_v2: Boolean(logicpassVerdict?.final_pass_v2),
+          issues: logicpassVerdict?.issues || [],
+          capacity_note: logicpassVerdict?.capacity_note || "",
+          guessed_capacity_labware: logicpassVerdict?.guessed_capacity_labware || [],
+          analyze: logicpassVerdict?.analyze || null,
+        },
   };
 }
 
@@ -8070,17 +8166,35 @@ const TOOL_HANDLERS = {
     }
     const analyzed = await analyzeProtocolOnce(args);
     const simPass = Boolean(analyzed.ok) && args.sim_pass !== false;
-    const verdict = await runLogicpassCheck({
-      analysisPath: analyzed.analysis_path,
-      simPass,
-      python: args.python_executable,
-    });
+    let verdict;
+    let logicpassError = null;
+    try {
+      verdict = await runLogicpassCheck({
+        analysisPath: analyzed.analysis_path,
+        simPass,
+        python: args.python_executable,
+      });
+    } catch (error) {
+      // Never reduce an analyze/logicpass failure to a bare "失败": keep the
+      // underlying reason so the caller can act on it.
+      logicpassError = { message: String(error?.message || error) };
+      verdict = null;
+    }
     return {
       data: {
-        ...verdict,
-        analysis_path: analyzed.analysis_path,
+        ...(verdict || {}),
+        ...(logicpassError
+          ? {
+              outcome: "unevaluable",
+              logic_pass: false,
+              final_pass_v2: false,
+              logicpass_error: logicpassError.message,
+            }
+          : {}),
+        analysis_path: analyzed.analysis_path ?? null,
         analysis_cached: Boolean(analyzed.analysis_cached),
         robot_type: analyzed.robot_type || null,
+        analyze: summarizeAnalyzeOutcome(analyzed),
       },
     };
   },
@@ -8266,7 +8380,27 @@ class OpentronsLabMCP {
 const server = new OpentronsLabMCP();
 export { OpentronsLabMCP, TOOL_DEFINITIONS, TOOL_HANDLERS };
 
-if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
+// Match the launched entry against this file by real path. Node resolves
+// __filename through symlinks, so a launcher pointing at /tmp/... (a symlink
+// to /private/tmp on macOS) never equals path.resolve(argv[1]) and the server
+// used to exit silently with code 0.
+function isMainEntry(argvPath) {
+  if (!argvPath) {
+    return false;
+  }
+  const candidate = path.resolve(argvPath);
+  const self = path.resolve(__filename);
+  if (candidate === self) {
+    return true;
+  }
+  try {
+    return fs.realpathSync(candidate) === fs.realpathSync(self);
+  } catch {
+    return false;
+  }
+}
+
+if (isMainEntry(process.argv[1])) {
   server.run().catch(error => {
     console.error(error);
     process.exit(1);

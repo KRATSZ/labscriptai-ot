@@ -5,8 +5,8 @@ from __future__ import annotations
 import re
 from typing import Any, Mapping
 
-_ML_RE = re.compile(r"(\d+)\s*ml", re.IGNORECASE)
-_UL_RE = re.compile(r"(\d+)\s*ul", re.IGNORECASE)
+_ML_RE = re.compile(r"(?<![\d.])(\d+(?:\.\d+)?)\s*ml", re.IGNORECASE)
+_UL_RE = re.compile(r"(?<![\d.])(\d+(?:\.\d+)?)\s*ul", re.IGNORECASE)
 
 
 def infer_max_volume_ul_from_labware_name(name: str | None) -> float | None:
@@ -19,6 +19,9 @@ def infer_max_volume_ul_from_labware_name(name: str | None) -> float | None:
     if not name or not str(name).strip():
         return None
     text = str(name).strip()
+    # Decimal hints must win as a whole token: ``corning_6_wellplate_16.8ml_flat``
+    # is 16.8 mL (16800 µL), not the ``8ml`` after the dot; ``1.6ml`` is 1600 µL,
+    # not 6 mL. The lookbehind/ahead keep the match anchored to the full number.
     ul_match = _UL_RE.search(text)
     if ul_match:
         return float(ul_match.group(1))

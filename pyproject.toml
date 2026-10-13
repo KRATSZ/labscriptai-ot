@@ -1,0 +1,18 @@
+[project]
+name = "labscriptai-ot"
+version = "0.1.0"
+description = "LabscriptAI OT plugin — local simulation runtime for Opentrons protocol authoring (Python side)."
+readme = "README.md"
+requires-python = ">=3.11,<3.14"
+license = { file = "LICENSE" }
+dependencies = [
+    # Pin the major: opentrons 9.x ships `opentrons analyze --json-output`
+    # (required by simulate_protocol / logicpass_check) and the shared
+    # labware definitions used for real per-well capacity lookups.
+    "opentrons>=9.0.0,<10",
+]
+
+[tool.uv]
+# The plugin itself is not a Python package; this file only pins the
+# simulation runtime installed into .venv by `uv sync`.
+package = false

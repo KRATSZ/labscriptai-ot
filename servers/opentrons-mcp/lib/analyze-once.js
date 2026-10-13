@@ -24,16 +24,23 @@ export async function analyzeProtocolOnce(args = {}) {
   if (args.analysis_path) {
     const analysisPath = path.resolve(args.analysis_path);
     const payload = readJson(analysisPath);
-    const errorCount = Array.isArray(payload.errors) ? payload.errors.length : 0;
+    const errors = Array.isArray(payload.errors) ? payload.errors : [];
+    const errorCount = errors.length;
     return {
       ok: errorCount === 0,
       error_count: errorCount,
+      errors: errors.slice(0, 5),
       analysis_path: analysisPath,
       analysis_cached: true,
       robot_type: payload.robotType || payload?.metadata?.robotType || null,
       exit_code: errorCount === 0 ? 0 : 1,
       stdout: "",
-      stderr: errorCount > 0 ? "analysis JSON has errors" : "",
+      stderr: errorCount > 0
+        ? `analysis JSON reports ${errorCount} error(s): ${errors
+            .slice(0, 5)
+            .map((e) => e?.detail || e?.errorType || JSON.stringify(e))
+            .join(" | ")}`
+        : "",
       protocol: args.protocol_path || analysisPath,
     };
   }
@@ -51,20 +58,30 @@ export async function analyzeProtocolOnce(args = {}) {
 
   if (fs.existsSync(metaPath)) {
     const meta = readJson(metaPath);
-    meta.analysis_cached = true;
-    meta.analysis_path = fs.existsSync(analysisPath) ? analysisPath : meta.analysis_path || null;
-    if (meta.analysis_path && fs.existsSync(meta.analysis_path)) {
+    // A cached meta is only trustworthy while its analysis artifact exists.
+    // If the JSON was wiped (stale cache), drop the meta and re-analyze so a
+    // later logicpass_check does not silently fail with missing_analyze_artifact.
+    if (!fs.existsSync(analysisPath)) {
       try {
-        const analysis = readJson(meta.analysis_path);
+        fs.rmSync(metaPath);
+      } catch {
+        // fall through to a fresh analyze either way
+      }
+    } else {
+      meta.analysis_cached = true;
+      meta.analysis_path = analysisPath;
+      try {
+        const analysis = readJson(analysisPath);
         const errorCount = Array.isArray(analysis.errors) ? analysis.errors.length : 0;
         meta.robot_type = meta.robot_type || analysis.robotType || null;
         meta.error_count = errorCount;
+        meta.analyze_errors = errorCount > 0 ? analysis.errors.slice(0, 5) : [];
         if (errorCount > 0) meta.ok = false;
       } catch {
         meta.robot_type = meta.robot_type || null;
       }
+      return meta;
     }
-    return meta;
   }
 
   if (inflight.has(hash)) {
@@ -119,6 +136,13 @@ async function runAnalyze(args, protocolPath, analysisPath, metaPath) {
   // A missing analysis file means the interpreter failed. Do not cache that,
   // or the next call with a working Python still looks failed.
   if (payload.analysis_path && fs.existsSync(payload.analysis_path)) {
+    try {
+      const analysis = readJson(payload.analysis_path);
+      const errors = Array.isArray(analysis.errors) ? analysis.errors : [];
+      payload.analyze_errors = errors.slice(0, 5);
+    } catch {
+      payload.analyze_errors = [];
+    }
     fs.writeFileSync(metaPath, JSON.stringify(payload));
   }
   return payload;
