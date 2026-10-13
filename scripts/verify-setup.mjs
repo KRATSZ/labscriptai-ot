@@ -135,6 +135,48 @@ function extractTomlArrayFirstString(text, key) {
   return match ? match[1] : null;
 }
 
+function checkClaudePluginMonitors() {
+  const pluginManifest = readJsonFile(".claude-plugin/plugin.json");
+  if (!pluginManifest) return;
+
+  const monitorsRel = pluginManifest.experimental?.monitors;
+  if (!monitorsRel) return;
+
+  const monitorsPath = path.join(PLUGIN_ROOT, monitorsRel.replace(/^\.\//, ""));
+  const sourcePath = path.join(PLUGIN_ROOT, "hooks/claude/monitors.json");
+
+  if (!fs.existsSync(monitorsPath)) {
+    fail(
+      "Claude Code monitors",
+      `Missing ${monitorsRel} (declared in .claude-plugin/plugin.json)`,
+      "Run: bash install-labscriptai-ot.sh  OR  ln -sf ../hooks/claude/monitors.json monitors/monitors.json"
+    );
+    return;
+  }
+
+  try {
+    JSON.parse(fs.readFileSync(monitorsPath, "utf8"));
+  } catch (err) {
+    fail(
+      "Claude Code monitors",
+      `${monitorsRel}: ${err.message}`,
+      "Ensure monitors/monitors.json points at hooks/claude/monitors.json and contains valid JSON."
+    );
+    return;
+  }
+
+  if (!fs.existsSync(sourcePath)) {
+    fail(
+      "Claude Code monitors",
+      "Missing hooks/claude/monitors.json source",
+      "Restore hooks/claude/monitors.json in the plugin clone."
+    );
+    return;
+  }
+
+  pass("Claude Code monitors", monitorsRel);
+}
+
 function checkMcpManifestPaths() {
   const expectedIndex = "${PLUGIN_ROOT}/servers/opentrons-mcp/index.js";
   const expectedRoot = "${PLUGIN_ROOT}";
@@ -510,6 +552,7 @@ async function main() {
   checkNode();
   checkMcpDependencies();
   checkPluginPaths();
+  checkClaudePluginMonitors();
   checkMcpManifestPaths();
   const pythonExe = checkPython();
   checkVision(pythonExe);

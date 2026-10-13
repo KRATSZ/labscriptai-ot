@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Flex 3D</title>
+<style>
+  :root { color-scheme: light; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    font-size: 14px;
+    line-height: 1.4;
+    background: #fff;
+    color: #1c2430;
+  }
+  body, header, #steps, #steps li {
+    font-family: "STHeiti", "Heiti SC", "SimHei", "Microsoft YaHei", sans-serif;
+  }
+  body.en, body.en header, body.en #steps, body.en #steps li {
+    font-family: Arial, Helvetica, sans-serif;
+  }
+  header {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px 16px;
+    padding: 12px 16px;
+    background: #fff;
+    border-bottom: 1px solid #d5e6f4;
+  }
+  .title { flex: 1 1 240px; min-width: 0; }
+  h1 { font-size: 18px; line-height: 1.25; margin: 0; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  main { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 340px; }
+  @media (max-width: 760px) {
+    main { grid-template-columns: 1fr; grid-template-rows: 46vh minmax(0, 1fr); }
+    aside { border-left: 0; border-top: 1px solid #d5e6f4; }
+  }
+  .stage { position: relative; min-height: 0; }
+  canvas { display: block; width: 100%; height: 100%; background: #d7dde2; touch-action: none; }
+  .help { color: #3d4c5c; margin: 4px 0 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bar {
+    display: flex;
+    align-items: center;
+    flex: none;
+    height: 34px;
+    border: 1px solid #c5daf0;
+    border-radius: 8px;
+    background: #f5f9fd;
+    overflow: hidden;
+  }
+  .bar button, .bar label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 100%;
+    margin: 0;
+    padding: 0 12px;
+    border: 0;
+    background: transparent;
+    color: #1c2430;
+    font: inherit;
+    white-space: nowrap;
+  }
+  .bar button + button, .bar label { border-left: 1px solid #d5e6f4; }
+  .bar button { cursor: pointer; }
+  .bar button:hover { background: #e7f2fb; }
+  #time { width: 128px; margin: 0; accent-color: #3d7eae; }
+  aside { border-left: 1px solid #d5e6f4; overflow: auto; background: #fff; }
+  #steps { list-style: none; margin: 0; padding: 0; counter-reset: step; }
+  #steps li {
+    counter-increment: step;
+    display: flex;
+    gap: 8px;
+    align-items: baseline;
+    padding: 8px 12px;
+    border-bottom: 1px solid #e7f2fb;
+    color: #1c2430;
+    cursor: pointer;
+  }
+  #steps li::before {
+    content: counter(step) ".";
+    flex: none;
+    min-width: 2ch;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    color: #7c8a99;
+  }
+  #steps li > span { flex: 1; min-width: 0; }
+  #steps li:hover { background: #f4f9fd; }
+  #steps li.on, #steps li.on:hover { background: #d7ebfa; color: #1c2430; box-shadow: inset 3px 0 0 #3d7eae; }
+  pre {
+    white-space: pre-wrap;
+    word-break: break-word;
+    margin: 0;
+    padding: 12px;
+    font: 12px/1.45 "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    background: #f6f8fa;
+    border-top: 1px solid #e7f2fb;
+  }
+  .bad { color: #8a1f11; }
+</style>
+<script type="importmap">
+{ "imports": { "three": "/vendor/three.module.js" } }
+</script>
+</head>
+<body>
+<header>
+  <div class="title">
+    <h1 id="title">Flex 3D</h1>
+    <div class="help" id="help">拖动旋转整台机器，滚轮缩放，右键平移。点右侧步骤，左边停在那一步。</div>
+  </div>
+  <div class="bar">
+    <button type="button" id="lang">English</button>
+    <button type="button" id="play">播放</button>
+    <label><span id="time-label">时间</span> <input id="time" type="range" min="0" max="1" step="0.01" value="0"></label>
+  </div>
+</header>
+<main>
+  <div class="stage" id="stage"></div>
+  <aside>
+    <ol id="steps"></ol>
+    <pre id="command">还没有命令。</pre>
+  </aside>
+</main>
+<script type="module" src="/viewer.js"></script>
+</body>
+</html>

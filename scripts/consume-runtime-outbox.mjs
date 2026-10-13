@@ -60,6 +60,23 @@ function defaultFormatForHost(host, { pollOnce = false } = {}) {
   }
 }
 
+export function inferWakeFlag(event = {}) {
+  if (event.wake === true) {
+    return true;
+  }
+  if (event.wake === false) {
+    return false;
+  }
+  if (event.requires_attention === true || event.severity === "hard_stop") {
+    return true;
+  }
+  const kind = event.kind || event.data?.kind;
+  if (kind && kind !== "heartbeat") {
+    return true;
+  }
+  return false;
+}
+
 export function buildWakePayload(event, host, continuation) {
   const kind = event.kind || event.data?.kind || event.type || "unknown";
   return {
@@ -292,7 +309,8 @@ function goalStatusHint(event) {
 }
 
 export function buildContinuationPrompt(event, host = "cursor") {
-  const kind = event.kind || event.data?.kind || "unknown";
+  const kind = event.kind || event.data?.kind || event.type || "unknown";
+  const wake = inferWakeFlag(event);
   const hint = goalStatusHint(event);
   const tool = event.recommended_next_tool || event.data?.recommended_next_tool || "runtime_get_outbox";
   const runIdJson = event.run_id ? `"${event.run_id}"` : "null";
@@ -319,11 +337,24 @@ export function buildContinuationPrompt(event, host = "cursor") {
     "",
     `outbox_id: ${event.outbox_id}`,
     `kind: ${kind}`,
-    `wake: ${event.wake === true}`,
+    `wake: ${wake}`,
     "",
     `GOAL_STATUS: ${hint}  (refine to CONTINUE | COMPLETE | BLOCKED after inspection)`,
     "GOAL_REASON: <one line>",
   ].join("\n");
+}
+
+async function findCanonicalOutboxEvent({ sessionId, outboxId, outboxDir }) {
+  const modPath = path.join(PLUGIN_ROOT, "servers/opentrons-mcp/lib/runtime-outbox.js");
+  const mod = await import(pathToFileURL(modPath).href);
+  const events = mod.readRuntimeOutbox({
+    sessionId,
+    includeAcked: true,
+    includeDelivered: true,
+    limit: 500,
+    outboxDir: outboxDir || null,
+  });
+  return events.find(entry => entry.outbox_id === outboxId) || null;
 }
 
 async function ackOutboxEvent({ sessionId, outboxId, outboxDir }) {
@@ -367,6 +398,7 @@ export async function consumeOnce(args) {
 
   let events = [];
   let adapterMeta = null;
+  let eventsFromAdapter = false;
 
   if (args.source === "adapter" || args.source === "auto") {
     adapterMeta = readAdapterMailbox({
@@ -375,7 +407,10 @@ export async function consumeOnce(args) {
       hostAdapterDir: args.host_adapter_dir,
       consumerState,
     });
-    events = adapterMeta.events;
+    if (adapterMeta.events.length > 0) {
+      events = adapterMeta.events;
+      eventsFromAdapter = true;
+    }
   }
 
   if ((args.source === "outbox" || args.source === "auto") && events.length === 0) {
@@ -399,22 +434,18 @@ export async function consumeOnce(args) {
     return { event: null, continuation: null, consumerState, adapterMeta };
   }
 
-  if (args.ack && event.outbox_id && !args.dry_run) {
-    await ackOutboxEvent({
+  const fromAdapter = eventsFromAdapter && event.outbox_id;
+  if (fromAdapter && event.outbox_id) {
+    const canonical = await findCanonicalOutboxEvent({
       sessionId: args.session_id,
       outboxId: event.outbox_id,
       outboxDir: args.outbox_dir,
     });
-    updateConsumerState({
-      sessionId: args.session_id,
-      host: args.host,
-      hostAdapterDir: args.host_adapter_dir,
-      patch: {
-        adapter_offset: adapterMeta?.nextOffset ?? consumerState.adapter_offset,
-        last_outbox_id: event.outbox_id,
-        acked_outbox_ids: [...(consumerState.acked_outbox_ids || []), event.outbox_id],
-      },
-    });
+    if (!canonical) {
+      console.error(
+        `consume-runtime-outbox: WARNING: mailbox event ${event.outbox_id} not found in canonical outbox; wake may be orphaned`,
+      );
+    }
   }
 
   return {
@@ -510,6 +541,31 @@ export function emitPollResponse({ host, format, continuation, event }) {
   process.stdout.write(`${continuation}\n`);
 }
 
+async function tryAckAfterEmit(args, { event, consumerState, adapterMeta }) {
+  if (!args.ack || !event?.outbox_id || args.dry_run) {
+    return;
+  }
+  try {
+    await ackOutboxEvent({
+      sessionId: args.session_id,
+      outboxId: event.outbox_id,
+      outboxDir: args.outbox_dir,
+    });
+    updateConsumerState({
+      sessionId: args.session_id,
+      host: args.host,
+      hostAdapterDir: args.host_adapter_dir,
+      patch: {
+        adapter_offset: adapterMeta?.nextOffset ?? consumerState.adapter_offset,
+        last_outbox_id: event.outbox_id,
+        acked_outbox_ids: [...(consumerState.acked_outbox_ids || []), event.outbox_id],
+      },
+    });
+  } catch (error) {
+    console.error(`consume-runtime-outbox: ack failed (wake already delivered): ${error.message}`);
+  }
+}
+
 async function readStdinJson() {
   if (process.stdin.isTTY) {
     return null;
@@ -564,7 +620,7 @@ export async function runConsumer(argv = process.argv.slice(2), { stdinJson = nu
     args.ack = false;
   }
 
-  const { event, continuation } = await consumeOnce(args);
+  const { event, continuation, consumerState, adapterMeta } = await consumeOnce(args);
 
   if (args.dry_run) {
     emitPollResponse({ host: args.host, format: "text", continuation, event });
@@ -573,11 +629,13 @@ export async function runConsumer(argv = process.argv.slice(2), { stdinJson = nu
 
   if (hookEvent) {
     emitHookResponse({ host: args.host, hookEvent, continuation, event });
+    await tryAckAfterEmit(args, { event, consumerState, adapterMeta });
     return { event, continuation, hookEvent, exitCode: 0 };
   }
 
   if (args.poll_once || !hookEvent) {
     emitPollResponse({ host: args.host, format: args.format, continuation, event });
+    await tryAckAfterEmit(args, { event, consumerState, adapterMeta });
     const noWakeExit =
       !continuation && ["piagent", "opencode"].includes(args.host) ? 2 : 0;
     return { event, continuation, hookEvent, exitCode: noWakeExit };
