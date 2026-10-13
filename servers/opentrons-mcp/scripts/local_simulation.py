@@ -323,6 +323,75 @@ def handle_simulate(args: argparse.Namespace) -> int:
     return 0
 
 
+def handle_analyze(args: argparse.Namespace) -> int:
+    """Run opentrons analyze once and keep the JSON for LogicPass."""
+
+    paths = resolve_workspace_paths(
+        workspace_root=Path(args.workspace_root).resolve() if args.workspace_root else None,
+        api_root=Path(args.api_root).resolve() if args.api_root else None,
+        shared_data_root=Path(args.shared_data_root).resolve()
+        if args.shared_data_root
+        else None,
+    )
+    python_executable = choose_python(args.python)
+    probe = probe_module(python_executable, paths, "opentrons.simulate")
+    protocol_path = str(Path(args.protocol).resolve())
+    output = Path(args.json_output)
+    output.parent.mkdir(parents=True, exist_ok=True)
+
+    if not probe.get("ok"):
+        print(
+            json.dumps(
+                build_result(
+                    ok=False,
+                    python_executable=python_executable,
+                    module_name="opentrons.cli",
+                    paths=paths,
+                    protocol=protocol_path,
+                    exit_code=None,
+                    stdout="",
+                    stderr="",
+                    error=probe,
+                ),
+                ensure_ascii=False,
+            )
+        )
+        return 0
+
+    completed = run_module(
+        python_executable,
+        paths,
+        "opentrons.cli",
+        ["analyze", "--json-output", str(output), protocol_path, *(args.extra_args or [])],
+    )
+    robot_type = None
+    error_count = 0
+    if output.is_file():
+        try:
+            loaded = json.loads(output.read_text(encoding="utf-8"))
+            robot_type = loaded.get("robotType")
+            error_count = len(loaded.get("errors") or [])
+        except (OSError, json.JSONDecodeError):
+            robot_type = None
+    payload = build_result(
+        ok=completed.returncode == 0 and output.is_file() and error_count == 0,
+        python_executable=python_executable,
+        module_name="opentrons.cli",
+        paths=paths,
+        protocol=protocol_path,
+        exit_code=completed.returncode,
+        stdout=completed.stdout,
+        stderr=completed.stderr,
+        error=None,
+    )
+    payload["analysis_path"] = str(output) if output.is_file() else None
+    payload["robot_type"] = robot_type
+    payload["error_count"] = error_count
+    payload["analysis_cached"] = False
+    print(json.dumps(payload, ensure_ascii=False))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Structured local Opentrons simulation helper"
@@ -348,6 +417,20 @@ def build_parser() -> argparse.ArgumentParser:
         help="Arguments passed through to simulate. Use '--' before them.",
     )
     simulate.set_defaults(handler=handle_simulate)
+
+    analyze = subparsers.add_parser("analyze", help="Run opentrons analyze and write JSON")
+    analyze.add_argument("protocol", help="Path to a protocol file")
+    analyze.add_argument("--json-output", required=True, help="Where to write the analysis JSON")
+    analyze.add_argument("--workspace-root", help="Workspace root containing opentrons/")
+    analyze.add_argument("--api-root", help="Override path to opentrons/api")
+    analyze.add_argument("--shared-data-root", help="Override path to opentrons/shared-data")
+    analyze.add_argument("--python", help="Python interpreter to use")
+    analyze.add_argument(
+        "extra_args",
+        nargs=argparse.REMAINDER,
+        help="Arguments passed through to analyze. Use '--' before them.",
+    )
+    analyze.set_defaults(handler=handle_analyze)
 
     return parser
 

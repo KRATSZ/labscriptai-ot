@@ -5,6 +5,8 @@ type: prompt-only
 mcp_tools:
   - robot_status
   - module_status
+  - simulate_protocol
+  - logicpass_check
   - reconcile_state
   - run_protocol
   - runtime_watch_poll
@@ -87,6 +89,7 @@ good?” when the gate already cleared.
 ### Phase 2 — Simulation Gate (blocking)
 
 - `doctor_local_runtime` -> `simulate_protocol` -> `parse_simulation_output`
+- Then `logicpass_check` on the same protocol. It reuses the analyze JSON from `simulate_protocol`. `outcome: pass` is required before live; `fail` goes back to the repair loop; `unevaluable` stops and reports the missing evidence.
 - Before `simulate_protocol`, when you have proposed protocol steps, pass
   `virtual_lab_steps` (plus `session_id` / `initial_state`) so the Virtual Lab
   State gate runs deterministically **before** Python spawns: it blocks overflow,
@@ -155,7 +158,7 @@ Keep the simulation gate, hard-stops, and vision **observation-only**. Never tre
 
 ### Phase 4 — Execute (quiet by default)
 
-- **Single go-live confirmation** happens here (once): short ready-state summary + ask to start `run_protocol` / play. If live critical probe is still pending and allowed, include probe opt-in + `OPENTRONS_ENABLE_PROBE_WELLS=1` in **this same** confirmation — do not stack earlier Phase 3 chat confirms.
+- **Single go-live confirmation** happens here (once): short ready-state summary + ask to start `run_protocol` / play. A person must be at the robot and say so in this conversation. Simulation and LogicPass do not authorize motion. If that confirmation is missing, stop. Do not call `run_protocol` or `control_run(play)` on a non-loopback robot. If live critical probe is still pending and allowed, include probe opt-in + `OPENTRONS_ENABLE_PROBE_WELLS=1` in **this same** confirmation — do not stack earlier Phase 3 chat confirms.
 - `run_protocol` (file_path, robot_ip, session_id).
 - Simulation gate also runs inside this tool.
 - After a successful `run_protocol` call that returns a `run_id`, immediately call `runtime_watch_poll` for that run.

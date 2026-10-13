@@ -89,6 +89,8 @@ function checkPluginPaths() {
     ["skills/opentrons-experiment-run/SKILL.md", "experiment-run skill"],
     ["policy/workflows.md", "workflow policy"],
     ["bundled-library", "bundled protocol library"],
+    ["automation/vendor/labscriptai/benchmark/logicpass/evaluate.py", "vendored LogicPass"],
+    ["servers/opentrons-mcp/scripts/logicpass_check.py", "LogicPass bridge"],
   ];
 
   for (const [rel, label] of required) {

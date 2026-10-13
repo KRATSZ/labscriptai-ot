@@ -55,7 +55,10 @@ export function resolvePythonCandidates(preferredPython = null) {
     "python",
   ];
 
-  return [...new Set(candidates.filter(Boolean))];
+  return [...new Set(candidates.filter(Boolean))].filter((candidate) => {
+    const bare = !path.isAbsolute(candidate) && !candidate.includes(path.sep);
+    return bare || fs.existsSync(candidate);
+  });
 }
 
 export function firstExistingPath(paths) {
