@@ -11,3 +11,7 @@ yolo11n.pt
 yoloe-26s-seg.pt
 mobileclip2_b.ts
 automation/photo/
+
+# runtime artifacts live under PLUGIN_DATA (see lib/paths.js); never commit them
+runs/self-recovery/artifacts/
+servers/opentrons-mcp/test/fixtures/harness/*.analysis.json

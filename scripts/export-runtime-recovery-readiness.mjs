@@ -13,7 +13,12 @@ import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PLUGIN_ROOT = path.resolve(process.env.OPENTRONS_PLUGIN_ROOT || path.join(__dirname, ".."));
-const DEFAULT_OUT_DIR = path.join(PLUGIN_ROOT, "runs", "self-recovery", "artifacts");
+const DEFAULT_OUT_DIR = path.join(
+  process.env.PLUGIN_DATA ? path.resolve(process.env.PLUGIN_DATA) : path.join(PLUGIN_ROOT, ".plugin-data"),
+  "runs",
+  "self-recovery",
+  "artifacts",
+);
 const DEFAULT_SESSION_ID = "self-recovery-liquid";
 const DEFAULT_GATE_ARTIFACT = path.join(DEFAULT_OUT_DIR, "live-liquid-recovery-gate-source-plan-latest.json");
 const DEFAULT_REAL_MACHINE_ARTIFACT = path.join(DEFAULT_OUT_DIR, "real-machine-readonly-status-latest.json");

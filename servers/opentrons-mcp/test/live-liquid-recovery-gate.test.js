@@ -494,9 +494,9 @@ test("live_liquid_recovery_gate warns when c3_d3_liquid_recovery source identity
     assert.equal(identityPlan.action, "confirm_liquid_source_identity_before_semantic_recovery");
     assert.equal(identityPlan.human_required, true);
     assert.equal(identityPlan.no_robot_motion, true);
-    assert.equal(
+    assert.match(
       identityPlan.operator_guidance.draft_markdown_path,
-      "runs/self-recovery/artifacts/liquid-source-identity-draft.md",
+      /runs\/self-recovery\/artifacts\/liquid-source-identity-draft\.md$/,
     );
     assert.ok(identityPlan.acceptance_criteria.some(item => item.includes("validate-template-md")));
     assert.equal(result.data.operator_request.human_required, true);
@@ -514,29 +514,29 @@ test("live_liquid_recovery_gate warns when c3_d3_liquid_recovery source identity
       current_sample_id: null,
       missing_identity_fields: ["liquid_name", "sample_id"],
     });
-    assert.equal(
+    assert.match(
       result.data.operator_request.requests[0].artifacts.draft_markdown_path,
-      "runs/self-recovery/artifacts/liquid-source-identity-draft.md",
+      /runs\/self-recovery\/artifacts\/liquid-source-identity-draft\.md$/,
     );
     assert.match(
       result.data.operator_request.requests[0].commands.validate_markdown_command,
       /--validate-template-md/,
     );
-    assert.equal(
+    assert.match(
       identityCheck.operator_guidance.draft_markdown_path,
-      "runs/self-recovery/artifacts/liquid-source-identity-draft.md",
+      /runs\/self-recovery\/artifacts\/liquid-source-identity-draft\.md$/,
     );
     assert.match(
       identityCheck.operator_guidance.generate_draft_command,
-      /--template-md-out runs\/self-recovery\/artifacts\/liquid-source-identity-draft\.md/,
+      /--template-md-out \S*runs\/self-recovery\/artifacts\/liquid-source-identity-draft\.md/,
     );
     assert.match(
       identityCheck.operator_guidance.validate_markdown_command,
-      /--validate-template-md runs\/self-recovery\/artifacts\/liquid-source-identity-draft\.md/,
+      /--validate-template-md \S*runs\/self-recovery\/artifacts\/liquid-source-identity-draft\.md/,
     );
     assert.match(
       identityCheck.operator_guidance.apply_markdown_command,
-      /--apply-template-md runs\/self-recovery\/artifacts\/liquid-source-identity-draft\.md/,
+      /--apply-template-md \S*runs\/self-recovery\/artifacts\/liquid-source-identity-draft\.md/,
     );
     assert.ok(result.data.next_steps.some(step => step.includes("liquid-source-identity-draft.md")));
   } finally {

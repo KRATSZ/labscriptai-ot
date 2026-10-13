@@ -231,7 +231,7 @@ Before repeating live liquid recovery tests, run the read-only gate from the rep
 node scripts/live-liquid-recovery-gate.mjs --robot-ip 192.168.66.102
 ```
 
-The gate writes a JSON artifact under `runs/self-recovery/artifacts/`, appends a `live_liquid_recovery_gate_cli` result-log entry, and exits non-zero when prerequisites are not met, for example an attached tip remains or the MCP client still needs a reload check. A non-zero result is a stop signal for live liquid watcher/probe re-runs, not a script failure. The artifact and result-log entry include self-test coverage so the operator can confirm the loaded recovery logic covers both expected-empty and expected-present liquid-probe failures.
+The gate writes a JSON artifact under `<PLUGIN_DATA>/runs/self-recovery/artifacts/` (default; pass `--out` to override), appends a `live_liquid_recovery_gate_cli` result-log entry, and exits non-zero when prerequisites are not met, for example an attached tip remains or the MCP client still needs a reload check. A non-zero result is a stop signal for live liquid watcher/probe re-runs, not a script failure. The artifact and result-log entry include self-test coverage so the operator can confirm the loaded recovery logic covers both expected-empty and expected-present liquid-probe failures.
 
 When the MCP client is unavailable or you only need the physical robot snapshot, use the standalone read-only status exporter first:
 
@@ -302,7 +302,7 @@ node scripts/summarize-liquid-source-map.mjs \
   --session-id self-recovery-liquid
 ```
 
-It calls the local MCP handlers directly, writes a JSON artifact under `runs/self-recovery/artifacts/`, appends a `summarize_liquid_source_map` result-log entry, and exits non-zero when the source map is not ready for semantic recovery. Use `--slot D3` or `--well A1` to narrow the summary without contacting the robot.
+It calls the local MCP handlers directly, writes a JSON artifact under `<PLUGIN_DATA>/runs/self-recovery/artifacts/` (default; pass `--out` to override), appends a `summarize_liquid_source_map` result-log entry, and exits non-zero when the source map is not ready for semantic recovery. Use `--slot D3` or `--well A1` to narrow the summary without contacting the robot.
 
 To generate operator-fillable identity drafts, add template outputs:
 

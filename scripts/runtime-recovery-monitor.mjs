@@ -13,7 +13,12 @@ import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PLUGIN_ROOT = path.resolve(process.env.OPENTRONS_PLUGIN_ROOT || path.join(__dirname, ".."));
-const DEFAULT_OUT_DIR = path.join(PLUGIN_ROOT, "runs", "self-recovery", "artifacts");
+const DEFAULT_OUT_DIR = path.join(
+  process.env.PLUGIN_DATA ? path.resolve(process.env.PLUGIN_DATA) : path.join(PLUGIN_ROOT, ".plugin-data"),
+  "runs",
+  "self-recovery",
+  "artifacts",
+);
 const DEFAULT_SESSION_ID = "self-recovery-liquid";
 const DEFAULT_OUTBOX_DIR = path.join(DEFAULT_OUT_DIR, "runtime-outbox");
 const CONFIGURABLE_NOTIFY_ADAPTERS = [

@@ -2989,29 +2989,34 @@ function buildLiquidSourceMapGateCheck(sessionState = {}, requiredSources = [], 
 }
 
 function buildLiquidSourceIdentityOperatorGuidance(sessionId = DEFAULT_SESSION_ID) {
+  const artifactDir = path.join(DATA_DIR, "runs", "self-recovery", "artifacts");
+  const draftMd = path.join(artifactDir, "liquid-source-identity-draft.md");
+  const draftJson = path.join(artifactDir, "liquid-source-identity-draft.json");
+  const draftTsv = path.join(artifactDir, "liquid-source-identity-draft.tsv");
+  const validationReport = path.join(artifactDir, "liquid-source-identity-md-validation-latest.json");
   return {
-    draft_markdown_path: "runs/self-recovery/artifacts/liquid-source-identity-draft.md",
-    draft_json_path: "runs/self-recovery/artifacts/liquid-source-identity-draft.json",
-    draft_tsv_path: "runs/self-recovery/artifacts/liquid-source-identity-draft.tsv",
-    validation_report_path: "runs/self-recovery/artifacts/liquid-source-identity-md-validation-latest.json",
+    draft_markdown_path: draftMd,
+    draft_json_path: draftJson,
+    draft_tsv_path: draftTsv,
+    validation_report_path: validationReport,
     generate_draft_command: [
       "node scripts/summarize-liquid-source-map.mjs",
       `--session-id ${sessionId}`,
-      "--out runs/self-recovery/artifacts/liquid-source-map-summary-with-md-latest.json",
-      "--template-json-out runs/self-recovery/artifacts/liquid-source-identity-draft.json",
-      "--template-tsv-out runs/self-recovery/artifacts/liquid-source-identity-draft.tsv",
-      "--template-md-out runs/self-recovery/artifacts/liquid-source-identity-draft.md",
+      `--out ${path.join(artifactDir, "liquid-source-map-summary-with-md-latest.json")}`,
+      `--template-json-out ${draftJson}`,
+      `--template-tsv-out ${draftTsv}`,
+      `--template-md-out ${draftMd}`,
     ].join(" "),
     validate_markdown_command: [
       "node scripts/summarize-liquid-source-map.mjs",
       `--session-id ${sessionId}`,
-      "--validate-template-md runs/self-recovery/artifacts/liquid-source-identity-draft.md",
-      "--report-out runs/self-recovery/artifacts/liquid-source-identity-md-validation-latest.json",
+      `--validate-template-md ${draftMd}`,
+      `--report-out ${validationReport}`,
     ].join(" "),
     apply_markdown_command: [
       "node scripts/summarize-liquid-source-map.mjs",
-      "--apply-template-md runs/self-recovery/artifacts/liquid-source-identity-draft.md",
-      "--report-out runs/self-recovery/artifacts/liquid-source-identity-md-apply-latest.json",
+      `--apply-template-md ${draftMd}`,
+      `--report-out ${path.join(artifactDir, "liquid-source-identity-md-apply-latest.json")}`,
     ].join(" "),
   };
 }
