@@ -77,3 +77,18 @@ test("parseSimulationLog classifies TipNotAttachedError", () => {
   assert.equal(result.issues[0].category, "OUT_OF_TIPS");
   assert.equal(result.issues[0].fixable_by_edit, true);
 });
+
+test("parseSimulationLog fails when analyze exits 0 but reports errors", () => {
+  const result = parseSimulationLog({
+    simulation_output_json: {
+      ok: false,
+      exit_code: 0,
+      error_count: 1,
+      stdout: "",
+      stderr: "",
+    },
+  });
+
+  assert.equal(result.success, false);
+  assert.equal(result.status, "failed");
+});

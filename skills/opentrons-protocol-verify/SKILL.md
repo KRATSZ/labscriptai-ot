@@ -1,12 +1,13 @@
 ---
 name: opentrons-protocol-verify
-description: Local doctor, analyze, and simulate Opentrons Python protocols without a live robot.
+description: Local doctor, analyze, simulate, and LogicPass for Opentrons Python protocols without a live robot.
 type: script-backed
 entry: scripts/verify_protocol.py
 mcp_tools:
   - doctor_local_runtime
   - simulate_protocol
   - parse_simulation_output
+  - logicpass_check
 ---
 
 # Protocol Verify
@@ -22,9 +23,10 @@ Use `.venv/bin/python` or `uv run python` for all commands.
 3. If `doctor` reports broken imports, report the missing prerequisite — do not
    pretend the protocol is validated.
 4. `analyze` — parser and command graph checks.
-5. `simulate` — stronger dry run (requires working environment).
-6. Pass extra CLI flags after `--`.
-7. If iterating until simulation passes -> `opentrons-simulation-repair`.
+5. `simulate` — stronger dry run (requires working environment). `simulate_protocol` runs analyze once and caches the JSON.
+6. `logicpass_check` — same protocol. `pass` / `fail` / `unevaluable`. A `fail` issue includes `step_index`.
+7. Pass extra CLI flags after `--`.
+8. If iterating until simulation passes -> `opentrons-simulation-repair`.
 
 ## Commands
 

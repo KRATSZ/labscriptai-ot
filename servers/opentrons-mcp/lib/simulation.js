@@ -2,6 +2,7 @@ import fs from "fs";
 import path from "path";
 import { spawn } from "child_process";
 
+import { analyzeProtocolOnce } from "./analyze-once.js";
 import { buildTaxonomyIssue, mapSimulationCategoryToLeaf } from "./error-taxonomy.js";
 import { resolvePythonCandidates, SCRIPTS_DIR } from "./paths.js";
 
@@ -42,7 +43,7 @@ function runCommand(command, args) {
   });
 }
 
-async function runHelper(args, preferredPython) {
+export async function runHelper(args, preferredPython) {
   const candidates = resolvePythonCandidates(preferredPython);
 
   let lastError = null;
@@ -226,7 +227,10 @@ export function parseSimulationLog({
     pattern.regex.lastIndex = 0;
   }
 
-  if ((exit_code ?? 1) !== 0 && issues.length === 0) {
+  const reportedErrors = Number(simulation?.error_count) ||
+    (Array.isArray(simulation?.errors) ? simulation.errors.length : 0);
+  const analyzeFailed = simulation?.ok === false || reportedErrors > 0;
+  if (((exit_code ?? 1) !== 0 || analyzeFailed) && issues.length === 0) {
     const errorLeaf = mapSimulationCategoryToLeaf("UNKNOWN_NEEDS_HUMAN");
     issues.push({
       ...buildTaxonomyIssue({
@@ -249,7 +253,9 @@ export function parseSimulationLog({
 
   const normalizedIssues = uniqueIssues(issues);
   const status =
-    (exit_code ?? 1) === 0 && normalizedIssues.length === 0 ? "passed" : "failed";
+    (exit_code ?? 1) === 0 && normalizedIssues.length === 0 && !analyzeFailed
+      ? "passed"
+      : "failed";
   const primaryIssue = normalizedIssues[0] || null;
 
   return {
@@ -304,6 +310,14 @@ export async function runDoctorTool(args = {}) {
 export async function runSimulationTool(args = {}) {
   if (!args.protocol_path) {
     throw new Error("protocol_path is required");
+  }
+
+  if (!Array.isArray(args.extra_args) || args.extra_args.length === 0) {
+    // analysis_path is only for logicpass_check. The simulation gate
+    // and simulate_protocol always analyze this protocol's own bytes.
+    const fresh = { ...args };
+    delete fresh.analysis_path;
+    return analyzeProtocolOnce(fresh);
   }
 
   const helperArgs = [helperScriptPath, "simulate"];

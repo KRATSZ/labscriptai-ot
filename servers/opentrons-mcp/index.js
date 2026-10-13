@@ -64,6 +64,8 @@ import {
   resolveRunLabwareOffsets,
 } from "./lib/labware-offsets.js";
 import { parseSimulationLog, runDoctorTool, runSimulationTool } from "./lib/simulation.js";
+import { analyzeProtocolOnce } from "./lib/analyze-once.js";
+import { runLogicpassCheck } from "./lib/logicpass.js";
 import { buildProbeWellsProtocol, extractProbeResultsFromCommands } from "./lib/probe.js";
 import * as probeLib from "./lib/probe.js";
 import { applyLiquidProbeResults } from "./lib/liquid-probe-results.js";
@@ -2141,7 +2143,7 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: "simulate_protocol",
-    description: "Run local opentrons.simulate against a protocol file and return structured logs. When virtual_lab_steps (or validate_virtual_lab_state=true) is provided, runs deterministic Virtual Lab State validation first and blocks the Python simulation on any violation (Phase 1.5 gate).",
+    description: "Judge a protocol with one opentrons analyze run. The JSON is cached and reused by logicpass_check. When virtual_lab_steps (or validate_virtual_lab_state=true) is provided, runs deterministic Virtual Lab State validation first and blocks analysis on any violation (Phase 1.5 gate). extra_args still falls back to opentrons.simulate.",
     inputSchema: {
       type: "object",
       properties: {
@@ -2178,6 +2180,23 @@ const TOOL_DEFINITIONS = [
         },
       },
       required: ["protocol_path"],
+    },
+  },
+  {
+    name: "logicpass_check",
+    description:
+      "Run LogicPass on the shared opentrons analyze JSON (vendored labscriptai.benchmark.logicpass). Returns outcome pass, fail, or unevaluable, plus issues with step_index. Does not re-analyze when simulate_protocol already cached this protocol.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        protocol_path: { type: "string" },
+        analysis_path: { type: "string", description: "Existing analyze JSON. Skips a new analyze." },
+        sim_pass: {
+          type: "boolean",
+          description: "SimPass bit for FinalPass_v2. Defaults to whether analyze succeeded. A failed analyze stays failed even if this is true.",
+        },
+        python_executable: { type: "string" },
+      },
     },
   },
   {
@@ -7347,10 +7366,8 @@ const TOOL_HANDLERS = {
       max_log_chars: 12000,
     });
     const parsedSimulationOutput = parseSimulationLog({
-      stdout: simulation.stdout,
-      stderr: simulation.stderr,
-      exit_code: simulation.exit_code,
-      file_path: outputPath,
+      simulation_output_json: simulation,
+      protocol_path: outputPath,
     });
     const executeOnRobot = args.execute_on_robot === true;
 
@@ -8035,6 +8052,27 @@ const TOOL_HANDLERS = {
     }
     return {
       data: await runSimulationTool(args),
+    };
+  },
+
+  async logicpass_check(args) {
+    if (!args.protocol_path && !args.analysis_path) {
+      throw new Error("protocol_path or analysis_path is required");
+    }
+    const analyzed = await analyzeProtocolOnce(args);
+    const simPass = Boolean(analyzed.ok) && args.sim_pass !== false;
+    const verdict = await runLogicpassCheck({
+      analysisPath: analyzed.analysis_path,
+      simPass,
+      python: args.python_executable,
+    });
+    return {
+      data: {
+        ...verdict,
+        analysis_path: analyzed.analysis_path,
+        analysis_cached: Boolean(analyzed.analysis_cached),
+        robot_type: analyzed.robot_type || null,
+      },
     };
   },
 

@@ -10,4 +10,4 @@ vision/data/deck_phase3/labels/*.cache
 yolo11n.pt
 yoloe-26s-seg.pt
 mobileclip2_b.ts
-automation/photo/photo.zip
+automation/photo/

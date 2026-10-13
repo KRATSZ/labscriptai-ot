@@ -1,0 +1,21 @@
+# DeepSeek Harness profile patch. Replace PLUGIN_ROOT with this repo's absolute path.
+- id: skill-filesystem
+  name: "@deepseek-ai/dsh-skill-filesystem"
+  config:
+    customSkillDirs:
+      - PLUGIN_ROOT/skills
+- insert:
+    - id: mcp-labscriptai
+      name: "@deepseek-ai/dsh-mcp-client"
+      config:
+        serverName: labscriptai
+        transport: stdio
+        command: node
+        args:
+          - PLUGIN_ROOT/servers/opentrons-mcp/index.js
+        cwd: PLUGIN_ROOT
+        env:
+          OPENTRONS_PLUGIN_ROOT: PLUGIN_ROOT
+          OPENTRONS_PYTHON: PLUGIN_ROOT/.venv/bin/python
+        toolCallTimeoutMs: 300000
+        failOnStartupError: false
