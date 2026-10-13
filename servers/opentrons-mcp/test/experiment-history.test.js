@@ -180,6 +180,7 @@ test("experiment_history returns persisted run_protocol results", async () => {
       file_path: protocolPath,
       python_executable: fakeRunnerPath,
       session_id: "history-session",
+      skip_logicpass_gate: true, // fake python runner cannot execute the LogicPass bridge
       timeout_ms: 10,
       poll_interval_ms: 1,
     });

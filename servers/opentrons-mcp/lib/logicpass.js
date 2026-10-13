@@ -43,3 +43,53 @@ export async function runLogicpassCheck({ analysisPath, simPass, python }) {
     throw new Error(`LogicPass 没有返回 JSON：${result.stderr || result.stdout}`.slice(0, 2000));
   }
 }
+
+/**
+ * Closed gate decision for the live run gate: only final_pass_v2=true passes.
+ * Fail AND unevaluable both block; the returned Error always carries the
+ * concrete reason (LP-L5 detail / analyze failure), never a bare "failed".
+ *
+ * @returns {{ blocked: false } | { blocked: true, error: Error }}
+ */
+export function buildLogicpassGateBlock({ verdict = null, gateError = null, doctor = null, simulation = null, parsed = null } = {}) {
+  const finalPassV2 = Boolean(verdict?.final_pass_v2);
+  if (finalPassV2) {
+    return { blocked: false };
+  }
+  const outcome = verdict?.outcome || "unevaluable";
+  const analyzeReason = verdict?.analyze?.reason || "";
+  const issues = verdict?.issues || [];
+  const reasonIssue =
+    issues.find(
+      (issue) => (issue?.severity === "error" || issue?.code === "LP-L5") && issue?.detail_text,
+    ) || issues.find((issue) => issue?.detail_text);
+  const capacityNote = verdict?.capacity_note || "";
+  const reasonParts = [gateError, analyzeReason].filter(Boolean);
+  if (reasonIssue?.detail_text) {
+    reasonParts.push(reasonIssue.code ? `${reasonIssue.code}: ${reasonIssue.detail_text}` : reasonIssue.detail_text);
+  }
+  const reasonText = reasonParts.join(" | ") || "LogicPass 没有给出可用结论。";
+  const error = new Error(
+    `LogicPass gate blocked real execution: outcome=${outcome}; final_pass_v2=false. 原因: ${reasonText}`,
+  );
+  error.toolContext = {
+    data: {
+      blocked_real_execution: true,
+      gate_stage: "logicpass_check",
+      doctor_local_runtime: doctor,
+      simulation_output: simulation,
+      parsed_simulation_output: parsed,
+      logicpass_gate: {
+        outcome,
+        logic_pass: Boolean(verdict?.logic_pass),
+        final_pass_v2: false,
+        issues: verdict?.issues || [],
+        capacity_note: capacityNote,
+        guessed_capacity_labware: verdict?.guessed_capacity_labware || [],
+        analyze: verdict?.analyze || null,
+        error: gateError,
+      },
+    },
+  };
+  return { blocked: true, error };
+}

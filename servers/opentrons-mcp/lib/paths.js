@@ -20,7 +20,15 @@ function firstEnv(...names) {
 export function resolvePluginRoot() {
   const configured = firstEnv("OPENTRONS_PLUGIN_ROOT", "CLAUDE_PLUGIN_ROOT", "CURSOR_PLUGIN_ROOT");
   if (configured) {
-    return path.resolve(configured);
+    const resolved = path.resolve(configured);
+    // A launcher may hand us a symlink path (e.g. /tmp on macOS is
+    // /private/tmp). Prefer the real location so PLUGIN_ROOT-derived paths
+    // match __filename-based paths (SCRIPTS_DIR, vendor, data dirs).
+    try {
+      return fs.realpathSync(resolved);
+    } catch {
+      return resolved;
+    }
   }
 
   const parent = path.basename(path.dirname(MCP_ROOT));

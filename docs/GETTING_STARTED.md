@@ -45,21 +45,29 @@ node scripts\verify-setup.mjs
 
 ### Python for simulation (optional but recommended)
 
-The installer sets up Node/MCP only. For local simulation you also need Python with Opentrons:
+The installer sets up Node/MCP only. For local simulation and LogicPass you also need Python with Opentrons. The repo now ships a `pyproject.toml` that pins `opentrons` to 9.x, so `uv sync` is enough:
 
 ```bash
-# from repo root, if you use uv:
-uv venv .venv
-uv sync --extra protocol
+# from repo root
+uv sync                                   # creates .venv, installs opentrons>=9,<10 (from pyproject.toml + uv.lock)
 export OPENTRONS_PYTHON="$(pwd)/.venv/bin/python"   # Git Bash / macOS / Linux
 ```
 
+No uv? Any Python 3.11–3.13 works:
+
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install "opentrons>=9.0.0,<10"
+export OPENTRONS_PYTHON="$(pwd)/.venv/bin/python"
+```
+
 ```powershell
-# Windows example after creating .venv:
+# Windows example:
+uv sync
 $env:OPENTRONS_PYTHON = "$PWD\.venv\Scripts\python.exe"
 ```
 
-Re-run `node scripts/verify-setup.mjs` until Opentrons imports cleanly.
+Re-run `node scripts/verify-setup.mjs` until Opentrons imports cleanly. LogicPass also needs this Python: `logicpass_check` runs the vendored checker with the same interpreter and reads real per-well capacities from the installed `opentrons_shared_data` labware definitions.
 
 ### Environment variables
 
@@ -140,6 +148,34 @@ Copy one of these as your first message:
    *"What state is the robot in? Run safety checks before any recovery action."*
 
 These map to the `opentrons-experiment-run` orchestration skill. See [examples/01-flex-serial-dilution](../examples/01-flex-serial-dilution/README.md) for a guided walkthrough.
+
+---
+
+## LogicPass gate
+
+LogicPass is the deterministic "算账" layer on top of simulation. It replays the analyze command trace (`opentrons analyze --json-output`) through the vendored `labscriptai.benchmark.logicpass` package and checks the ledger rules (LP-L1 dry-well aspirate, LP-L2 reagent demand, LP-L4 capacity overflow, LP-L5 trace completeness, etc.).
+
+Three outcomes, closed algebra:
+
+| outcome | `final_pass_v2` | meaning |
+|---------|-----------------|---------|
+| `pass` | `true` | simulation passed **and** the ledger rules found no violation |
+| `fail` | `false` | a hard rule violation (e.g. dispensing 5 mL into a 1.6 mL well) |
+| `unevaluable` | `false` | the trace could not be fully evaluated (missing analyze artifact, non-succeeded command, unsupported command type) — fail-closed, never a pass |
+
+Key behaviors:
+
+- **`run_protocol` is gated on LogicPass.** The live gate now requires `final_pass_v2=true`; `fail` and `unevaluable` both block upload/play with `gate_stage=logicpass_check` and the concrete reason (LP-L5 detail or the analyze failure reason in `analyze.reason`). Pass `skip_logicpass_gate=true` only for intentional no-gate diagnostics.
+- **Capacity comes from real definitions first.** `logicpass_check` reads the per-well `totalLiquidVolume` from the installed `opentrons_shared_data` labware definitions (`capacity_sources[].source="definition"`). Only when a load name has no installed definition does it fall back to parsing the name (`source="name_hint"`), and the output lists those labware in `guessed_capacity_labware` plus a Chinese `capacity_note`. Decimal names are parsed correctly (`1.6ml` → 1600 µL, `corning_6_wellplate_16.8ml_flat` → 16800 µL); treat guessed numbers as hints, not facts.
+- **Analyze failures always carry a reason.** `logicpass_check` returns an `analyze` summary (`ok`, `error_count`, `errors[]`, `reason`) — e.g. "No module named opentrons" or `NameError [line 12]` — instead of a bare failure.
+- **Stale cache self-heals.** If a cached analyze meta exists but its analysis JSON was deleted, the cache entry is dropped and the protocol is re-analyzed instead of failing with `missing_analyze_artifact`.
+
+Quick check from the CLI (no robot):
+
+```bash
+.venv/bin/python servers/opentrons-mcp/scripts/logicpass_check.py \
+  servers/opentrons-mcp/test/fixtures/logicpass/static_transfer_min.json true
+```
 
 ---
 
