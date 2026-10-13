@@ -56,7 +56,9 @@ const CHANNEL_TOOLS = Object.freeze({
     "get_liquid_source_map",
   ],
   tip: ["recover_tip_pickup", "suggest_next_tip_well", "list_tip_candidates"],
-  manual: ["safe_next_action", "parse_error", "experiment_history"],
+  // live_readiness_check included so DECK_COLLISION / hard-stop operator_steps
+  // ("re-run live_readiness_check") match recommended_next_tools.
+  manual: ["safe_next_action", "parse_error", "experiment_history", "live_readiness_check"],
   slot_confirm: [
     "suggest_recovery_action",
     "get_slot_occupation",

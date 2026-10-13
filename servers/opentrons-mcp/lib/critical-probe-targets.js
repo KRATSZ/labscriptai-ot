@@ -52,6 +52,8 @@ export function listCriticalProbeTargets({
       target_count: explicitTargets.length,
       source: "explicit_argument",
       fallback_used: false,
+      wells: explicitTargets.map(entry => entry.well_name),
+      probe_groups: groupTargetsBySlot(explicitTargets),
     });
   }
 
@@ -71,9 +73,17 @@ export function listCriticalProbeTargets({
     }))
     .filter(entry => entry.slot_name && entry.well_name);
 
-  let selected = fromSession.filter(
-    entry => entry.expected_presence === true && isCriticalSource(entry),
-  );
+  // Critical / probe_required / critical-role sources are listed even when
+  // expected_presence bookkeeping was omitted. Explicit false still excludes.
+  let selected = fromSession.filter(entry => {
+    if (!isCriticalSource(entry)) {
+      return false;
+    }
+    if (entry.expected_presence === false) {
+      return false;
+    }
+    return true;
+  });
 
   let fallbackUsed = false;
   if (selected.length === 0 && includeAllExpectedPresent) {

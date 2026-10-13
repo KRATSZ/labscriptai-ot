@@ -37,6 +37,13 @@ test("DECK_COLLISION is manual hard-stop, not vision", () => {
   assert.equal(guidance.resume_allowed, false);
   assert.ok(!guidance.recommended_next_tools.includes("deck_vision_check"));
   assert.ok(!guidance.recommended_next_tools.includes("capture_preview_image"));
+  assert.ok(
+    guidance.recommended_next_tools.includes("live_readiness_check"),
+    "collision operator_steps require live_readiness_check in recommended tools",
+  );
+  assert.ok(
+    guidance.operator_steps.some(step => String(step).includes("live_readiness_check")),
+  );
 });
 
 test("DESTINATION_OCCUPIED stays human slot confirm without camera primary", () => {

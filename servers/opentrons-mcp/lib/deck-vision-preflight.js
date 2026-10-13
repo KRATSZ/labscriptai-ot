@@ -54,10 +54,64 @@ export function shouldEscalateToVlm(visionResult = {}, { force = false } = {}) {
     reasons.push("vision_summary_failed");
   }
 
+  // YOLO hard-review flag must escalate even when mismatches/uncertainties are empty.
+  if (Boolean(visionResult.needs_human_review)) {
+    reasons.push("yolo_needs_human_review");
+  }
+
   return {
     escalate: reasons.length > 0,
     reasons,
   };
+}
+
+/**
+ * Run optional VLM second opinion. Never throw — missing keys / API errors fall
+ * through so consensus can still emit auto_fixable + reconcile.
+ */
+export async function runVlmSecondOpinion({
+  escalate = false,
+  provider = "ark",
+  imagePath,
+  expectedLayout = null,
+  analyzeArk = null,
+  analyzeKimi = null,
+} = {}) {
+  if (!escalate || provider === "off") {
+    return { vlmResult: null, vlmError: null };
+  }
+
+  try {
+    let raw;
+    if (provider === "kimi") {
+      if (typeof analyzeKimi !== "function") {
+        throw new Error("Kimi VLM analyzer is not configured.");
+      }
+      raw = await analyzeKimi({
+        image_path: imagePath,
+        expected_layout: expectedLayout,
+      });
+    } else {
+      if (typeof analyzeArk !== "function") {
+        throw new Error("Ark VLM analyzer is not configured.");
+      }
+      raw = await analyzeArk({
+        image_path: imagePath,
+        expected_layout: expectedLayout,
+      });
+    }
+    const vlmResult = raw?.data ?? raw ?? null;
+    return { vlmResult, vlmError: null };
+  } catch (error) {
+    return {
+      vlmResult: null,
+      vlmError: {
+        provider,
+        message: error?.message || String(error),
+        recoverable: true,
+      },
+    };
+  }
 }
 
 function isVlmCleanAgree(vlmParsed) {
@@ -133,7 +187,8 @@ export function summarizeDeckVisionConsensus({
 } = {}) {
   const mismatches = Array.isArray(yoloResult?.mismatches) ? yoloResult.mismatches : [];
   const vlmParsed = vlmResult?.parsed_result || null;
-  const needsHumanReview = Boolean(vlmParsed?.needs_human_review);
+  const yoloNeedsHumanReview = Boolean(yoloResult?.needs_human_review);
+  const vlmNeedsHumanReview = Boolean(vlmParsed?.needs_human_review);
   const possibleIssues = Array.isArray(vlmParsed?.possible_issues) ? vlmParsed.possible_issues : [];
   const vlmCleanAgree = isVlmCleanAgree(vlmParsed);
   const layoutConsistent = isLayoutConsistentWithExpected({
@@ -144,6 +199,9 @@ export function summarizeDeckVisionConsensus({
   const vlmActions = Array.isArray(vlmParsed?.recommended_next_actions)
     ? vlmParsed.recommended_next_actions
     : [];
+  // Combined review signal for agents. YOLO review alone is not silently passed;
+  // VLM clean agree can clear it via the escalation path below.
+  const needsHumanReview = vlmNeedsHumanReview || (yoloNeedsHumanReview && !vlmCleanAgree);
 
   let status = "passed";
   let recommendedNextActions = [];
@@ -156,7 +214,7 @@ export function summarizeDeckVisionConsensus({
       "reconcile_state",
       ...withoutPrimaryOperatorConfirm(vlmActions),
     ]);
-  } else if (needsHumanReview) {
+  } else if (vlmNeedsHumanReview) {
     // True physical / human-review case — not a go-live verbal confirm.
     // Reconcile still comes first (vision ≠ deck truth); operator_confirm may follow.
     status = "needs_operator_physical_action";
@@ -169,7 +227,7 @@ export function summarizeDeckVisionConsensus({
       ...withoutPrimaryOperatorConfirm(vlmActions),
       ...(vlmActionsPreferContinue(vlmActions) ? ["continue_critical_probe"] : []),
     ]);
-  } else if (escalation?.escalate) {
+  } else if (escalation?.escalate || yoloNeedsHumanReview) {
     if (vlmCleanAgree && layoutConsistent) {
       // YOLO uncertain/escalated but VLM agrees cleanly — pass with audit flags.
       status = "passed";
@@ -183,7 +241,8 @@ export function summarizeDeckVisionConsensus({
         "continue_critical_probe",
       ]);
     } else {
-      // Escalated with no VLM second opinion — keep auto path open via reconcile.
+      // Escalated / YOLO review with no VLM second opinion — reconcile first.
+      // Prefer auto_fixable so HumanConfirmBudget still routes to reconcile_state.
       status = "auto_fixable";
       recommendedNextActions = ["reconcile_state", "deck_vision_check"];
     }
@@ -197,6 +256,7 @@ export function summarizeDeckVisionConsensus({
     vlm_escalated: Boolean(escalation?.escalate),
     vlm_escalate_reasons: escalation?.reasons || [],
     needs_human_review: needsHumanReview,
+    yolo_needs_human_review: yoloNeedsHumanReview,
     layout_consistent_with_expected: layoutConsistent,
     summary:
       vlmParsed?.summary ||
@@ -215,6 +275,7 @@ export function buildDeckVisionPreflightResult({
   imagePath,
   yoloResult,
   vlmResult = null,
+  vlmError = null,
   escalation = null,
   expectedLayout = null,
   provider = "ark",
@@ -229,8 +290,9 @@ export function buildDeckVisionPreflightResult({
   return {
     image_path: imagePath,
     sensors_used: vlmResult ? ["vision_check", `analyze_image_with_${provider}`] : ["vision_check"],
-    vlm_provider: vlmResult ? provider : null,
+    vlm_provider: vlmResult || vlmError ? provider : null,
     vlm_used: Boolean(vlmResult),
+    vlm_error: vlmError || null,
     yolo: yoloResult,
     vlm: vlmResult,
     escalation,
