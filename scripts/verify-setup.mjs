@@ -361,6 +361,44 @@ function checkVision(pythonExe) {
   }
 }
 
+function checkFlex3d(pythonExe) {
+  const scriptPath = path.join(PLUGIN_ROOT, "automation", "flex3d", "scripts", "render_protocol_3d.py");
+
+  if (!fs.existsSync(scriptPath)) {
+    warn(
+      "Flex 3D preview",
+      "Missing automation/flex3d/scripts/render_protocol_3d.py",
+      "Reinstall the plugin; the flex3d bundle ships with it."
+    );
+    return;
+  }
+
+  if (!pythonExe) {
+    warn(
+      "Flex 3D preview",
+      "Skipped (no Python interpreter)",
+      "3D preview is optional; mujoco installs into OPENTRONS_PYTHON: pip install mujoco pillow"
+    );
+    return;
+  }
+
+  const flex3dCheck = spawnSync(
+    pythonExe,
+    ["-c", "import mujoco, PIL; print('ok')"],
+    { encoding: "utf8", timeout: 20000 }
+  );
+
+  if (flex3dCheck.status === 0) {
+    pass("Flex 3D preview", "mujoco + pillow importable; flex3d_preflight_check / flex3d_open_viewer usable");
+  } else {
+    warn(
+      "Flex 3D preview",
+      "mujoco not importable — 3D checks and viewer will degrade (optional feature)",
+      `${pythonExe} -m pip install mujoco pillow`
+    );
+  }
+}
+
 function checkArkVlm() {
   const envPath = path.join(PLUGIN_ROOT, "automation", ".env");
   let arkKey = process.env.ARK_API_KEY || null;
@@ -556,6 +594,7 @@ async function main() {
   checkMcpManifestPaths();
   const pythonExe = checkPython();
   checkVision(pythonExe);
+  checkFlex3d(pythonExe);
   checkArkVlm();
   await checkHealth(pythonExe);
   await checkRuntimeRecoverySelfTest();

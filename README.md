@@ -20,8 +20,22 @@ Then enable the plugin in your client. **Start here:** [docs/GETTING_STARTED.md]
 
 - MCP server (`servers/opentrons-mcp/`), seven agent skills, safety policy, curated protocol library
 - `automation/` — custom labware (e.g. third-party tip racks) and on-robot verification helpers; see [docs/custom-labware-guide.md](docs/custom-labware-guide.md)
+- `automation/flex3d/` — optional Flex 3D protocol preview (MuJoCo physics checks + Three.js viewer); see [Flex 3D preview](#flex-3d-preview-optional)
 - Live robot actions are **opt-in**; simulation is the gate before unattended live use
 - Glossary: [docs/GLOSSARY.md](docs/GLOSSARY.md) · Workflows: [policy/workflows.md](policy/workflows.md)
+
+## Flex 3D preview (optional)
+
+MuJoCo-based 3D preflight and an interactive browser viewer for **Flex protocols** (OT-2 is refused). Optional feature — install mujoco to enable it:
+
+```bash
+.venv/bin/pip install mujoco pillow
+```
+
+- MCP tool `flex3d_preflight_check` — runs geometry / liquid / targets / clearance checks on an analyze JSON or protocol `.py`; failing checks carry `command_index` aligned with LogicPass `step_index`. Degrades gracefully when mujoco is missing.
+- MCP tool `flex3d_open_viewer` — starts the interactive viewer and returns `http://127.0.0.1:8791/viewer.html` (two orbit views, step list, drag to rotate/zoom).
+- CLI: `python automation/flex3d/scripts/render_protocol_3d.py <analysis.json|protocol.py> [--video] [--out DIR]` prints one JSON object.
+- `node scripts/verify-setup.mjs` reports mujoco availability as a warning, never a failure.
 
 ## Citation
 

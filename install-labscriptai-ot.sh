@@ -67,9 +67,8 @@ Pi / OpenCode (experimental):
   docs/outbox-wake-pi-opencode.md
 
 Optional deck vision (lab-trained YOLO):
-  pip install ultralytics opencv-python-headless pillow
   Weights: vision/models/weights/deck_v2_best.pt
-  Setup: docs/GETTING_STARTED.md#deck-vision-setup
+  Setup (installs ultralytics + opencv on purpose): docs/deck-vision.md
 
 Next steps: docs/GETTING_STARTED.md
 EOF

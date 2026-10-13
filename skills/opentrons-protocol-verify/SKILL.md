@@ -8,6 +8,7 @@ mcp_tools:
   - simulate_protocol
   - parse_simulation_output
   - logicpass_check
+  - flex3d_preflight_check
 ---
 
 # Protocol Verify
@@ -25,8 +26,9 @@ Use `.venv/bin/python` or `uv run python` for all commands.
 4. `analyze` — parser and command graph checks.
 5. `simulate` — stronger dry run (requires working environment). `simulate_protocol` runs analyze once and caches the JSON.
 6. `logicpass_check` — same protocol. `pass` / `fail` / `unevaluable`. A `fail` issue includes `step_index`.
-7. Pass extra CLI flags after `--`.
-8. If iterating until simulation passes -> `opentrons-simulation-repair`.
+7. `flex3d_preflight_check` — Flex protocols only (OT-2 refused). MuJoCo 3D checks: geometry, liquid, targets, clearance; a failing check carries `command_index` matching the LogicPass `step_index` numbering. Degrades with `error: mujoco_missing` (exit 0) when mujoco is not installed — report as optional-unavailable, not a validation failure. `flex3d_open_viewer` starts the interactive browser view.
+8. Pass extra CLI flags after `--`.
+9. If iterating until simulation passes -> `opentrons-simulation-repair`.
 
 ## Commands
 

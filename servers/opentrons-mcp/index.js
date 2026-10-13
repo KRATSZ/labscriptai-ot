@@ -65,6 +65,7 @@ import {
 } from "./lib/labware-offsets.js";
 import { parseSimulationLog, runDoctorTool, runSimulationTool } from "./lib/simulation.js";
 import { analyzeProtocolOnce } from "./lib/analyze-once.js";
+import { runFlex3dCheck, startFlex3dViewer } from "./lib/flex3d.js";
 import { runLogicpassCheck } from "./lib/logicpass.js";
 import { buildProbeWellsProtocol, extractProbeResultsFromCommands } from "./lib/probe.js";
 import * as probeLib from "./lib/probe.js";
@@ -1406,6 +1407,57 @@ const TOOL_DEFINITIONS = [
         max_output_tokens: { type: "integer" },
       },
       required: ["image_path"],
+    },
+  },
+  {
+    name: "flex3d_preflight_check",
+    description:
+      "Flex 3D physical preflight (MuJoCo). Runs automation/flex3d/scripts/render_protocol_3d.py on an opentrons analyze JSON or protocol .py: geometry, liquid, targets, clearance checks with command_index aligned to LogicPass step_index. Flex only (OT-2 refused). Degrades gracefully (ok=false, error=mujoco_missing) when mujoco is not installed. Optional: --video writes an MP4.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        source: {
+          type: "string",
+          description: "Path to an opentrons analyze JSON or a protocol .py file",
+        },
+        out_dir: {
+          type: "string",
+          description: "Directory for generated scene/view files (default .plugin-data/flex3d)",
+        },
+        video: {
+          type: "boolean",
+          description: "Also render an MP4 (slower). Default false.",
+          default: false,
+        },
+        python_executable: {
+          type: "string",
+          description: "Override Python for mujoco (else OPENTRONS_PYTHON / .venv)",
+        },
+      },
+      required: ["source"],
+    },
+  },
+  {
+    name: "flex3d_open_viewer",
+    description:
+      "Start the interactive Flex 3D viewer (MuJoCo + Three.js) on 127.0.0.1 and return the browser URL. Requires mujoco in the plugin Python env; degrades with a clear error when missing. Pass protocol_path to preload an analyze JSON or protocol .py; otherwise POST the analysis to /flex3d/load from the page.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        protocol_path: {
+          type: "string",
+          description: "Optional analyze JSON or protocol .py to preload",
+        },
+        port: {
+          type: "number",
+          description: "Port for the local viewer server (default 8791)",
+          default: 8791,
+        },
+        python_executable: {
+          type: "string",
+          description: "Override Python for mujoco (else OPENTRONS_PYTHON / .venv)",
+        },
+      },
     },
   },
   {
@@ -7053,6 +7105,25 @@ const TOOL_HANDLERS = {
         usage: response.json?.usage || null,
       },
     };
+  },
+
+  async flex3d_preflight_check(args) {
+    const result = await runFlex3dCheck({
+      sourcePath: args.source,
+      outDir: args.out_dir,
+      video: args.video,
+      preferredPython: args.python_executable,
+    });
+    return { data: result };
+  },
+
+  async flex3d_open_viewer(args) {
+    const result = await startFlex3dViewer({
+      protocolPath: args.protocol_path,
+      port: args.port,
+      preferredPython: args.python_executable,
+    });
+    return { data: result };
   },
 
   async vision_check(args) {

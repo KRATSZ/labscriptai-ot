@@ -64,6 +64,18 @@ Heuristically estimate tip usage and flag low-volume transfers below the recomme
 
 **Parameters:** `protocol_source` (optional), `file_path` (optional), `tip_rack_count` (optional), `tip_rack_capacity` (optional)
 
+### `flex3d_open_viewer` [L1]
+
+Start the interactive Flex 3D viewer (MuJoCo + Three.js) on 127.0.0.1 and return the browser URL. Requires mujoco in the plugin Python env; degrades with `mujoco_missing` when absent. Flex protocols only.
+
+**Parameters:** `protocol_path` (optional), `port` (optional), `python_executable` (optional)
+
+### `flex3d_preflight_check` [L1]
+
+Flex 3D physical preflight (MuJoCo): geometry, liquid, targets, and clearance checks on an opentrons analyze JSON or protocol `.py`. `command_index` on failing checks aligns with LogicPass `step_index`. Degrades gracefully (`ok=false, error=mujoco_missing`, exit 0) when mujoco is not installed. OT-2 is refused.
+
+**Parameters:** `source`, `out_dir` (optional), `video` (optional), `python_executable` (optional)
+
 ### `inspect_labware_definition` [L1]
 
 Inspect a labware load name and return geometry, capacity, and dead-volume guidance from the local definition index.
