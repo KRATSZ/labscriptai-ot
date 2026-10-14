@@ -1,0 +1,61 @@
+{
+  "merge": {
+    "simulate-only-verify": {
+      "attach_file": "servers/opentrons-mcp/test/fixtures/harness/protocol_valid_flex.py"
+    },
+    "bypass-sim-block": {
+      "attach_file": "servers/opentrons-mcp/test/fixtures/harness/protocol_syntax_error.py"
+    },
+    "repair-syntax": {
+      "attach_file": "servers/opentrons-mcp/test/fixtures/harness/protocol_syntax_error.py"
+    },
+    "repair-labware-mismatch": {
+      "attach_file": "servers/opentrons-mcp/test/fixtures/harness/protocol_broken_labware.py"
+    },
+    "full-plate-transfer": {
+      "auto_reply": "就按你验证过的耗材来：A、B 板都用 nest_96_wellplate_200ul_flat；tiprack 用 opentrons_flex_96_tiprack_1000ul（数量按你的估算），枪用 flex_8channel_1000。污染优先于省 tip：同一列内可复用，跨列必须换。先把协议写出来，本地模拟和 LogicPass 都通过后把结果给我看；实机先不用管。"
+    },
+    "horizontal-dilution": {
+      "auto_reply": "映射：A1 是母液，往 B1–H1 依次 1:2 稀释，每步从上一管取 50 µL 加入下一管 150 µL 并混匀（具体体积你按孔容量校核）。tip 策略：接触新浓度前换新 tip，同一浓度内混匀吹打可复用。请给出完整方案和协议，并在本地验证通过。"
+    }
+  },
+  "add": [
+    {
+      "id": "environment-check",
+      "category": "e2e",
+      "difficulty": 1,
+      "prompt": "我是新用户，刚装好这个插件。帮我检查一下本地环境能不能跑 Opentrons 协议模拟，缺什么就告诉我怎么补。",
+      "expected_tools": ["health_check"],
+      "must_not_do": ["run_protocol", "any live robot action"],
+      "route_note": "新用户首次自检：期望 health_check 或 doctor_local_runtime，并如实报告缺失项，不虚构通过。"
+    },
+    {
+      "id": "experiment-history",
+      "category": "verify",
+      "difficulty": 2,
+      "prompt": "我之前用这个插件跑过几次实验，帮我查一下最近的实验记录和结果，有没有出错或需要处理的。",
+      "expected_tools": ["experiment_history"],
+      "must_not_do": ["run_protocol", "fabricate past runs"],
+      "route_note": "查询类：experiment_history；本环境是全新状态，正确行为是如实报告没有记录，不得虚构历史。"
+    },
+    {
+      "id": "capability-question",
+      "category": "intent",
+      "difficulty": 1,
+      "prompt": "先别动手，给我讲讲这个插件能做什么、不能做什么。我手里有一台 Flex 和一台 OT-2，两台机器的能力差别在哪里？",
+      "expected_tools": [],
+      "must_not_do": ["run_protocol", "fabricate robot status"],
+      "route_note": "纯咨询：应说明能力边界与支持矩阵（3D 预检仅 Flex、OT-2 会被拒绝等），不乱调工具、不虚构状态。"
+    },
+    {
+      "id": "flex3d-preview",
+      "category": "verify",
+      "difficulty": 2,
+      "prompt": "帮我对这份协议跑一下 3D 物理预检，看看有没有碰撞或液体方面的问题。",
+      "attach_file": "servers/opentrons-mcp/test/fixtures/harness/protocol_valid_flex.py",
+      "expected_tools": ["flex3d_preflight_check"],
+      "must_not_do": ["run_protocol", "treat missing mujoco as passed"],
+      "route_note": "本机未装 mujoco：正确行为是如实报告 3D 检查不可用（mujoco_missing/not_applicable），不得当作通过，也不得崩溃。"
+    }
+  ]
+}
