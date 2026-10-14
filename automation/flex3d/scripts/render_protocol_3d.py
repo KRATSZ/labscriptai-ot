@@ -82,7 +82,7 @@ def main() -> None:
 
     source = args.source.resolve()
     if not source.is_file():
-        emit({"ok": False, "error": "missing_source", "message": f"找不到 {source}", "checks": [], "files": []})
+        emit({"ok": False, "error": "missing_source", "message": f"missing file: {source}", "checks": [], "files": []})
 
     if source.suffix == ".py":
         python = os.environ.get("OPENTRONS_PYTHON", sys.executable)
@@ -114,7 +114,7 @@ def main() -> None:
             "supported": False,
             "error": "ot2_not_supported",
             "robot_type": kind,
-            "message": f"三维预览目前只支持 Flex，这份协议是 {kind}",
+            "message": f"the 3D preview only supports Flex; this protocol is {kind}",
             "checks": [],
             "files": [],
         })
@@ -131,7 +131,7 @@ def main() -> None:
             "degraded": True,
             "error": "mujoco_missing",
             "robot_type": kind,
-            "message": f"未安装 mujoco（或 numpy/Pillow），三维预览和四项检查不可用：{exc}",
+            "message": f"mujoco (or numpy/Pillow) is not installed, so the 3D preview and its four checks are unavailable: {exc}",
             "checks": [],
             "files": [],
         })

@@ -33,10 +33,12 @@ DECK_PATH = ROOT / "cad" / "flex" / "deck" / "ot3_standard.json"
 
 
 def resolve_export() -> Path:
+    """Where runs go. Default is the plugin data dir (gitignored); FLEX3D_EXPORT overrides."""
+
     override = os.environ.get("FLEX3D_EXPORT")
     if override:
         return Path(override)
-    return ROOT / "runs"
+    return ROOT.parents[1] / ".plugin-data" / "flex3d"
 
 
 EXPORT = resolve_export()
@@ -443,6 +445,26 @@ class TrashBin:
 
 
 @dataclass(frozen=True)
+class WasteChute:
+    """The waste-chute stand-in body over its cutout, deck millimeters.
+
+    The deck JSON's chute addressable areas are drop slots with no volume (the
+    single- and eight-channel slots sit at z 114.5), so the scene draws one
+    open-topped box per cutout whose rim is level with those slots.
+    """
+
+    cutout: str
+    origin_mm: tuple[float, float, float]
+    size_mm: tuple[float, float, float]
+
+
+# Chute body box relative to its cutout's corner (deck millimetres): centred on
+# the drop slots (x +64, y -27..+36) with the rim at the 114.5 mm drop height.
+CHUTE_BODY_OFFSET_MM = (42.0, -35.0, 0.0)
+CHUTE_BODY_SIZE_MM = (45.0, 80.0, 114.5)
+
+
+@dataclass(frozen=True)
 class TipDims:
     """A mounted tip as the analysis reports it (``tipLength`` = ``reach_mm``) plus the rack's tip geometry."""
 
@@ -455,6 +477,9 @@ class TipDims:
 class SceneSpec:
     placed: list[Placed]
     trash: list[TrashBin] = field(default_factory=list)
+    # One waste-chute body when the protocol uses a chute area; the areas
+    # themselves are drop points, not boxes to draw.
+    chute: WasteChute | None = None
     # Wells that get a liquid column; initial heights in mm with an rgba string.
     liquid_wells: set[tuple[str, str]] = field(default_factory=set)
     initial_liquid: dict[tuple[str, str], tuple[float, str]] = field(default_factory=dict)
@@ -567,6 +592,22 @@ def _trash_geoms(deck: Deck, bin_: TrashBin) -> list[str]:
     return [_box(f"{name}_{part}", robot_m(deck, c), tuple(v * MM for v in size), rgba) for part, c, size, rgba in parts]
 
 
+def _chute_geoms(deck: Deck, chute: WasteChute) -> list[str]:
+    """Open-topped chute body over the cutout, walls 3 mm, rim at the drop slots."""
+
+    x0, y0, z0 = chute.origin_mm
+    sx, sy, sz = chute.size_mm
+    t = 3.0
+    parts = (
+        ("floor", (x0 + sx / 2, y0 + sy / 2, z0 + t / 2), (sx, sy, t), TRASH_LINER_RGBA),
+        ("wall_front", (x0 + sx / 2, y0 + t / 2, z0 + sz / 2), (sx, t, sz), TRASH_RGBA),
+        ("wall_back", (x0 + sx / 2, y0 + sy - t / 2, z0 + sz / 2), (sx, t, sz), TRASH_RGBA),
+        ("wall_left", (x0 + t / 2, y0 + sy / 2, z0 + sz / 2), (t, sy - 2 * t, sz), TRASH_RGBA),
+        ("wall_right", (x0 + sx - t / 2, y0 + sy / 2, z0 + sz / 2), (t, sy - 2 * t, sz), TRASH_RGBA),
+    )
+    return [_box(f"waste_chute_{part}", robot_m(deck, c), tuple(v * MM for v in size), rgba) for part, c, size, rgba in parts]
+
+
 def labware_xml(deck: Deck, item: Placed, spec: SceneSpec, book: flex_shell.AssetBook, ranges) -> str:
     lw = item.labware
     if lw.is_tiprack:
@@ -607,6 +648,8 @@ def build_xml(deck: Deck, spec: SceneSpec, assets: Path = ASSETS) -> str:
 
     labware = [labware_xml(deck, item, spec, book, ranges) for item in spec.placed]
     trash = [g for bin_ in spec.trash for g in _trash_geoms(deck, bin_)]
+    if spec.chute is not None:
+        trash += _chute_geoms(deck, spec.chute)
 
     def rng(name: str) -> str:
         lo, hi = ranges[name]

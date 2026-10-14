@@ -33,6 +33,8 @@ from pathlib import Path
 
 from sim import flex_shell
 from sim.flex_scene import (
+    CHUTE_BODY_OFFSET_MM,
+    CHUTE_BODY_SIZE_MM,
     DECK_PATH,
     MM,
     PADDLE_HALF_MM,
@@ -42,6 +44,7 @@ from sim.flex_scene import (
     SceneSpec,
     TipDims,
     TrashBin,
+    WasteChute,
     home_point,
     labware_from_definition,
     labware_origin,
@@ -138,6 +141,10 @@ class ProtocolRun:
     trash: dict[str, TrashBin]
     moved: list[str]
     deck: Deck
+    # Chute drop-slot areas by name (zero-volume boxes; the drop point is their
+    # origin, or the centre of the eight-channel span) and the one drawn body.
+    chutes: dict[str, TrashBin] = field(default_factory=dict)
+    chute: WasteChute | None = None
 
     def by_key(self, key: str) -> LabwareRun:
         return next(lw for lw in self.labware.values() if lw.key == key)
@@ -167,6 +174,38 @@ def _trash_bins(deck_raw: dict) -> dict[str, TrashBin]:
     return bins
 
 
+def _waste_chutes(deck_raw: dict) -> tuple[dict[str, TrashBin], dict[str, WasteChute]]:
+    """Waste-chute addressable areas by name, plus one stand-in body per cutout.
+
+    The areas are drop slots: their bounding boxes are flat or a line, so they
+    work as exact drop points (``expected_position`` centres them) but are not
+    drawn. One ``WasteChute`` body per cutout covers every slot on it.
+    """
+
+    cutouts = {c["id"]: c["position"] for c in deck_raw["locations"]["cutouts"]}
+    areas = {a["id"]: a for a in deck_raw["locations"]["addressableAreas"]}
+    slots: dict[str, TrashBin] = {}
+    bodies: dict[str, WasteChute] = {}
+    for fixture in deck_raw["cutoutFixtures"]:
+        if not fixture["id"].startswith("wasteChute"):
+            continue
+        for cutout, names in fixture["providesAddressableAreas"].items():
+            for name in names:
+                area = areas[name]
+                if area.get("areaType") != "wasteChute":
+                    continue  # combined fixtures also provide staging slots
+                off = area["offsetFromCutoutFixture"]
+                box = area["boundingBox"]
+                origin = tuple(cutouts[cutout][i] + off[i] for i in range(3))
+                slots[name] = TrashBin(name, origin, (box["xDimension"], box["yDimension"], box["zDimension"]))
+                bodies[cutout] = WasteChute(
+                    cutout,
+                    tuple(cutouts[cutout][i] + CHUTE_BODY_OFFSET_MM[i] for i in range(3)),
+                    CHUTE_BODY_SIZE_MM,
+                )
+    return slots, bodies
+
+
 def _slot_of(location: dict) -> str:
     for key in ("slotName", "addressableAreaName"):
         if key in location:
@@ -183,6 +222,7 @@ def load_analysis(path: Path, deck: Deck) -> ProtocolRun:
         raise ProtocolError(f"robotType is {raw.get('robotType')}, not a Flex")
     deck_raw = json.loads(DECK_PATH.read_text())
     bins = _trash_bins(deck_raw)
+    chute_slots, chute_bodies = _waste_chutes(deck_raw)
 
     labware: dict[str, LabwareRun] = {}
     pipettes: dict[str, PipetteRun] = {}
@@ -191,6 +231,7 @@ def load_analysis(path: Path, deck: Deck) -> ProtocolRun:
         for item in raw.get("liquids", [])
     }
     trash: dict[str, TrashBin] = {}
+    chutes: dict[str, TrashBin] = {}
     moved: list[str] = []
     for cmd in raw["commands"]:
         kind, params, result = cmd["commandType"], cmd["params"], cmd.get("result") or {}
@@ -230,13 +271,21 @@ def load_analysis(path: Path, deck: Deck) -> ProtocolRun:
             name = params["addressableAreaName"]
             if name in bins:
                 trash[name] = bins[name]
-            elif "Trash" in name or "trash" in name:
-                raise ProtocolError(f"{name} is not a trash bin this scene draws")
+            elif name in chute_slots:
+                chutes[name] = chute_slots[name]
+            else:
+                # Loud, not silent: an area the scene cannot place used to be
+                # skipped here and blow up later as a KeyError at play time.
+                raise ProtocolError(
+                    f"addressable area {name} is not one this scene draws "
+                    f"(trash bins: {sorted(bins)}, waste chutes: {sorted(chute_slots)})"
+                )
         elif kind == "moveLabware":
             if params.get("strategy") == "usingGripper" and params["labwareId"] not in moved:
                 moved.append(params["labwareId"])
     title = raw.get("metadata", {}).get("protocolName") or path.stem
-    return ProtocolRun(path, title, labware, pipettes, liquids, raw["commands"], trash, moved, deck)
+    chute = next(iter(chute_bodies.values()), None)
+    return ProtocolRun(path, title, labware, pipettes, liquids, raw["commands"], trash, moved, deck, chutes, chute)
 
 
 # ---------------------------------------------------------------- state
@@ -456,6 +505,8 @@ class Planner:
     def _deck_top(self, state: State) -> float:
         tops = [self._top(lw.key, state) for lw in self.run.labware.values() if lw.key != state.held]
         tops += [b.origin_mm[2] + b.size_mm[2] for b in self.run.trash.values()]
+        # Chute drop slots sit at 114.5 mm, so the drawn body is just as tall.
+        tops += [b.origin_mm[2] + b.size_mm[2] for b in self.run.chutes.values()]
         return max(tops + [0.0])
 
     def nozzles_mm(self, tool: str, site_mm) -> list[tuple[float, float]]:
@@ -763,9 +814,9 @@ class Planner:
 
     def _well_text(self, tool: str | None, lw: LabwareRun, well: str) -> str:
         if tool == "pipette_8" and not lw.labware.is_tiprack and "centerMultichannelOnWells" in lw.labware.quirks:
-            return f"{lw.name} {well} 槽 (8 通道同槽)"
+            return f"{lw.name} {well} trough (8 channels share it)"
         if tool == "pipette_8":
-            return f"{lw.name} 第 {well[1:]} 列 ({well[0]}{well[1:]}-H{well[1:]})"
+            return f"{lw.name} column {well[1:]} ({well[0]}{well[1:]}-H{well[1:]})"
         return f"{lw.name} {well}"
 
     def _record_step(self, index: int, kind: str, params, result, t0: float, t1: float) -> None:
@@ -789,35 +840,39 @@ class Planner:
             kind == "dispense" and prev is not None and prev["commandType"] == "aspirate" and same_well(prev)
         )
         if kind == "home":
-            text = "回原点 (home)"
+            text = "Home"
         elif kind == "pickUpTip":
-            text = f"取枪头  {self._well_text(tool, lw, params['wellName'])}"
+            text = f"Pick up tip  {self._well_text(tool, lw, params['wellName'])}"
         elif kind == "aspirate":
-            text = f"{'混匀·吸' if mixing else '吸液'} {_fmt_ul(vol)} μL  ←  {self._well_text(tool, lw, params['wellName'])}"
+            text = f"{'Mix asp' if mixing else 'Aspirate'} {_fmt_ul(vol)} μL  ←  {self._well_text(tool, lw, params['wellName'])}"
         elif kind == "dispense":
-            text = f"{'混匀·打' if mixing else '分液'} {_fmt_ul(vol)} μL  →  {self._well_text(tool, lw, params['wellName'])}"
+            text = f"{'Mix dis' if mixing else 'Dispense'} {_fmt_ul(vol)} μL  →  {self._well_text(tool, lw, params['wellName'])}"
         elif kind == "moveToAddressableAreaForDropTip":
             area = params["addressableAreaName"]
-            text = f"移到垃圾桶 {area.replace('movableTrash', '')}"
-            slots = (area.replace("movableTrash", ""),)
+            if area in self.run.chutes:
+                text = "Move to waste chute"
+                slots = ()
+            else:
+                text = f"Move to trash bin {area.replace('movableTrash', '')}"
+                slots = (area.replace("movableTrash", ""),)
         elif kind == "moveToAddressableArea":
-            text = f"移到 {params['addressableAreaName']}"
+            text = f"Move to {params['addressableAreaName']}"
         elif kind == "dropTipInPlace":
-            text = "弃枪头"
+            text = "Drop tip"
         elif kind == "dropTip":
-            text = f"弃枪头 → {lw.name if lw else ''}"
+            text = f"Drop tip in {lw.name if lw else ''}"
         elif kind == "moveLabware":
             src = self._slot_now(lw.key, t0)
             dst = _slot_of(params["newLocation"])
-            how = "夹爪搬运" if params.get("strategy") == "usingGripper" else "手动移动"
+            how = "Gripper carry" if params.get("strategy") == "usingGripper" else "Manual move"
             text = f"{how} {lw.name}: {src} → {dst}"
             slots = (src, dst)
         elif kind == "loadLiquid":
             liquid = self.run.liquids.get(params["liquidId"])
             wells = list(params["volumeByWell"])
             vols = sorted({v for v in params["volumeByWell"].values()})
-            span = wells[0] if len(wells) == 1 else f"{wells[0]}…{wells[-1]} ({len(wells)} 孔)"
-            text = f"加载液体 {liquid.name if liquid else ''}: {lw.name} {span} 各 {'/'.join(_fmt_ul(v) for v in vols)} μL"
+            span = wells[0] if len(wells) == 1 else f"{wells[0]}…{wells[-1]} ({len(wells)} wells)"
+            text = f"Load liquid {liquid.name if liquid else ''}: {lw.name} {span} {'/'.join(_fmt_ul(v) for v in vols)} μL each"
         else:
             text = kind
         detail = kind
@@ -862,7 +917,10 @@ def scene_spec(plan_: Plan) -> SceneSpec:
     faces = {p.tool: (p.name.split("_")[0][1:], str(CHANNELS[p.tool])) for p in run.pipettes.values()}
     return SceneSpec(
         placed=placed,
-        trash=list(run.trash.values()),
+        # Only the bins are boxes to draw; chute areas are drop points covered
+        # by the one chute body.
+        trash=[b for n, b in run.trash.items() if n not in run.chutes],
+        chute=run.chute,
         liquid_wells=set(plan_.liquid_wells),
         tips=tips,
         title=run.title,
