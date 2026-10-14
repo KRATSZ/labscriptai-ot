@@ -602,7 +602,7 @@ function buildLiquidManualRecoveryContext({ failedCommand, robotStatusSnapshot, 
     same_liquid_source_candidate_count: sameLiquidSourceCandidates.length,
     same_liquid_source_substitution_allowed: hasSameLiquidSourceCandidates,
     same_liquid_source_substitution_next_tool: hasSameLiquidSourceCandidates
-      ? "prepare_liquid_source_substitution_recovery"
+      ? "liquid_source_substitution (action=prepare_recovery)"
       : null,
     same_liquid_source_substitution_playbook: hasSameLiquidSourceCandidates
       ? "liquid_source_substitution_continuation_protocol"
@@ -1044,7 +1044,7 @@ export function buildReconciliationResult({
         ? "medium"
         : "high";
 
-  const safeActions = ["robot_status", "module_status", "run_history"];
+  const safeActions = ["robot_status", "query_history"];
   if (diffs.length === 0) {
     safeActions.push("normal_execution");
   }

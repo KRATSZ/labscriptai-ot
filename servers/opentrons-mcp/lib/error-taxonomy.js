@@ -95,7 +95,7 @@ const ERROR_LEAF_DEFINITIONS = {
     recoverability: "state_review_required",
     requires_human_review: false,
     auto_executable: false,
-    default_next_step: "run_history",
+    default_next_step: "query_history",
     evidence_sources: ["session_state", "result_logs"],
   },
   RUN_NOT_AWAITING_RECOVERY: {
@@ -104,7 +104,7 @@ const ERROR_LEAF_DEFINITIONS = {
     recoverability: "state_review_required",
     requires_human_review: false,
     auto_executable: false,
-    default_next_step: "run_history",
+    default_next_step: "query_history",
     evidence_sources: ["run_history"],
   },
   ROBOT_UNREACHABLE: {
@@ -149,7 +149,7 @@ const ERROR_LEAF_DEFINITIONS = {
     recoverability: "wait_then_retry",
     requires_human_review: false,
     auto_executable: false,
-    default_next_step: "module_status",
+    default_next_step: "robot_status",
     evidence_sources: ["modules", "module_status"],
   },
   DESTINATION_OCCUPIED: {

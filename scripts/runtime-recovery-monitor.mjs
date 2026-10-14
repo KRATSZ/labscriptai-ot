@@ -3,7 +3,7 @@
  * Run active L1-L4 runtime recovery monitor ticks.
  *
  * Default mode is observe-only for run watching. Pass --self-fix-mode l0 plus
- * --allow-l4-execution and --operator-opt-in to allow runtime_watch_poll to
+ * --allow-l4-execution and --operator-opt-in to allow runtime_watch poll mode to
  * execute its existing whitelisted L0 self-fix branches.
  */
 import fs from "fs";
@@ -223,7 +223,7 @@ function renderMarkdown(payload = {}) {
 
   lines.push("## 安全边界", "");
   lines.push("- 默认 observe 模式不会通过 run watcher 执行自修动作。");
-  lines.push("- L0 自修只能通过 runtime_watch_poll 的既有白名单动作执行。");
+  lines.push("- L0 自修只能通过 runtime_watch(mode=poll) 的既有白名单动作执行。");
   lines.push("- 液体换源、resume 和任何样本身份相关动作仍需要 live gate 和 operator opt-in。");
   lines.push("");
   return lines.join("\n");

@@ -31,8 +31,8 @@ When calculating source volume: `load_volume = sum(transfers) + dead_volume`.
 
 When a load name is unfamiliar or you need a safe substitute:
 
-1. Call MCP `validate_labware_name` first to verify the exact load name or get close matches.
-2. Call MCP `inspect_labware_definition` on each candidate if geometry or dead volume matters.
+1. Call MCP `labware_lookup(action=validate)` first to verify the exact load name or get close matches.
+2. Call MCP `labware_lookup(action=inspect)` on each candidate if geometry or dead volume matters.
 3. Prefer the same labware category, same well count, and the closest capacity class.
 4. Do not invent substitutes for tip racks, reservoirs, or adapter-dependent labware when the geometry changes materially.
 5. For cell culture and reservoir workflows, compare `representative_well.depth_mm`, `total_liquid_volume_ul`, and `dead_volume_hint` before choosing a fallback.

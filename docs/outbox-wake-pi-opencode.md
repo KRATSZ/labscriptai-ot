@@ -96,8 +96,8 @@ All hosts share the same monitor and outbox delivery. Pick your adapter(s) in
 Example deliver + wake via MCP:
 
 ```text
-runtime_deliver_outbox(session_id, adapters=["piagent","opencode","cursor"])
-runtime_watch_loop(run_id, notify_adapters=["piagent","opencode"], zero_llm_when_no_error=true)
+runtime_outbox(action=deliver)(session_id, adapters=["piagent","opencode","cursor"])
+runtime_watch(mode=loop)(run_id, notify_adapters=["piagent","opencode"], zero_llm_when_no_error=true)
 ```
 
 Auto-detect: if `$PLUGIN_DATA/host-adapters/piagent/` or `opencode/` exists,

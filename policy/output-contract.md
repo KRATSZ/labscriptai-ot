@@ -29,7 +29,7 @@ Include this fenced JSON block at phase boundaries (intent complete, protocol dr
 | `summary` | yes | Plain-language outcome |
 | `next_action` | yes | Concrete next step; use `null` only when truly complete |
 | `artifacts` | no | Paths or labels for files the user may need |
-| `sensors_used` | no | Tools used in this subphase (e.g. `live_readiness_check`, `vision_check`) |
+| `sensors_used` | no | Tools used in this subphase (e.g. `live_readiness_check`, `deck_vision_check(mode=local)`) |
 | `vlm_used` | no | `true` when Ark/Kimi VLM was invoked |
 | `vlm_escalated` | no | `true` when YOLO triggered VLM second opinion |
 | `blocked_reason` | when `status` is `blocked` or `failed` | Short reason; align with `error-response.md` leaves when applicable |
@@ -93,7 +93,7 @@ Do **not** remove env / opt-in hard gates themselves — if probe live motion re
   "status": "passed",
   "summary": "Door closed, estop clear, modules ready, session consistent.",
   "next_action": "Continue Phase 3b with deck_vision_check.",
-  "sensors_used": ["live_readiness_check", "robot_status", "module_status"],
+  "sensors_used": ["live_readiness_check", "robot_status", "robot_status"],
   "vlm_used": false
 }
 ```
@@ -109,7 +109,7 @@ YOLO uncertainty escalated to VLM; VLM agrees with expected layout → **passed*
   "status": "passed",
   "summary": "YOLO low confidence on D3; Ark VLM agrees a 96-well plate is present and matches session layout.",
   "next_action": "Continue Phase 3c critical probe (machine gate); no human re-confirm of vision.",
-  "sensors_used": ["vision_check", "analyze_image_with_ark"],
+  "sensors_used": ["deck_vision_check(mode=local)", "analyze_image(provider=ark)"],
   "vlm_escalated": true,
   "vlm_used": true
 }
@@ -124,7 +124,7 @@ YOLO uncertainty escalated to VLM; VLM agrees with expected layout → **passed*
   "status": "auto_fixable",
   "summary": "Vision layout differs from session bookkeeping on D3.",
   "next_action": "Call reconcile_state and re-check robot APIs before any operator ask.",
-  "sensors_used": ["vision_check", "analyze_image_with_ark"],
+  "sensors_used": ["deck_vision_check(mode=local)", "analyze_image(provider=ark)"],
   "vlm_escalated": true,
   "vlm_used": true
 }

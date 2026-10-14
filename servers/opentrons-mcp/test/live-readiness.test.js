@@ -92,7 +92,7 @@ test("buildLiveReadinessReport warns on stale session and preflight warnings", (
   assert.ok(report.checks.some(check => check.name === "preflight_gate" && check.status === "warn"));
   assert.deepEqual(report.recommended_next_tools.slice(0, 4), [
     "safe_next_action",
-    "run_history",
+    "query_history",
     "parse_error",
     "robot_status",
   ]);

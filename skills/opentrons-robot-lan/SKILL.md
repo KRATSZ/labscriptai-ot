@@ -5,13 +5,13 @@ type: script-backed
 entry: scripts/opentrons_robot_api.py
 mcp_tools:
   - robot_status
-  - module_status
+  - robot_status
   - reconcile_state
   - run_protocol
-  - restart_review
+  - safe_next_action(detail=full)
   - is_home_safe
-  - camera_status
-  - capture_preview_image
+  - camera_settings(action=status)
+  - capture_image(mode=preview)
 ---
 
 # Robot LAN (MCP-absent fallback)
@@ -20,19 +20,19 @@ MCP is primary path. This skill's scripts are fallback when MCP is not wired.
 
 ## MCP Tool Order (when available)
 
-`robot_status` -> `module_status` -> `reconcile_state` ->
-`get_slot_occupation` / `list_tip_candidates` / `is_home_safe` ->
+`robot_status` -> `robot_status` -> `reconcile_state` ->
+`deck_slots(action=occupation)` / `tip_wells(action=list)` / `is_home_safe` ->
 `create_run_context` ->
 command tools (`load_pipette`, `load_labware`, `load_module`,
-`control_temperature_module`, `control_heater_shaker`, `control_thermocycler`,
+`control_module(module_type=temperature)`, `control_module(module_type=heater_shaker)`, `control_module(module_type=thermocycler)`,
 `move_labware`, `cleanup_motion`) ->
-camera tools (`camera_status`, `capture_preview_image`, `capture_run_image`,
-`list_data_files`, `download_data_file`, `vision_check`, `analyze_image_with_ark`, `analyze_image_with_kimi`) ->
-`run_history` / `experiment_history` -> `suggest_recovery_action`
+camera tools (`camera_settings(action=status)`, `capture_image(mode=preview)`, `capture_image(mode=run)`,
+`data_files(action=list)`, `data_files(action=download)`, `deck_vision_check(mode=local)`, `analyze_image(provider=ark)`, `analyze_image(provider=kimi)`) ->
+`query_history(scope=run_commands)` / `query_history(scope=experiment_logs)` -> `suggest_recovery_action`
 
 ## Key Rules
 
-- After MCP/host restart: `restart_review` first, follow `guidance.suggested_tool_order`.
+- After MCP/host restart: `safe_next_action(detail=full)` first, follow `guidance.suggested_tool_order`.
   If `reconcile_first`: run `reconcile_state` before other motion.
 - For full protocol runs: `run_protocol` (simulation gate runs before play).
 - For protocol execution without MCP: upload -> analyze -> create-run -> run-action.

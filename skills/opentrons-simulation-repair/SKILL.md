@@ -3,9 +3,9 @@ name: opentrons-simulation-repair
 description: Iteratively repair an Opentrons Python protocol — simulate, parse errors, edit, retry.
 type: prompt-only
 mcp_tools:
-  - doctor_local_runtime
+  - health_check(scope=local)
   - simulate_protocol
-  - parse_simulation_output
+  - simulate_protocol
 ---
 
 # Simulation Repair
@@ -14,9 +14,9 @@ mcp_tools:
 
 Repeat until simulation passes or you stop early:
 
-1. If runtime readiness unknown: `doctor_local_runtime`.
+1. If runtime readiness unknown: `health_check(scope=local)`.
 2. `simulate_protocol`.
-3. If fails: `parse_simulation_output`.
+3. If fails: `simulate_protocol`.
 4. Fix only the highest-priority issue.
 5. Re-run `simulate_protocol`.
 

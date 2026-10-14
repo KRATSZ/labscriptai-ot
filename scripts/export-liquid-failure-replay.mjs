@@ -238,7 +238,7 @@ async function main() {
   };
   const status =
     actionSummary.do_what === "manual_only" &&
-    summary.next_tool === "prepare_liquid_source_substitution_recovery" &&
+    summary.next_tool === "liquid_source_substitution (action=prepare_recovery)" &&
     summary.same_liquid_source_candidate_count > 0 &&
     summary.same_liquid_auto_resume_eligible === false
       ? "passed"

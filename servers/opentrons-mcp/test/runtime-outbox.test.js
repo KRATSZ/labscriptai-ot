@@ -88,9 +88,7 @@ function baseDependencies(overrides = {}) {
 
 test("runtime outbox tools are registered", () => {
   const names = new Set(TOOL_DEFINITIONS.map(tool => tool.name));
-  assert.equal(names.has("runtime_get_outbox"), true);
-  assert.equal(names.has("runtime_ack_outbox"), true);
-  assert.equal(names.has("runtime_deliver_outbox"), true);
+  assert.equal(names.has("runtime_outbox"), true);
   assert.equal(typeof TOOL_HANDLERS.runtime_get_outbox, "function");
   assert.equal(typeof TOOL_HANDLERS.runtime_ack_outbox, "function");
   assert.equal(typeof TOOL_HANDLERS.runtime_deliver_outbox, "function");
