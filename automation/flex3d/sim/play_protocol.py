@@ -978,7 +978,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Animate a Flex protocol from its opentrons analysis")
     parser.add_argument("protocol", type=Path, help="protocol .py (analyzed first) or .analysis.json")
     parser.add_argument("--view", action="store_true", help="open the MuJoCo window instead of rendering")
-    parser.add_argument("--no-video", action="store_true", help="checks and stills only")
+    parser.add_argument("--video", action="store_true", help="also write an MP4 (slow; off by default)")
     parser.add_argument("--fps", type=int, default=30)
     parser.add_argument("--frame", type=float, action="append", help="render only the frame at this time (s); repeatable")
     args = parser.parse_args()
@@ -1046,7 +1046,7 @@ def main() -> None:
         },
         "duration_s": round(plan.duration, 2),
     }
-    if not args.no_video:
+    if args.video:
         video = folder / f"{name}.mp4"
         started = time.monotonic()
         frames = render_video(plan, renderer, video, args.fps)

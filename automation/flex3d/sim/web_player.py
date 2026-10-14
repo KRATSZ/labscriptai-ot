@@ -235,6 +235,14 @@ def make_handler(registry: Registry) -> type[BaseHTTPRequestHandler]:
                 if not VIEWER.is_file():
                     self._json({"error": "viewer_missing"}, code=404)
                     return
+                # viewer.js cannot boot without ?key=. Rather than serve a page
+                # that is guaranteed to show "no key", send the browser to the
+                # model that is actually loaded (most recently used last).
+                if not parse_qs(parsed.query).get("key"):
+                    registered = registry.keys()
+                    if registered:
+                        self._redirect(f"/viewer.html?key={registered[-1]}")
+                        return
                 self._bytes(VIEWER.read_bytes(), "text/html; charset=utf-8")
                 return
             static = STATIC.get(parsed.path)
@@ -313,6 +321,12 @@ def make_handler(registry: Registry) -> type[BaseHTTPRequestHandler]:
             raw = json.dumps(body).encode()
             self._bytes(raw, "application/json; charset=utf-8", code)
 
+        def _redirect(self, location: str) -> None:
+            self.send_response(302)
+            self.send_header("Location", location)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+
         def _bytes(self, raw: bytes, content_type: str, code: int = 200) -> None:
             self.send_response(code)
             self.send_header("Content-Type", content_type)
@@ -347,15 +361,18 @@ def main() -> None:
         raise SystemExit("refusing to bind anything except 127.0.0.1")
     registry = Registry()
     label = "idle"
+    # The page needs ?key=; print the URL the operator should actually open.
+    viewer_url = f"http://{args.host}:{args.port}/viewer.html"
     if args.protocol is not None:
         analysis = resolve_analysis(args.protocol)
         example = Model(EXAMPLE_KEY, analysis, EXPORT / "protocols" / analysis.name.replace(".analysis.json", "").replace(".json", ""))
         registry.put(example)
         label = f"{example.title}  {example.duration:.1f}s"
+        viewer_url = f"{viewer_url}?key={EXAMPLE_KEY}"
     # One thread: the MuJoCo GL contexts have to stay on the thread that created them.
     server = HTTPServer((args.host, args.port), make_handler(registry))
     print(
-        f"flex3d http://{args.host}:{args.port}/viewer.html  {label}",
+        f"flex3d {viewer_url}  {label}",
         flush=True,
     )
     try:

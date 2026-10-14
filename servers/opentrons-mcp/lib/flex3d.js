@@ -8,6 +8,10 @@ const FLEX3D_ROOT = path.join(PLUGIN_ROOT, "automation", "flex3d");
 const FLEX3D_SCRIPT = path.join(FLEX3D_ROOT, "scripts", "render_protocol_3d.py");
 const FLEX3D_DEFAULT_OUT = path.join(PLUGIN_ROOT, ".plugin-data", "flex3d");
 const FLEX3D_DEFAULT_PORT = 8791;
+// web_player.py registers a preloaded protocol under this fixed key
+// (EXAMPLE_KEY in automation/flex3d/sim/web_player.py), and viewer.js refuses
+// to boot without ?key= — so the URL handed to the user must carry it.
+const FLEX3D_EXAMPLE_KEY = "example";
 
 function runCommand(command, args, { cwd, env } = {}) {
   return new Promise((resolve, reject) => {
@@ -69,12 +73,14 @@ async function withUsablePython(preferredPython, runner) {
  * JSON (or a protocol .py). The script always prints one JSON object and exits
  * 0 — including degraded results when mujoco is missing — so this wrapper only
  * has to parse stdout.
+ *
+ * Checks only. This path deliberately has no video/MP4 option: a 3D request is
+ * served by the online viewer (startFlex3dViewer), never by rendering a file.
  */
 export async function runFlex3dCheck({
   sourcePath,
   outDir,
   preferredPython,
-  video = false,
 } = {}) {
   if (!sourcePath || !String(sourcePath).trim()) {
     throw new Error("flex3d_preflight_check requires `source`: path to an opentrons analyze JSON or protocol .py");
@@ -85,9 +91,6 @@ export async function runFlex3dCheck({
   fs.mkdirSync(out, { recursive: true });
 
   const args = [FLEX3D_SCRIPT, source];
-  if (video) {
-    args.push("--video");
-  }
   args.push("--out", out);
 
   return withUsablePython(preferredPython, async python => {
@@ -144,6 +147,8 @@ function pollHealth(url, child, timeoutMs = 10000) {
  * 127.0.0.1 and return the browser URL. Requires mujoco in the Python env;
  * reports a degraded result otherwise. The process is left running so the
  * user can open the URL; `pid` is returned so the caller can stop it later.
+ *
+ * Online preview only — this never renders or exports a video/MP4.
  */
 export async function startFlex3dViewer({
   protocolPath = null,
@@ -151,7 +156,8 @@ export async function startFlex3dViewer({
   preferredPython,
 } = {}) {
   const args = ["-m", "sim.web_player", "--host", "127.0.0.1", "--port", String(port)];
-  if (protocolPath && String(protocolPath).trim()) {
+  const hasProtocol = Boolean(protocolPath && String(protocolPath).trim());
+  if (hasProtocol) {
     args.push("--protocol", path.resolve(String(protocolPath)));
   }
 
@@ -168,7 +174,9 @@ export async function startFlex3dViewer({
       stderr += chunk.toString();
     });
 
-    const url = `http://127.0.0.1:${port}/viewer.html`;
+    const url = hasProtocol
+      ? `http://127.0.0.1:${port}/viewer.html?key=${FLEX3D_EXAMPLE_KEY}`
+      : `http://127.0.0.1:${port}/viewer.html`;
 
     pollHealth(`http://127.0.0.1:${port}/health`, child).then(status => {
       if (status.exited) {
