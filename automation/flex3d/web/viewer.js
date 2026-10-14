@@ -113,9 +113,10 @@ function renderChrome() {
 function stepVerb(step) {
   const text = ui();
   const raw = step.text || "";
-  if (step.kind === "aspirate") return raw.includes("混匀") ? text.mixAspirate : text.aspirate;
-  if (step.kind === "dispense") return raw.includes("混匀") ? text.mixDispense : text.dispense;
-  if (step.kind === "moveLabware") return raw.includes("夹爪") ? text.moveGrip : text.moveHand;
+  const mixing = raw.includes("混匀") || raw.includes("Mix");
+  if (step.kind === "aspirate") return mixing ? text.mixAspirate : text.aspirate;
+  if (step.kind === "dispense") return mixing ? text.mixDispense : text.dispense;
+  if (step.kind === "moveLabware") return raw.includes("夹爪") || raw.includes("Gripper") ? text.moveGrip : text.moveHand;
   if (step.kind === "dropTip" || step.kind === "dropTipInPlace") return text.dropTip;
   return text[step.kind] || step.kind;
 }
@@ -123,16 +124,16 @@ function stepVerb(step) {
 function stepTail(step) {
   const raw = (step.text || "").trim();
   const cut = {
-    home: /^回原点(?:\s*\(home\))?/,
-    pickUpTip: /^取枪头/,
-    aspirate: /^(?:混匀·吸|吸液)/,
-    dispense: /^(?:混匀·打|分液)/,
-    moveToAddressableAreaForDropTip: /^移到垃圾桶/,
-    moveToAddressableArea: /^移到/,
-    dropTipInPlace: /^弃枪头/,
-    dropTip: /^弃枪头/,
-    moveLabware: /^(?:夹爪搬运|手动移动)/,
-    loadLiquid: /^加载液体/,
+    home: /^(?:Home|回原点(?:\s*\(home\))?)/,
+    pickUpTip: /^(?:Pick up tip|取枪头)/,
+    aspirate: /^(?:Mix asp|Aspirate|混匀·吸|吸液)/,
+    dispense: /^(?:Mix dis|Dispense|混匀·打|分液)/,
+    moveToAddressableAreaForDropTip: /^(?:Move to trash bin|Move to waste chute|移到垃圾桶)/,
+    moveToAddressableArea: /^(?:Move to|移到)/,
+    dropTipInPlace: /^(?:Drop tip|弃枪头)/,
+    dropTip: /^(?:Drop tip|弃枪头)/,
+    moveLabware: /^(?:Gripper carry|Manual move|夹爪搬运|手动移动)/,
+    loadLiquid: /^(?:Load liquid|加载液体)/,
   }[step.kind];
   // The captions double-space around arrows for the JPEG title card; the list shows single spaces.
   return (cut ? raw.replace(cut, "") : raw).replace(/\s+/g, " ").trim();

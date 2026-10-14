@@ -377,7 +377,7 @@ function checkFlex3d(pythonExe) {
     warn(
       "Flex 3D preview",
       "Skipped (no Python interpreter)",
-      "3D preview is optional; mujoco installs into OPENTRONS_PYTHON: pip install mujoco pillow"
+      "3D preview is optional; mujoco/pillow are pinned in pyproject.toml: run `uv sync` in the repo root"
     );
     return;
   }
@@ -394,7 +394,7 @@ function checkFlex3d(pythonExe) {
     warn(
       "Flex 3D preview",
       "mujoco not importable — 3D checks and viewer will degrade (optional feature)",
-      `${pythonExe} -m pip install mujoco pillow`
+      "Run `uv sync` in the repo root (mujoco/pillow are pinned in pyproject.toml)"
     );
   }
 }
