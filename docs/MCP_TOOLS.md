@@ -66,7 +66,9 @@ Heuristically estimate tip usage and flag low-volume transfers below the recomme
 
 ### `flex3d_open_viewer` [L1]
 
-Start the interactive Flex 3D viewer (MuJoCo + Three.js) on 127.0.0.1 and return the browser URL. Requires mujoco in the plugin Python env; degrades with `mujoco_missing` when absent. Flex protocols only.
+Start the interactive Flex 3D viewer (MuJoCo + Three.js) on 127.0.0.1 and return the browser URL. The returned URL carries the `?key=` the page needs (a protocol preloaded with `protocol_path` is registered under the fixed key `example`); a bare `/viewer.html` is also handled — the server redirects it to the loaded model, and the page falls back to `/flex3d/health` if it still has no key. Requires mujoco in the plugin Python env; degrades with `mujoco_missing` when absent. Flex protocols only.
+
+This is the 3D preview path and it is **online only**: it never renders or exports a video or image file. It does write the scene it serves (`<export>/protocols/<name>/`: `flex.xml`, `view.json` and `flex_assets/`, i.e. the textures and meshes the page loads). Startup takes ~20 s for a long protocol, and the health poll can report a false `viewer_start_timeout` on a slow start — the process usually comes up anyway.
 
 **Parameters:** `protocol_path` (optional), `port` (optional), `python_executable` (optional)
 
@@ -74,7 +76,11 @@ Start the interactive Flex 3D viewer (MuJoCo + Three.js) on 127.0.0.1 and return
 
 Flex 3D physical preflight (MuJoCo): geometry, liquid, targets, and clearance checks on an opentrons analyze JSON or protocol `.py`. `command_index` on failing checks aligns with LogicPass `step_index`. Degrades gracefully (`ok=false, error=mujoco_missing`, exit 0) when mujoco is not installed. OT-2 is refused.
 
-**Parameters:** `source`, `out_dir` (optional), `video` (optional), `python_executable` (optional)
+**Checks only:** this tool never renders or exports a video or image file. Its only artifact is `<out_dir>/<stem>_checks.json` (default `out_dir` is `<PLUGIN_DATA>/flex3d`). For a live look at the deck, use `flex3d_open_viewer`.
+
+**Parameters:** `source`, `out_dir` (optional), `python_executable` (optional)
+
+**CLI equivalent:** `python automation/flex3d/scripts/render_protocol_3d.py <analysis.json|protocol.py> [--out DIR]` prints one JSON object (checks only, no video). The lower-level animator `python -m sim.play_protocol <analysis.json|protocol.py>` prints the same checks plus a trace; `--stills` adds PNG stills and a contact sheet, `--video` adds an MP4, `--frame T` renders single frames, and `--view` opens the MuJoCo window. All rendering is off by default.
 
 ### `inspect_labware_definition` [L1]
 

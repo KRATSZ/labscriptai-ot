@@ -76,7 +76,6 @@ def load_raw(path: Path) -> dict:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Flex 3D checks for one analysis")
     parser.add_argument("source", type=Path, help="analysis JSON or protocol .py")
-    parser.add_argument("--video", action="store_true", help="also write an MP4")
     parser.add_argument("--out", type=Path, default=None)
     args = parser.parse_args()
 
@@ -124,7 +123,7 @@ def main() -> None:
         import mujoco
         from sim.flex_protocol import ProtocolError, load_analysis, plan as make_plan, scene_spec
         from sim.flex_scene import EXPORT, load_deck, write_model
-        from sim.play_protocol import Renderer, Scene, check_clearance, check_liquid, check_targets, render_video
+        from sim.play_protocol import Scene, check_clearance, check_liquid, check_targets
     except ImportError as exc:
         emit({
             "ok": False,
@@ -209,11 +208,9 @@ def main() -> None:
     trace.write_text(json.dumps({"robot_type": kind, "checks": checks}, indent=2), encoding="utf-8")
     files.append({"kind": "checks", "path": str(trace)})
 
-    if args.video:
-        video = out / f"{source.stem}.mp4"
-        renderer = Renderer(plan, scene)
-        render_video(plan, renderer, video, 30)
-        files.append({"kind": "mp4", "path": str(video)})
+    # No video branch here on purpose: a 3D request is served by the online
+    # viewer (sim/web_player.py). This check path must not render or export
+    # video/image files.
 
     failed = [item["name"] for item in checks if item["status"] == "fail"]
     emit({

@@ -1412,7 +1412,7 @@ const TOOL_DEFINITIONS = [
   {
     name: "flex3d_preflight_check",
     description:
-      "Flex 3D physical preflight (MuJoCo). Runs automation/flex3d/scripts/render_protocol_3d.py on an opentrons analyze JSON or protocol .py: geometry, liquid, targets, clearance checks with command_index aligned to LogicPass step_index. Flex only (OT-2 refused). Degrades gracefully (ok=false, error=mujoco_missing) when mujoco is not installed. Optional: --video writes an MP4.",
+      "Flex 3D physical preflight (MuJoCo). Runs automation/flex3d/scripts/render_protocol_3d.py on an opentrons analyze JSON or protocol .py: geometry, liquid, targets, clearance checks with command_index aligned to LogicPass step_index. Flex only (OT-2 refused). Degrades gracefully (ok=false, error=mujoco_missing) when mujoco is not installed. Checks only: this tool never renders or exports a video or image file, and its only artifact is the checks JSON. For a live 3D look at the deck use flex3d_open_viewer, which returns an online preview URL.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1423,11 +1423,6 @@ const TOOL_DEFINITIONS = [
         out_dir: {
           type: "string",
           description: "Directory for generated scene/view files (default .plugin-data/flex3d)",
-        },
-        video: {
-          type: "boolean",
-          description: "Also render an MP4 (slower). Default false.",
-          default: false,
         },
         python_executable: {
           type: "string",
@@ -1440,7 +1435,7 @@ const TOOL_DEFINITIONS = [
   {
     name: "flex3d_open_viewer",
     description:
-      "Start the interactive Flex 3D viewer (MuJoCo + Three.js) on 127.0.0.1 and return the browser URL. Requires mujoco in the plugin Python env; degrades with a clear error when missing. Pass protocol_path to preload an analyze JSON or protocol .py; otherwise POST the analysis to /flex3d/load from the page.",
+      "Start the interactive Flex 3D viewer (MuJoCo + Three.js) on 127.0.0.1 and return the browser URL. Requires mujoco in the plugin Python env; degrades with a clear error when missing. Pass protocol_path to preload an analyze JSON or protocol .py (the returned URL then carries the required ?key=example). Online preview only: no video is rendered and no rendered image is exported — the only files written are the scene the page serves (flex.xml, view.json and flex_assets). Startup takes ~20 s for a long protocol, and the health poll can report a false timeout on slow starts — the process usually comes up anyway.",
     inputSchema: {
       type: "object",
       properties: {
@@ -7212,7 +7207,6 @@ const TOOL_HANDLERS = {
     const result = await runFlex3dCheck({
       sourcePath: args.source,
       outDir: args.out_dir,
-      video: args.video,
       preferredPython: args.python_executable,
     });
     return { data: result };
