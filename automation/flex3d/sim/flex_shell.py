@@ -1232,6 +1232,6 @@ def scene_lighting(layout: Layout) -> str:
 
     cx = layout.center_x
     return f"""
-    <light name="key" pos="{_v(cx + 1.0, -1.3, 2.0)}" dir="-0.40 0.55 -0.75" directional="true" diffuse="0.52 0.52 0.50" specular="0.30 0.30 0.30" castshadow="true"/>
-    <light name="fill" pos="{_v(cx - 1.2, -1.0, 1.2)}" dir="0.50 0.65 -0.30" directional="true" diffuse="0.26 0.28 0.31" specular="0.08 0.08 0.08" castshadow="false"/>
-    <light name="rim" pos="{_v(cx, 1.6, 1.6)}" dir="0 -0.70 -0.55" directional="true" diffuse="0.16 0.16 0.18" specular="0.15 0.15 0.15" castshadow="false"/>    """
+    <light name="key" pos="{_v(cx + 1.0, -1.3, 2.0)}" dir="-0.40 0.55 -0.75" directional="true" diffuse="0.68 0.68 0.65" specular="0.32 0.32 0.32" castshadow="true"/>
+    <light name="fill" pos="{_v(cx - 1.2, -1.0, 1.2)}" dir="0.50 0.65 -0.30" directional="true" diffuse="0.38 0.40 0.43" specular="0.10 0.10 0.10" castshadow="false"/>
+    <light name="rim" pos="{_v(cx, 1.6, 1.6)}" dir="0 -0.70 -0.55" directional="true" diffuse="0.24 0.24 0.26" specular="0.16 0.16 0.16" castshadow="false"/>    """
