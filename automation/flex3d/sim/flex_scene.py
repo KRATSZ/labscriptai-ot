@@ -666,7 +666,7 @@ def build_xml(deck: Deck, spec: SceneSpec, assets: Path = ASSETS) -> str:
   <visual>
     <global azimuth="128" elevation="-18" offwidth="1920" offheight="1200"/>
     <quality shadowsize="8192" offsamples="8"/>
-    <headlight ambient="0.34 0.34 0.36" diffuse="0.22 0.22 0.22" specular="0.06 0.06 0.06"/>
+    <headlight ambient="0.45 0.45 0.47" diffuse="0.32 0.32 0.32" specular="0.08 0.08 0.08"/>
     <map znear="0.01" zfar="20" haze="0.25"/>
     <rgba haze="0.96 0.965 0.975 1"/>
   </visual>
@@ -680,7 +680,6 @@ def build_xml(deck: Deck, spec: SceneSpec, assets: Path = ASSETS) -> str:
   <worldbody>
     {flex_shell.scene_lighting(layout)}
     {cams}
-    <geom name="floor" type="plane" pos="{_f(target[0])} {_f(target[1])} {_f(layout.z0)}" size="3 3 0.05" material="floor" group="0"/>
     {chassis}
     {chr(10).join(trash)}
     {chr(10).join(labware)}

@@ -307,7 +307,7 @@ function mount(payload) {
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   stage.appendChild(renderer.domElement);
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0xd7dde2);
+  scene.background = new THREE.Color(0xffffff);
   const camera = new THREE.PerspectiveCamera(38, 1, 0.02, 30);
   const target = new THREE.Vector3(...payload.camera.target);
   camera.up.set(0, 0, 1);
@@ -316,8 +316,8 @@ function mount(payload) {
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.target.copy(target);
   controls.enableDamping = true;
-  scene.add(new THREE.AmbientLight(0xffffff, 0.72));
-  const sun = new THREE.DirectionalLight(0xffffff, 0.85);
+  scene.add(new THREE.AmbientLight(0xffffff, 0.95));
+  const sun = new THREE.DirectionalLight(0xffffff, 1.05);
   sun.position.set(2, -3, 4);
   scene.add(sun);
   const maps = (payload.textures || []).map((item) => {
