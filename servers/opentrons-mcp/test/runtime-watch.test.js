@@ -131,9 +131,8 @@ function guidance({
 
 test("runtime watch MCP tools are registered", () => {
   const names = new Set(TOOL_DEFINITIONS.map(tool => tool.name));
-  assert.equal(names.has("runtime_watch_poll"), true);
-  assert.equal(names.has("runtime_get_alerts"), true);
-  assert.equal(names.has("runtime_ack_alert"), true);
+  assert.equal(names.has("runtime_watch"), true);
+  assert.equal(names.has("runtime_alerts"), true);
   assert.equal(typeof TOOL_HANDLERS.runtime_watch_poll, "function");
   assert.equal(typeof TOOL_HANDLERS.runtime_get_alerts, "function");
   assert.equal(typeof TOOL_HANDLERS.runtime_ack_alert, "function");

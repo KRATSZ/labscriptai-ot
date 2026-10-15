@@ -979,7 +979,7 @@ test("buildRecoverySuggestion lists same-liquid water alternatives without prete
   assert.equal(suggestion.same_liquid_source_substitution_allowed, true);
   assert.equal(
     suggestion.same_liquid_source_substitution_next_tool,
-    "prepare_liquid_source_substitution_recovery",
+    "liquid_source_substitution (action=prepare_recovery)",
   );
   assert.equal(
     suggestion.same_liquid_source_substitution_playbook,
@@ -1009,7 +1009,7 @@ test("buildRecoverySuggestion lists same-liquid water alternatives without prete
   assert.equal(summary.params.same_liquid_source_substitution_allowed, true);
   assert.equal(
     summary.params.same_liquid_source_substitution_next_tool,
-    "prepare_liquid_source_substitution_recovery",
+    "liquid_source_substitution (action=prepare_recovery)",
   );
   assert.equal(
     summary.params.same_liquid_source_substitution_playbook,

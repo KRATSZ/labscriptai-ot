@@ -83,7 +83,7 @@ test("buildLiquidSourceSubstitutionPlan plans water replacement from same-liquid
     plan.blocked_reason,
     "liquid_source_substitution_requires_validated_presence_before_auto_resume",
   );
-  assert.equal(plan.required_next_step, "prepare_liquid_source_substitution_recovery");
+  assert.equal(plan.required_next_step, "liquid_source_substitution (action=prepare_recovery)");
   assert.equal(plan.no_robot_motion, true);
 });
 

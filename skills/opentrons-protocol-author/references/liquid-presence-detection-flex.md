@@ -59,7 +59,7 @@ for dest in destinations:
 pipette.drop_tip(trash)
 ```
 
-If the protocol documents a same-identity **reserve** well, keep recovery to operator-confirmed substitution (see `plan_liquid_source_substitution`); do not silently switch wells inside the loop.
+If the protocol documents a same-identity **reserve** well, keep recovery to operator-confirmed substitution (see `liquid_source_substitution(action=plan)`); do not silently switch wells inside the loop.
 
 ### Measure height before aspirate
 

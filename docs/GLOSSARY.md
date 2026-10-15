@@ -5,7 +5,7 @@ Shared vocabulary for operators and agents. For workflow order, see [policy/work
 | Term | Meaning |
 |------|---------|
 | **Deck truth** | The committed, authoritative deck layout for a session — what the agent and robot APIs believe is on each slot. Vision and guesses do not override deck truth; use `reconcile_state` and robot APIs to update it. |
-| **Simulate gate** | Mandatory local simulation (`doctor_local_runtime` → `simulate_protocol` → `parse_simulation_output`) before unattended live execution. Simulation failure blocks live runs. |
+| **Simulate gate** | Mandatory local simulation (`health_check(scope=local)` → `simulate_protocol` → `simulate_protocol`) before unattended live execution. Simulation failure blocks live runs. |
 | **Live readiness** | Read-only preflight (`live_readiness_check`) combining environment health, session state, robot/module status, and optional protocol deck diff. Distinct from `health_check`, which probes the developer environment only. |
 | **reconcile_state** | Compares persisted session deck state with live hardware and run context, then proposes or persists a reconciliation snapshot. Run when deck layout may have drifted or after restarts. |
 | **Tip policy** | Rules for tip usage: rack count, low-volume transfer warnings, out-of-tips handling. Often set during intent review (`opentrons-experiment-intent-review`) and checked with `estimate_tip_budget`. |
@@ -17,7 +17,7 @@ Shared vocabulary for operators and agents. For workflow order, see [policy/work
 | **Liquid source map** | Operator-confirmed session bookkeeping for which liquid/sample is expected in a source well. It helps recovery messages preserve sample identity; it does not authorize automatic source-well substitution. |
 | **Runtime recovery monitor** | L1-L4 active monitor tick that combines runtime self-test, robot/module status, run watching, safe-next guidance, liquid gates, and guarded L0 self-fix status. Default observe mode is read-only for run watching. |
 | **Recovery playbook** | Registered fixed recovery contract exposed by `list_recovery_playbooks`: executor tool, watch-mode permission, motion boundary, required gates, and semantic invariants. Agents must not invent live recovery actions outside this registry. |
-| **Vision (observation-only)** | Camera capture and `vision_check` (YOLO) provide hints about deck appearance. Default preflight may run `deck_vision_check` (YOLO first, Ark VLM second opinion). Never deck truth — compare with `reconcile_state`. Sensor-aligned agreement → pass; uncertainty → auto-reconcile before human. |
+| **Vision (observation-only)** | Camera capture and `deck_vision_check(mode=local)` (YOLO) provide hints about deck appearance. Default preflight may run `deck_vision_check` (YOLO first, Ark VLM second opinion). Never deck truth — compare with `reconcile_state`. Sensor-aligned agreement → pass; uncertainty → auto-reconcile before human. |
 | **Preflight subphases** | Live preflight is ordered: **3a dashboard** (live_readiness_check, no camera), **3b deck vision** (YOLO → optional VLM), **3c critical probe** (targeted probe_wells only). Subgates are machine-judged under HumanConfirmBudget. |
 | **Recovery channel** | Routing hint from `suggest_recovery_action`: `dashboard` (门/模块), `vision` (台面), `reconcile` (会话/状态对齐), `manual` (碰撞等硬停), `slot_confirm` (槽位人工确认), `probe` (液体), `tip` (tip 缺失). |
 | **Quiet execution** | During `run_protocol` / runtime watch, do not call vision or probe unless recovery routing requires it. |

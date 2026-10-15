@@ -31,9 +31,9 @@ test("buildRestartReview includes run_history and parse_error when last_run_id i
 
   const order = data.guidance.suggested_tool_order;
   assert.ok(order.indexOf("reconcile_state") === -1);
-  assert.ok(order.indexOf("robot_status") < order.indexOf("run_history"));
-  assert.ok(order.indexOf("run_history") < order.indexOf("parse_error"));
-  assert.ok(order.includes("experiment_history"));
+  assert.ok(order.indexOf("robot_status") < order.indexOf("query_history"));
+  assert.ok(order.indexOf("query_history") < order.indexOf("parse_error"));
+  assert.ok(order.includes("query_history"));
   assert.ok(order.includes("is_home_safe"));
 });
 
@@ -187,10 +187,10 @@ test("restart_review handler includes run_history and parse_error when last_run_
     });
 
     const order = result.data.guidance.suggested_tool_order;
-    assert.ok(order.includes("run_history"));
+    assert.ok(order.includes("query_history"));
     assert.ok(order.includes("parse_error"));
-    assert.ok(order.indexOf("robot_status") < order.indexOf("run_history"));
-    assert.ok(order.indexOf("run_history") < order.indexOf("parse_error"));
+    assert.ok(order.indexOf("robot_status") < order.indexOf("query_history"));
+    assert.ok(order.indexOf("query_history") < order.indexOf("parse_error"));
     assert.equal(result.data.guidance.reconcile_first, false);
   } finally {
     if (originalSessionDir === undefined) {

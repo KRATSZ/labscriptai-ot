@@ -418,29 +418,21 @@ const REQUIRED_RUNTIME_TOOLS = [
   "health_check",
   "runtime_recovery_self_test",
   "runtime_recovery_monitor",
-  "runtime_get_outbox",
-  "runtime_ack_outbox",
-  "runtime_deliver_outbox",
-  "runtime_watch_loop",
+  "runtime_outbox",
+  "runtime_watch",
   "safe_next_action",
-  "restart_review",
   "validate_virtual_lab_state_steps",
   "list_recovery_playbooks",
   "live_liquid_recovery_gate",
   "robot_status",
-  "module_status",
   "is_home_safe",
-  "experiment_history",
+  "query_history",
   "record_liquid_source_map",
-  "get_liquid_source_map",
-  "summarize_liquid_source_map",
-  "plan_liquid_source_substitution",
-  "generate_liquid_source_substitution_protocol",
-  "prepare_liquid_source_substitution_recovery",
+  "liquid_source_map",
+  "liquid_source_substitution",
 ];
 
 function buildToolAvailabilitySummary() {
-  const handlerNames = Object.keys(TOOL_HANDLERS || {});
   const present = REQUIRED_RUNTIME_TOOLS.filter(name => typeof TOOL_HANDLERS?.[name] === "function");
   const missing = REQUIRED_RUNTIME_TOOLS.filter(name => typeof TOOL_HANDLERS?.[name] !== "function");
   return {
@@ -448,21 +440,24 @@ function buildToolAvailabilitySummary() {
     present,
     missing,
     all_present: missing.length === 0,
-    tool_count: handlerNames.length,
+    tool_count: TOOL_DEFINITIONS.length,
+    internal_handler_count: Object.keys(TOOL_HANDLERS || {}).length,
   };
 }
 
 const TOOL_DEFINITIONS = [
   {
-    name: "validate_labware_name",
-    description: "Validate a labware load name against the local Opentrons definition index and return close matches.",
+    name: "labware_lookup",
+    description:
+      "Look up a labware load name in the local Opentrons definition index. action=validate checks existence and returns close matches; action=inspect returns geometry, capacity, and dead-volume guidance.",
     inputSchema: {
       type: "object",
       properties: {
-        load_name: { type: "string", description: "Labware load name to validate" },
+        action: { type: "string", enum: ["validate", "inspect"], description: "validate = existence + close matches; inspect = geometry/capacity guidance." },
+        load_name: { type: "string", description: "Labware load name to look up" },
         limit: { type: "integer", default: 5 },
       },
-      required: ["load_name"],
+      required: ["action", "load_name"],
     },
   },
   {
@@ -479,74 +474,35 @@ const TOOL_DEFINITIONS = [
     },
   },
   {
-    name: "inspect_labware_definition",
-    description: "Inspect a labware load name and return geometry, capacity, and dead-volume guidance from the local definition index.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        load_name: { type: "string", description: "Labware load name to inspect" },
-        limit: { type: "integer", default: 5 },
-      },
-      required: ["load_name"],
-    },
-  },
-  {
-    name: "robot_health",
-    description: "Check robot connectivity and health via /health.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        robot_ip: { type: "string", description: "Robot IP or full base URL" },
-      },
-    },
-  },
-  {
     name: "robot_status",
     description:
-      "Fetch the live hardware snapshot needed before physical actions: health, instruments, door, estop, and deck configuration.",
+      "Fetch the live hardware snapshot needed before physical actions: health, instruments, door, estop, and deck configuration. With include_modules=true (default) the attached module state and execution-readiness summary is embedded in the same snapshot.",
     inputSchema: {
       type: "object",
       properties: {
         robot_ip: { type: "string", description: "Robot IP or full base URL" },
-      },
-    },
-  },
-  {
-    name: "module_status",
-    description: "Fetch attached module state and summarize which modules are ready for execution.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        robot_ip: { type: "string", description: "Robot IP or full base URL" },
-      },
-    },
-  },
-  {
-    name: "get_slot_occupation",
-    description: "Return whether a slot is occupied, unknown, or mismatched against committed session deck state.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        robot_ip: { type: "string", description: "Robot IP or full base URL" },
-        slot_name: { type: "string", description: "Target deck slot such as C2" },
-        session_id: { type: "string" },
-        run_id: { type: "string" },
-        context_type: {
-          type: "string",
-          enum: ["protocol", "maintenance"],
+        include_modules: {
+          type: "boolean",
+          default: true,
+          description: "Also fetch attached module state and readiness (module snapshot under data.modules).",
         },
-        context_id: { type: "string" },
       },
-      required: ["slot_name"],
     },
   },
   {
-    name: "list_available_slots",
-    description: "List all available slots matching specific criteria (empty, addressable, suitable for labware/modules). Returns slots grouped by availability type.",
+    name: "deck_slots",
+    description:
+      "Deck slot state. action=occupation returns whether one slot is occupied, unknown, or mismatched against committed session deck state (requires slot_name); action=available lists slots matching criteria (empty, addressable, or all) grouped by availability type.",
     inputSchema: {
       type: "object",
       properties: {
+        action: {
+          type: "string",
+          enum: ["occupation", "available"],
+          description: "occupation = single-slot check (requires slot_name); available = list slots by filter.",
+        },
         robot_ip: { type: "string", description: "Robot IP or full base URL" },
+        slot_name: { type: "string", description: "occupation only (required): target deck slot such as C2." },
         session_id: { type: "string" },
         run_id: { type: "string" },
         context_type: {
@@ -557,18 +513,24 @@ const TOOL_DEFINITIONS = [
         filter: {
           type: "string",
           enum: ["empty", "addressable", "all"],
-          description: "Filter slots by availability: 'empty' for unoccupied, 'addressable' for usable slots, 'all' for complete deck state",
+          description: "available only: 'empty' for unoccupied, 'addressable' for usable slots, 'all' for complete deck state.",
         },
       },
-      required: [],
+      required: ["action"],
     },
   },
   {
-    name: "list_tip_candidates",
-    description: "List remaining candidate tip wells in default search order using session bookkeeping plus current run context.",
+    name: "tip_wells",
+    description:
+      "Tip well bookkeeping. action=list returns remaining candidate tip wells in default search order (session bookkeeping plus current run context); action=suggest_next picks the next viable well after skipping previously failed or depleted wells.",
     inputSchema: {
       type: "object",
       properties: {
+        action: {
+          type: "string",
+          enum: ["list", "suggest_next"],
+          description: "list = remaining candidates; suggest_next = next viable well skipping failed/depleted ones.",
+        },
         robot_ip: { type: "string", description: "Robot IP or full base URL" },
         session_id: { type: "string" },
         run_id: { type: "string" },
@@ -576,29 +538,15 @@ const TOOL_DEFINITIONS = [
           type: "array",
           items: { type: "string" },
         },
-      },
-    },
-  },
-  {
-    name: "suggest_next_tip_well",
-    description: "Suggest the next viable tip well after skipping previously failed or depleted wells.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        robot_ip: { type: "string", description: "Robot IP or full base URL" },
-        session_id: { type: "string" },
-        run_id: { type: "string" },
-        tiprack_slots: {
-          type: "array",
-          items: { type: "string" },
-        },
-        tiprack_slot: { type: "string" },
-        failed_well: { type: "string" },
+        tiprack_slot: { type: "string", description: "suggest_next only." },
+        failed_well: { type: "string", description: "suggest_next only." },
         failure_status: {
           type: "string",
           enum: ["missing", "depleted", "unknown-blocked"],
+          description: "suggest_next only.",
         },
       },
+      required: ["action"],
     },
   },
   {
@@ -690,41 +638,26 @@ const TOOL_DEFINITIONS = [
     },
   },
   {
-    name: "get_liquid_source_map",
+    name: "liquid_source_map",
     description:
-      "Read operator-confirmed liquid/source identity from session state. This is bookkeeping only and does not inspect or move the robot.",
+      "Read the operator-confirmed liquid/source map from session state (bookkeeping only; does not inspect or move the robot). action=get returns recorded sources with optional slot/well filters; action=summarize returns source-map completeness/readiness for semantic recovery; action=critical_targets lists critical wells for preflight LPD probing (wash buffer, enzyme, etc.). Use record_liquid_source_map to write and apply_liquid_probe_results to write probe observations.",
     inputSchema: {
       type: "object",
       properties: {
+        action: {
+          type: "string",
+          enum: ["get", "summarize", "critical_targets"],
+          description: "get = recorded sources; summarize = completeness summary; critical_targets = wells to probe before live runs.",
+        },
         session_id: { type: "string" },
-        slot_name: { type: "string", description: "Optional deck slot filter such as D3" },
-        well_name: { type: "string", description: "Optional well filter such as A1; requires slot_name to match a single source" },
-      },
-    },
-  },
-  {
-    name: "summarize_liquid_source_map",
-    description:
-      "Summarize liquid source-map completeness for semantic recovery. This is read-only and does not inspect or move the robot.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        session_id: { type: "string" },
-        slot_name: { type: "string", description: "Optional deck slot filter such as D3" },
-      },
-    },
-  },
-  {
-    name: "list_critical_probe_targets",
-    description:
-      "List critical source wells for preflight LPD probing (wash buffer, enzyme, etc.). Reads session liquid source map critical flags/roles; does not move the robot.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        session_id: { type: "string" },
+        slot_name: { type: "string", description: "Optional deck slot filter such as D3 (get/summarize)." },
+        well_name: {
+          type: "string",
+          description: "Optional well filter such as A1; get only; requires slot_name to match a single source.",
+        },
         critical_sources: {
           type: "array",
-          description: "Optional explicit critical source list from intent review.",
+          description: "critical_targets only: optional explicit critical source list from intent review.",
           items: {
             type: "object",
             properties: {
@@ -741,9 +674,11 @@ const TOOL_DEFINITIONS = [
         include_all_expected_present_fallback: {
           type: "boolean",
           default: false,
-          description: "When no critical flags exist, optionally fall back to all expected_presence=true sources.",
+          description:
+            "critical_targets only: when no critical flags exist, optionally fall back to all expected_presence=true sources.",
         },
       },
+      required: ["action"],
     },
   },
   {
@@ -807,66 +742,40 @@ const TOOL_DEFINITIONS = [
     },
   },
   {
-    name: "plan_liquid_source_substitution",
+    name: "liquid_source_substitution",
     description:
-      "Plan a same-liquid source substitution from the recorded source map. This is read-only/no-motion and does not execute or resume a run.",
+      "Same-liquid source substitution recovery in three stages. action=plan (read-only) picks a replacement source from the recorded source map; action=generate_protocol writes a fixed no-aspirate validation protocol locally (no upload, run, or resume); action=prepare_recovery runs the registered playbook end to end — plan, generate protocol, local simulation, auditable recovery bundle — and stops before any robot motion. generate_protocol and prepare_recovery additionally require failed_source_key plus pipette_name, mount, tiprack_load_name, and tiprack_slot.",
     inputSchema: {
       type: "object",
       properties: {
+        action: {
+          type: "string",
+          enum: ["plan", "generate_protocol", "prepare_recovery"],
+          description: "Stage of the substitution playbook to run.",
+        },
         session_id: { type: "string" },
-        failed_source_key: { type: "string", description: "Source key such as D3.A1" },
-        failed_slot_name: { type: "string", description: "Deck slot such as D3; used with failed_well_name" },
-        failed_well_name: { type: "string", description: "Well such as A1; used with failed_slot_name" },
-        preferred_source_key: { type: "string", description: "Optional replacement source key such as C3.A1" },
-      },
-    },
-  },
-  {
-    name: "generate_liquid_source_substitution_protocol",
-    description:
-      "Generate a fixed no-aspirate validation protocol for a planned same-liquid source substitution. This writes a local protocol file only; it does not upload, run, or resume the robot.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        session_id: { type: "string" },
-        failed_source_key: { type: "string", description: "Source key such as D3.A1" },
-        failed_slot_name: { type: "string" },
-        failed_well_name: { type: "string" },
-        preferred_source_key: { type: "string", description: "Optional replacement source key such as C3.A1" },
-        pipette_name: { type: "string", description: "Protocol pipette name such as flex_1channel_1000" },
+        failed_source_key: {
+          type: "string",
+          description: "Source key such as D3.A1; required for generate_protocol/prepare_recovery.",
+        },
+        failed_slot_name: {
+          type: "string",
+          description: "Deck slot such as D3; used with failed_well_name when failed_source_key is omitted.",
+        },
+        failed_well_name: { type: "string", description: "Well such as A1; used with failed_slot_name." },
+        preferred_source_key: { type: "string", description: "Optional replacement source key such as C3.A1." },
+        pipette_name: {
+          type: "string",
+          description: "Protocol pipette name such as flex_1channel_1000 (generate_protocol/prepare_recovery).",
+        },
         mount: { type: "string", enum: ["left", "right"] },
         tiprack_load_name: { type: "string" },
         tiprack_slot: { type: "string" },
-        output_path: { type: "string" },
-        api_level: { type: "string", default: "2.24" },
-        robot_type: { type: "string", default: "Flex" },
-        tiprack_namespace: { type: "string", default: "opentrons" },
-        tiprack_version: { type: "integer", default: 1 },
-        labware_namespace: { type: "string", default: "opentrons" },
-        labware_version: { type: "integer", default: 1 },
-        trash_slot: { type: "string" },
-      },
-      required: ["failed_source_key", "pipette_name", "mount", "tiprack_load_name", "tiprack_slot"],
-    },
-  },
-  {
-    name: "prepare_liquid_source_substitution_recovery",
-    description:
-      "Prepare the registered same-liquid source-substitution recovery playbook: plan replacement, generate the fixed validation protocol, run local simulation, write an auditable bundle, and stop before any robot motion.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        session_id: { type: "string" },
-        failed_source_key: { type: "string", description: "Source key such as D3.A1" },
-        failed_slot_name: { type: "string" },
-        failed_well_name: { type: "string" },
-        preferred_source_key: { type: "string", description: "Optional replacement source key such as C3.A1" },
-        pipette_name: { type: "string", description: "Protocol pipette name such as flex_1channel_1000" },
-        mount: { type: "string", enum: ["left", "right"] },
-        tiprack_load_name: { type: "string" },
-        tiprack_slot: { type: "string" },
-        output_path: { type: "string", description: "Optional JSON recovery bundle path" },
-        output_protocol_path: { type: "string", description: "Optional generated validation protocol path" },
+        output_path: {
+          type: "string",
+          description: "generate_protocol: protocol output path; prepare_recovery: JSON recovery bundle path.",
+        },
+        output_protocol_path: { type: "string", description: "prepare_recovery: generated validation protocol path." },
         python_executable: { type: "string" },
         api_level: { type: "string", default: "2.24" },
         robot_type: { type: "string", default: "Flex" },
@@ -876,7 +785,7 @@ const TOOL_DEFINITIONS = [
         labware_version: { type: "integer", default: 1 },
         trash_slot: { type: "string" },
       },
-      required: ["failed_source_key", "pipette_name", "mount", "tiprack_load_name", "tiprack_slot"],
+      required: ["action"],
     },
   },
   {
@@ -1074,11 +983,22 @@ const TOOL_DEFINITIONS = [
     },
   },
   {
-    name: "control_temperature_module",
-    description: "Control a Temperature Module in an active run or maintenance context.",
+    name: "control_module",
+    description:
+      "Control an attached module in an active run or maintenance context. module_type=temperature supports set_target_temperature / wait_for_temperature / deactivate (celsius). module_type=heater_shaker supports heater actions plus set_shake_speed / set_and_wait_for_shake_speed / deactivate_shaker / open_labware_latch / close_labware_latch (celsius, rpm). module_type=thermocycler supports block/lid temperature, open_lid / close_lid, and run_profile (celsius, hold_time_seconds, ramp_rate, profile).",
     inputSchema: {
       type: "object",
       properties: {
+        module_type: {
+          type: "string",
+          enum: ["temperature", "heater_shaker", "thermocycler"],
+          description: "Which module kind to control.",
+        },
+        action: {
+          type: "string",
+          description:
+            "Module command; valid values depend on module_type (see tool description). Invalid combinations are rejected.",
+        },
         robot_ip: { type: "string", description: "Robot IP or full base URL" },
         context_type: {
           type: "string",
@@ -1086,102 +1006,24 @@ const TOOL_DEFINITIONS = [
         },
         context_id: { type: "string" },
         module_id: { type: "string" },
-        action: {
-          type: "string",
-          enum: ["set_target_temperature", "wait_for_temperature", "deactivate"],
-        },
         celsius: { type: "number" },
-        intent: { type: "string" },
-        key: { type: "string" },
-        session_id: { type: "string" },
-        timeout_ms: { type: "integer", default: 120000 },
-        poll_interval_ms: { type: "integer", default: 500 },
-      },
-      required: ["context_id", "module_id", "action"],
-    },
-  },
-  {
-    name: "control_heater_shaker",
-    description: "Control Heater-Shaker temperature, shaker speed, or latch in an active context.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        robot_ip: { type: "string", description: "Robot IP or full base URL" },
-        context_type: {
-          type: "string",
-          enum: ["protocol", "maintenance"],
-        },
-        context_id: { type: "string" },
-        module_id: { type: "string" },
-        action: {
-          type: "string",
-          enum: [
-            "set_target_temperature",
-            "wait_for_temperature",
-            "deactivate_heater",
-            "set_shake_speed",
-            "set_and_wait_for_shake_speed",
-            "deactivate_shaker",
-            "open_labware_latch",
-            "close_labware_latch",
-          ],
-        },
-        celsius: { type: "number" },
-        rpm: { type: "number" },
+        rpm: { type: "number", description: "heater_shaker only." },
         ensure_latch_closed: {
           type: "boolean",
           default: true,
-          description:
-            "When action is deactivate_shaker, explicitly satisfy the latch-closed precondition before or after a latch-related failure.",
+          description: "heater_shaker only: satisfy the latch-closed precondition around deactivate_shaker.",
         },
+        hold_time_seconds: { type: "number", description: "thermocycler only." },
+        block_max_volume_ul: { type: "number", description: "thermocycler only." },
+        ramp_rate: { type: "number", description: "thermocycler only." },
+        profile: { type: "array", items: { type: "object" }, description: "thermocycler run_profile only." },
         intent: { type: "string" },
         key: { type: "string" },
         session_id: { type: "string" },
         timeout_ms: { type: "integer", default: 120000 },
         poll_interval_ms: { type: "integer", default: 500 },
       },
-      required: ["context_id", "module_id", "action"],
-    },
-  },
-  {
-    name: "control_thermocycler",
-    description: "Control Thermocycler block/lid temperature or lid state in an active context.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        robot_ip: { type: "string", description: "Robot IP or full base URL" },
-        context_type: {
-          type: "string",
-          enum: ["protocol", "maintenance"],
-        },
-        context_id: { type: "string" },
-        module_id: { type: "string" },
-        action: {
-          type: "string",
-          enum: [
-            "set_block_temperature",
-            "wait_for_block_temperature",
-            "set_lid_temperature",
-            "wait_for_lid_temperature",
-            "deactivate_block",
-            "deactivate_lid",
-            "open_lid",
-            "close_lid",
-            "run_profile",
-          ],
-        },
-        celsius: { type: "number" },
-        hold_time_seconds: { type: "number" },
-        block_max_volume_ul: { type: "number" },
-        ramp_rate: { type: "number" },
-        profile: { type: "array", items: { type: "object" } },
-        intent: { type: "string" },
-        key: { type: "string" },
-        session_id: { type: "string" },
-        timeout_ms: { type: "integer", default: 120000 },
-        poll_interval_ms: { type: "integer", default: 500 },
-      },
-      required: ["context_id", "module_id", "action"],
+      required: ["module_type", "context_id", "module_id", "action"],
     },
   },
   {
@@ -1260,74 +1102,48 @@ const TOOL_DEFINITIONS = [
     },
   },
   {
-    name: "camera_status",
-    description: "Read built-in camera enablement and livestream state from the robot.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        robot_ip: { type: "string", description: "Robot IP or full base URL" },
-      },
-    },
-  },
-  {
-    name: "configure_camera",
+    name: "camera_settings",
     description:
-      "Enable or tune the built-in camera. Supports /camera booleans and optional /camera/cameraSettings image parameters.",
+      "Built-in robot camera configuration. action=status reads camera enablement and livestream state; action=configure enables/tunes the camera (/camera booleans plus optional /camera/cameraSettings image parameters; requires at least one state field or image setting).",
     inputSchema: {
       type: "object",
       properties: {
+        action: { type: "string", enum: ["status", "configure"], description: "status = read state; configure = update camera settings." },
         robot_ip: { type: "string", description: "Robot IP or full base URL" },
-        camera_enabled: { type: "boolean" },
-        live_stream_enabled: { type: "boolean" },
-        error_recovery_camera_enabled: { type: "boolean" },
+        camera_enabled: { type: "boolean", description: "configure only." },
+        live_stream_enabled: { type: "boolean", description: "configure only." },
+        error_recovery_camera_enabled: { type: "boolean", description: "configure only." },
         camera_id: { type: "string" },
-        resolution_width: { type: "integer" },
-        resolution_height: { type: "integer" },
-        zoom: { type: "number" },
-        contrast: { type: "number" },
-        brightness: { type: "number" },
-        saturation: { type: "number" },
-        pan_x: { type: "number" },
-        pan_y: { type: "number" },
+        resolution_width: { type: "integer", description: "configure only." },
+        resolution_height: { type: "integer", description: "configure only." },
+        zoom: { type: "number", description: "configure only." },
+        contrast: { type: "number", description: "configure only." },
+        brightness: { type: "number", description: "configure only." },
+        saturation: { type: "number", description: "configure only." },
+        pan_x: { type: "number", description: "configure only." },
+        pan_y: { type: "number", description: "configure only." },
       },
+      required: ["action"],
     },
   },
   {
-    name: "capture_preview_image",
+    name: "capture_image",
     description:
-      "Capture a robot preview image, save it locally, and return the artifact path for later human or model analysis.",
+      "Capture a robot image and save it locally, returning the artifact path for human or model analysis. mode=preview captures directly via the camera preview endpoint (no run required); mode=run captures through the robot command queue in an active context and downloads the resulting data file (requires context_id).",
     inputSchema: {
       type: "object",
       properties: {
-        robot_ip: { type: "string", description: "Robot IP or full base URL" },
-        output_path: { type: "string", description: "Optional explicit file path for the saved image" },
-        camera_id: { type: "string" },
-        resolution_width: { type: "integer" },
-        resolution_height: { type: "integer" },
-        zoom: { type: "number" },
-        contrast: { type: "number" },
-        brightness: { type: "number" },
-        saturation: { type: "number" },
-        pan_x: { type: "number" },
-        pan_y: { type: "number" },
-      },
-    },
-  },
-  {
-    name: "capture_run_image",
-    description:
-      "Capture an image through the robot command queue, download the resulting data file, and save it locally.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        robot_ip: { type: "string", description: "Robot IP or full base URL" },
-        context_type: {
+        mode: {
           type: "string",
-          enum: ["protocol", "maintenance"],
+          enum: ["preview", "run"],
+          description: "preview = direct camera capture; run = queued capture inside an active run/maintenance context.",
         },
-        context_id: { type: "string" },
-        output_path: { type: "string" },
-        file_name: { type: "string" },
+        robot_ip: { type: "string", description: "Robot IP or full base URL" },
+        context_type: { type: "string", enum: ["protocol", "maintenance"], description: "run only." },
+        context_id: { type: "string", description: "run only (required)." },
+        output_path: { type: "string", description: "Optional explicit file path for the saved image." },
+        file_name: { type: "string", description: "run only." },
+        camera_id: { type: "string", description: "preview only." },
         resolution_width: { type: "integer" },
         resolution_height: { type: "integer" },
         zoom: { type: "number" },
@@ -1336,77 +1152,51 @@ const TOOL_DEFINITIONS = [
         saturation: { type: "number" },
         pan_x: { type: "number" },
         pan_y: { type: "number" },
-        intent: { type: "string" },
-        key: { type: "string" },
+        intent: { type: "string", description: "run only." },
+        key: { type: "string", description: "run only." },
         timeout_ms: { type: "integer", default: 30000 },
         poll_interval_ms: { type: "integer", default: 500 },
       },
-      required: ["context_id"],
+      required: ["mode"],
     },
   },
   {
-    name: "list_data_files",
-    description: "List generated or uploaded data files available on the robot, including historical camera images.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        robot_ip: { type: "string", description: "Robot IP or full base URL" },
-      },
-    },
-  },
-  {
-    name: "download_data_file",
-    description: "Download a robot data file by id and save it locally.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        robot_ip: { type: "string", description: "Robot IP or full base URL" },
-        data_file_id: { type: "string" },
-        output_path: { type: "string" },
-      },
-      required: ["data_file_id"],
-    },
-  },
-  {
-    name: "analyze_image_with_kimi",
+    name: "data_files",
     description:
-      "Analyze a local robot image with SiliconFlow Kimi-K2.5 or another multimodal model using OpenAI-compatible chat completions.",
+      "Robot data files (including historical camera images). action=list shows generated or uploaded files available on the robot; action=download downloads one file by id and saves it locally (requires data_file_id).",
     inputSchema: {
       type: "object",
       properties: {
+        action: { type: "string", enum: ["list", "download"], description: "list = enumerate files; download = fetch one by id." },
+        robot_ip: { type: "string", description: "Robot IP or full base URL" },
+        data_file_id: { type: "string", description: "download only (required)." },
+        output_path: { type: "string", description: "download only." },
+      },
+      required: ["action"],
+    },
+  },
+  {
+    name: "analyze_image",
+    description:
+      "Analyze a local robot/deck image with a multimodal VLM (observation-only; does not mutate session state). provider=ark uses Volcengine Ark (Doubao) via the Responses API — default model endpoint from ARK_MODEL_ENDPOINT or ep-20260716144817-n6rgn, API key from ARK_API_KEY or automation/.env. provider=kimi uses SiliconFlow Kimi-K2.5 (or another OpenAI-compatible multimodal model) via chat completions — API key from SILICONFLOW_API_KEY or automation/.env.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        provider: { type: "string", enum: ["ark", "kimi"], description: "Which VLM backend to use." },
         image_path: { type: "string" },
         api_key: { type: "string" },
         base_url: { type: "string" },
-        model: { type: "string" },
+        model: { type: "string", description: "kimi only: model name (default Pro/moonshotai/Kimi-K2.5)." },
+        model_endpoint: { type: "string", description: "ark only: model endpoint id." },
         prompt: { type: "string" },
-        system_prompt: { type: "string" },
-        detail: {
-          type: "string",
-          enum: ["auto", "low", "high"],
-        },
-        temperature: { type: "number" },
-        max_tokens: { type: "integer" },
+        system_prompt: { type: "string", description: "kimi only." },
+        detail: { type: "string", enum: ["auto", "low", "high"], description: "kimi only." },
+        temperature: { type: "number", description: "kimi only." },
+        max_tokens: { type: "integer", description: "kimi only." },
         expected_layout: { type: "object" },
+        max_output_tokens: { type: "integer", description: "ark only." },
       },
-      required: ["image_path"],
-    },
-  },
-  {
-    name: "analyze_image_with_ark",
-    description:
-      "Analyze a local robot deck image with Volcengine Ark (Doubao VLM) using the Responses API. Observation-only; does not mutate session state. Default model endpoint from ARK_MODEL_ENDPOINT or ep-20260716144817-n6rgn; API key from ARK_API_KEY or automation/.env.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        image_path: { type: "string" },
-        api_key: { type: "string" },
-        base_url: { type: "string" },
-        model_endpoint: { type: "string" },
-        prompt: { type: "string" },
-        expected_layout: { type: "object" },
-        max_output_tokens: { type: "integer" },
-      },
-      required: ["image_path"],
+      required: ["provider", "image_path"],
     },
   },
   {
@@ -1461,57 +1251,54 @@ const TOOL_DEFINITIONS = [
     },
   },
   {
-    name: "vision_check",
+    name: "deck_vision_check",
     description:
-      "Local YOLOE/YOLO vision observation for CHECKDECK or CHECKTIPS (observation-only; does not mutate session state). Uses ultralytics in the project Python env. CHECKDECK maps detections to Flex 12 slots using optional deck homography (deck_corners_norm or labels sidecar optional_deck_corners_norm) or a uniform image-grid fallback; empty slots are geometric (no detection in cell). Default YOLOE prompts are Flex-tuned (colored tip racks, modules, trash). Override with class_prompts + canonical_labels. CHECKTIPS is stubbed pending rack-local analysis.",
+      "Deck vision observation (observation-only; does not mutate session state; compare with reconcile_state before treating as deck truth). mode=preflight orchestrates capture → YOLO → optional VLM second opinion when uncertain or mismatched (requires robot_ip; set OPENTRONS_PREFLIGHT_VISION=off to skip). mode=local runs the YOLOE/YOLO observation directly on a saved image (requires image_path): detections map to Flex 12 slots via optional deck homography or a uniform image-grid fallback; empty slots are geometric. Default YOLOE prompts are Flex-tuned (colored tip racks, modules, trash); override with class_prompts + canonical_labels.",
     inputSchema: {
       type: "object",
       properties: {
         mode: {
           type: "string",
-          enum: ["deck", "tiprack"],
-          description: "deck = slot-level observation; tiprack = reserved / conservative stub",
+          enum: ["preflight", "local"],
+          description: "preflight = robot capture + YOLO + optional VLM; local = YOLO on a saved image_path.",
         },
-        image_path: {
-          type: "string",
-          description: "Absolute or workspace path to a saved camera image",
-        },
+        robot_ip: { type: "string", description: "Robot IP or full base URL (preflight; required)." },
+        session_id: { type: "string", description: "preflight only." },
         expected_layout: {
           type: "object",
           description:
             'Optional map of slot -> expected label (canonical: tiprack, plate, reservoir, module, trash_bin) or "empty". Example: {"C2":"tiprack","A1":"empty"}',
         },
-        reference_image_path: {
-          type: "string",
-          description: "Optional reference image for future visual-prompt tiprack flows (not used in MVP deck mode).",
-        },
-        conf_threshold: {
-          type: "number",
-          description: "Minimum detection confidence (default 0.25)",
-          default: 0.25,
-        },
-        use_text_prompts: {
-          type: "boolean",
-          description:
-            "If true, use YOLOE text prompts (requires CLIP). If false, use a plain YOLO checkpoint without set_classes. Default: auto from weights (yoloe = true).",
-        },
+        output_path: { type: "string", description: "preflight only." },
+        force_vlm: { type: "boolean", default: false, description: "preflight only." },
+        vlm_provider: { type: "string", enum: ["ark", "kimi", "off"], description: "preflight only." },
+        conf_threshold: { type: "number", description: "Minimum detection confidence (default 0.25)." },
         weights: {
           type: "string",
           description:
             "Ultralytics checkpoint path or name. Omit to auto-pick: OPENTRONS_DECK_YOLO_WEIGHTS, then vision/models/weights deck_v2/deck_pilot, then local vision/runs, then OPENTRONS_YOLOE_WEIGHTS / yoloe-26s-seg.pt",
         },
+        image_path: {
+          type: "string",
+          description: "local only (required): absolute or workspace path to a saved camera image.",
+        },
+        reference_image_path: {
+          type: "string",
+          description: "local only: optional reference image for future visual-prompt tiprack flows.",
+        },
+        use_text_prompts: {
+          type: "boolean",
+          description:
+            "local only: if true, use YOLOE text prompts (requires CLIP); if false, a plain YOLO checkpoint. Default: auto from weights.",
+        },
         annotated_output_dir: {
           type: "string",
-          description: "Directory to save annotated debug image (default under artifacts/camera-captures/vision-annotated)",
+          description: "local only: directory for the annotated debug image (default under artifacts/camera-captures/vision-annotated).",
         },
-        python_executable: {
-          type: "string",
-          description: "Override Python for ultralytics (else OPENTRONS_PYTHON / .venv)",
-        },
+        python_executable: { type: "string", description: "Override Python for ultralytics (else OPENTRONS_PYTHON / .venv)." },
         deck_corners_norm: {
           type: "array",
-          description:
-            "Optional 4-corner deck homography in normalized image coordinates [[x,y], ...] to map detections to slots.",
+          description: "local only: optional 4-corner deck homography in normalized image coordinates [[x,y], ...].",
           items: {
             type: "array",
             items: { type: "number" },
@@ -1519,40 +1306,20 @@ const TOOL_DEFINITIONS = [
         },
         load_labels_sidecar: {
           type: "boolean",
-          description:
-            "If true, also try labels/<stem>.labels.json for optional_deck_corners_norm, class_prompts, and canonical_labels.",
+          description: "local only: also try labels/<stem>.labels.json for corners/prompts/labels.",
         },
         class_prompts: {
           type: "array",
-          description: "Optional YOLOE text prompts to bias detection classes.",
+          description: "local only: optional YOLOE text prompts to bias detection classes.",
           items: { type: "string" },
         },
         canonical_labels: {
           type: "array",
-          description: "Optional canonical label set used to normalize detections.",
+          description: "local only: optional canonical label set used to normalize detections.",
           items: { type: "string" },
         },
       },
-      required: ["image_path"],
-    },
-  },
-  {
-    name: "deck_vision_check",
-    description:
-      "Preflight deck vision orchestration: capture_preview_image → vision_check (YOLO first) → optional Ark VLM second opinion when uncertain or mismatched. Observation-only; compare with reconcile_state before treating as deck truth. Set OPENTRONS_PREFLIGHT_VISION=off to skip.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        robot_ip: { type: "string", description: "Robot IP or full base URL" },
-        session_id: { type: "string" },
-        expected_layout: { type: "object" },
-        output_path: { type: "string" },
-        force_vlm: { type: "boolean", default: false },
-        vlm_provider: { type: "string", enum: ["ark", "kimi", "off"] },
-        conf_threshold: { type: "number" },
-        weights: { type: "string" },
-      },
-      required: ["robot_ip"],
+      required: ["mode"],
     },
   },
   {
@@ -1795,55 +1562,28 @@ const TOOL_DEFINITIONS = [
     },
   },
   {
-    name: "runtime_watch_poll",
+    name: "runtime_watch",
     description:
-      "Bounded runtime watch poll for a live protocol run. Polls run status, executes only narrow L0 self-fix branches, and returns only running/completed/needs_user/hard_stop/unreachable.",
+      "Bounded runtime watch for a live protocol run. mode=poll runs one bounded poll (run status plus narrow L0 self-fix branches only; returns running/completed/needs_user/hard_stop/unreachable). mode=loop reuses those polls on a budgeted schedule (max_turns / max_runtime_ms / interval_ms), emits one outbox sentinel per tick for host-adapter wake (claudecode/cursor/codex/cli/webhook), and persists a goal-state.json per run (resume=true continues an active goal; goal status COMPLETE/BLOCKED/BUDGET_LIMITED). Safety model is shared: only L0 whitelist fixes auto-execute; needs_user/hard_stop stop the loop and emit a BLOCKED sentinel. Default self_fix_mode=observe (no robot motion).",
     inputSchema: {
       type: "object",
       properties: {
+        mode: {
+          type: "string",
+          enum: ["poll", "loop"],
+          description: "poll = single bounded poll; loop = budgeted auto-wake watch loop.",
+        },
         robot_ip: { type: "string", description: "Robot IP or full base URL" },
         run_id: { type: "string" },
         session_id: { type: "string" },
-        max_block_ms: { type: "integer", default: 50000 },
+        goal_id: { type: "string", description: "loop only: optional explicit goal id; reused with resume=true." },
+        goal_prompt: { type: "string", description: "loop only: operator goal text recorded in goal-state for handoff/audit." },
+        max_turns: { type: "integer", default: 20, description: "loop only." },
+        max_runtime_ms: { type: "integer", default: 600000, description: "loop only." },
+        interval_ms: { type: "integer", default: 5000, description: "loop only." },
+        max_block_ms: { type: "integer", description: "Default 50000 for poll, 30000 for loop." },
         poll_interval_ms: { type: "integer", default: 3000 },
         timeout_ms: { type: "integer" },
-        page_length: { type: "integer", default: 20 },
-        tiprack_slots: {
-          type: "array",
-          items: { type: "string" },
-        },
-        tip_binding_mode: {
-          type: "string",
-          enum: ["auto", "explicit", "starting_tip"],
-        },
-        protocol_source: { type: "string" },
-        file_path: { type: "string" },
-        protocol_path: { type: "string" },
-        module_wait_timeout_ms: { type: "integer" },
-        module_poll_interval_ms: { type: "integer", default: 1000 },
-        max_attempts_per_failed_command: { type: "integer", default: 3 },
-        unreachable_threshold: { type: "integer", default: 2 },
-      },
-      required: ["run_id"],
-    },
-  },
-  {
-    name: "runtime_watch_loop",
-    description:
-      "Auto-wake runtime watch loop: reuses runtime_watch_poll on a budgeted schedule (max_turns / max_runtime_ms / interval_ms) and emits one outbox sentinel per tick for host-adapter wake (claudecode/cursor/codex/cli/webhook). Persists a goal-state.json per run (resume=true continues an active goal). Goal status is COMPLETE/BLOCKED/BUDGET_LIMITED; COMPLETE requires either a completed tick or a verify callback. Safety model is inherited from runtime_watch_poll: only L0 whitelist fixes auto-execute; needs_user/hard_stop stop the loop and emit a BLOCKED sentinel. Default self_fix_mode=observe (no robot motion).",
-    inputSchema: {
-      type: "object",
-      properties: {
-        robot_ip: { type: "string", description: "Robot IP or full base URL" },
-        run_id: { type: "string" },
-        session_id: { type: "string" },
-        goal_id: { type: "string", description: "Optional explicit goal id; reused with resume=true." },
-        goal_prompt: { type: "string", description: "Operator goal text recorded in goal-state for handoff/audit." },
-        max_turns: { type: "integer", default: 20 },
-        max_runtime_ms: { type: "integer", default: 600000 },
-        interval_ms: { type: "integer", default: 5000 },
-        max_block_ms: { type: "integer", default: 30000 },
-        poll_interval_ms: { type: "integer", default: 3000 },
         page_length: { type: "integer", default: 20 },
         tiprack_slots: { type: "array", items: { type: "string" } },
         tip_binding_mode: { type: "string", enum: ["auto", "explicit", "starting_tip"] },
@@ -1854,7 +1594,7 @@ const TOOL_DEFINITIONS = [
         module_poll_interval_ms: { type: "integer", default: 1000 },
         max_attempts_per_failed_command: { type: "integer", default: 3 },
         unreachable_threshold: { type: "integer", default: 2 },
-        resume: { type: "boolean", default: false },
+        resume: { type: "boolean", default: false, description: "loop only: continue an active goal." },
         self_fix_mode: { type: "string", enum: ["observe", "l0"], default: "observe" },
         allow_l4_execution: { type: "boolean", default: false },
         operator_opt_in: { type: "boolean", default: false },
@@ -1866,7 +1606,7 @@ const TOOL_DEFINITIONS = [
             type: "string",
             enum: ["claudecode", "claude", "codex", "cursor", "piagent", "opencode", "cli", "webhook"],
           },
-          description: "Adapters to deliver pending outbox sentinels to after the loop ends.",
+          description: "loop only: adapters to deliver pending outbox sentinels to after the loop ends.",
         },
         notify_limit: { type: "integer", default: 20 },
         host_adapter_dir: { type: "string" },
@@ -1875,97 +1615,65 @@ const TOOL_DEFINITIONS = [
           type: "boolean",
           default: false,
           description:
-            "When true, suppress LLM guidance on ticks with no actionable error. Defaults from OPENTRONS_ZERO_LLM_WHEN_NO_ERROR when omitted.",
+            "loop only: when true, suppress LLM guidance on ticks with no actionable error. Defaults from OPENTRONS_ZERO_LLM_WHEN_NO_ERROR when omitted.",
         },
       },
-      required: ["run_id"],
+      required: ["mode", "run_id"],
     },
   },
   {
-    name: "runtime_get_alerts",
+    name: "runtime_alerts",
     description:
-      "Read runtime watch and monitor alerts plus latest watch state. Intended for hook/insurance paths and current-dialog notification checks.",
+      "Runtime watch and monitor alerts. action=list reads alerts plus latest watch state (intended for hook/insurance paths and current-dialog notification checks; requires run_id or session_id); action=ack marks one alert handled after the operator has supplied the requested decision (requires run_id and alert_id).",
     inputSchema: {
       type: "object",
       properties: {
+        action: { type: "string", enum: ["list", "ack"], description: "list = read alerts; ack = mark one alert handled." },
         run_id: { type: "string" },
         session_id: { type: "string" },
+        alert_id: { type: "string", description: "ack only." },
+        note: { type: "string", description: "ack only." },
+        selection: { type: ["string", "object", "null"], description: "ack only: operator decision payload." },
         limit: { type: "integer", default: 20 },
         include_acked: { type: "boolean", default: false },
         watch_dir: { type: "string" },
       },
+      required: ["action"],
     },
   },
   {
-    name: "runtime_ack_alert",
-    description: "Mark a runtime watch alert handled after the operator has supplied the requested decision.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        run_id: { type: "string" },
-        alert_id: { type: "string" },
-        note: { type: "string" },
-        selection: { type: ["string", "object", "null"] },
-        watch_dir: { type: "string" },
-      },
-      required: ["run_id", "alert_id"],
-    },
-  },
-  {
-    name: "runtime_get_outbox",
+    name: "runtime_outbox",
     description:
-      "Read pending runtime notification outbox events created from watcher/monitor alerts for host adapters.",
+      "Runtime notification outbox for host adapters. action=list reads pending events created from watcher/monitor alerts; action=ack marks one event handled after the operator or adapter acted on it (requires outbox_id); action=deliver pushes pending events to configured host adapters (claudecode, codex, cursor, piagent, opencode, cli, webhook).",
     inputSchema: {
       type: "object",
       properties: {
+        action: {
+          type: "string",
+          enum: ["list", "ack", "deliver"],
+          description: "list = read pending events; ack = mark one handled; deliver = push to host adapters.",
+        },
         session_id: { type: "string" },
         run_id: { type: "string" },
-        limit: { type: "integer", default: 20 },
-        include_acked: { type: "boolean", default: false },
-        include_delivered: { type: "boolean", default: true },
-        outbox_dir: { type: "string" },
-        host_adapter_dir: { type: "string" },
-      },
-    },
-  },
-  {
-    name: "runtime_ack_outbox",
-    description:
-      "Mark a runtime notification outbox event handled after the operator or host adapter has acted on it.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        session_id: { type: "string" },
-        outbox_id: { type: "string" },
-        note: { type: "string" },
-        selection: { type: ["string", "object", "null"] },
-        outbox_dir: { type: "string" },
-      },
-      required: ["outbox_id"],
-    },
-  },
-  {
-    name: "runtime_deliver_outbox",
-    description:
-      "Deliver pending runtime outbox events to configured host adapters: claudecode, codex, cursor, piagent, opencode, cli, or webhook.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        session_id: { type: "string" },
-        run_id: { type: "string" },
+        outbox_id: { type: "string", description: "ack only." },
+        note: { type: "string", description: "ack only." },
+        selection: { type: ["string", "object", "null"], description: "ack only: operator decision payload." },
         adapters: {
           type: "array",
+          description: "deliver only.",
           items: {
             type: "string",
             enum: ["claudecode", "codex", "cursor", "piagent", "opencode", "cli", "webhook"],
           },
         },
         limit: { type: "integer", default: 20 },
-        include_delivered: { type: "boolean", default: false },
+        include_acked: { type: "boolean", default: false },
+        include_delivered: { type: "boolean", description: "Default true for list, false for deliver." },
         outbox_dir: { type: "string" },
         host_adapter_dir: { type: "string" },
-        webhook_url: { type: "string" },
+        webhook_url: { type: "string", description: "deliver only." },
       },
+      required: ["action"],
     },
   },
   {
@@ -1992,71 +1700,47 @@ const TOOL_DEFINITIONS = [
     },
   },
   {
-    name: "get_runs",
-    description: "List runs on the robot.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        robot_ip: { type: "string", description: "Robot IP or full base URL" },
-      },
-    },
-  },
-  {
-    name: "run_history",
-    description: "Get run state plus recent command history in an agent-friendly format.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        robot_ip: { type: "string", description: "Robot IP or full base URL" },
-        run_id: { type: "string" },
-        page_length: { type: "integer", default: 10 },
-      },
-      required: ["run_id"],
-    },
-  },
-  {
-    name: "experiment_history",
-    description: "Query persisted run, recovery, and reconciliation result logs for recent experiment history.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        session_id: { type: "string" },
-        run_id: { type: "string" },
-        tool_name: { type: "string" },
-        event_kind: { type: "string" },
-        status: { type: "string" },
-        limit: { type: "integer", default: 20 },
-      },
-    },
-  },
-  {
-    name: "restart_review",
+    name: "query_history",
     description:
-      "After MCP or host restart: summarize persisted session state plus recent result logs with structured guidance. suggested_tool_order includes run_history and parse_error when session last_run_id is set. Logs are historical only; pass robot_ip optionally to include a live is_home_safe preview (narrative warns if auto-home is blocked).",
+      "Query run and experiment history. scope=robot_runs lists runs on the robot (requires robot_ip); scope=run_commands returns one run's state plus recent command history in an agent-friendly format (requires robot_ip and run_id); scope=experiment_logs queries persisted run, recovery, and reconciliation result logs (local, filterable by session/run/tool/event kind/status).",
     inputSchema: {
       type: "object",
       properties: {
-        session_id: { type: "string" },
-        limit: { type: "integer", default: 20 },
-        robot_ip: {
+        scope: {
           type: "string",
-          description: "Optional; when set, fetches robot_status to preview home safety alongside session state",
+          enum: ["robot_runs", "run_commands", "experiment_logs"],
+          description: "robot_runs = list robot runs; run_commands = one run with command history; experiment_logs = persisted local result logs.",
         },
+        robot_ip: { type: "string", description: "Robot IP or full base URL (robot_runs/run_commands)." },
+        run_id: { type: "string", description: "run_commands/experiment_logs." },
+        page_length: { type: "integer", default: 10, description: "run_commands." },
+        session_id: { type: "string", description: "experiment_logs." },
+        tool_name: { type: "string", description: "experiment_logs." },
+        event_kind: { type: "string", description: "experiment_logs." },
+        status: { type: "string", description: "experiment_logs." },
+        limit: { type: "integer", default: 20, description: "experiment_logs." },
       },
+      required: ["scope"],
     },
   },
   {
     name: "safe_next_action",
     description:
-      "Single-entry operator summary after MCP/host restart: same payload as restart_review plus safe_next_action (recommended_next_tool, operator_steps, tool_sequence). Prefer this when the user wants one call instead of reading the full guidance object. Atomic tools are unchanged.",
+      "Single-entry restart summary: persisted session state plus recent result logs with structured guidance. detail=summary (default) adds safe_next_action (recommended_next_tool, operator_steps, tool_sequence) on top of the same payload; detail=full returns the complete restart_review guidance object. suggested_tool_order includes query_history(scope=run_commands) and parse_error when session last_run_id is set. Logs are historical only; pass robot_ip optionally to include a live is_home_safe preview (narrative warns if auto-home is blocked).",
     inputSchema: {
       type: "object",
       properties: {
+        detail: {
+          type: "string",
+          enum: ["summary", "full"],
+          default: "summary",
+          description: "summary = one-call safe_next_action view; full = complete restart_review guidance object.",
+        },
         session_id: { type: "string" },
         limit: { type: "integer", default: 20 },
         robot_ip: {
           type: "string",
-          description: "Optional; when set, fetches robot_status for home-safety preview (same as restart_review)",
+          description: "Optional; when set, fetches robot_status for home-safety preview.",
         },
       },
     },
@@ -2084,7 +1768,7 @@ const TOOL_DEFINITIONS = [
           enum: ["observe", "l0"],
           default: "observe",
           description:
-            "observe is read-only for run watching. l0 delegates only whitelisted L0 fixes to runtime_watch_poll.",
+            "observe is read-only for run watching. l0 delegates only whitelisted L0 fixes to runtime_watch (mode=poll).",
         },
         allow_l4_execution: {
           type: "boolean",
@@ -2186,21 +1870,9 @@ const TOOL_DEFINITIONS = [
     },
   },
   {
-    name: "doctor_local_runtime",
-    description: "Probe whether the local Python environment can import opentrons.simulate.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        workspace_root: { type: "string" },
-        api_root: { type: "string" },
-        shared_data_root: { type: "string" },
-        python_executable: { type: "string" },
-      },
-    },
-  },
-  {
     name: "simulate_protocol",
-    description: "Judge a protocol with one opentrons analyze run. The JSON is cached and reused by logicpass_check. When virtual_lab_steps (or validate_virtual_lab_state=true) is provided, runs deterministic Virtual Lab State validation first and blocks analysis on any violation (Phase 1.5 gate). extra_args still falls back to opentrons.simulate.",
+    description:
+      "Judge a protocol with one opentrons analyze run and classify the result into structured repair categories (parsed_repair in the response, replacing the former parse_simulation_output call). The analyze JSON is cached and reused by logicpass_check. When virtual_lab_steps (or validate_virtual_lab_state=true) is provided, runs deterministic Virtual Lab State validation first and blocks analysis on any violation (Phase 1.5 gate). extra_args still falls back to opentrons.simulate.",
     inputSchema: {
       type: "object",
       properties: {
@@ -2257,30 +1929,26 @@ const TOOL_DEFINITIONS = [
     },
   },
   {
-    name: "parse_simulation_output",
-    description: "Classify simulation stdout/stderr into structured repair categories.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        simulation_output_json: { type: "string" },
-        stdout: { type: "string" },
-        stderr: { type: "string" },
-        exit_code: { type: "integer" },
-        protocol_path: { type: "string" },
-      },
-    },
-  },
-  {
     name: "health_check",
-    description: "Comprehensive environment health check: MCP server, Python venv, opentrons package, git state, session state, and optional robot connectivity.",
+    description:
+      "Health and environment checks in one entry. scope=full (default) is the comprehensive check: MCP server, Python venv, opentrons package, git state, session state, plus robot connectivity when robot_ip is given; scope=robot is a quick robot /health connectivity ping (requires robot_ip); scope=local probes whether the local Python environment can import opentrons.simulate.",
     inputSchema: {
       type: "object",
       properties: {
-        robot_ip: { type: "string", description: "Optional robot IP to check connectivity (e.g. 10.31.2.149)" },
+        scope: {
+          type: "string",
+          enum: ["full", "robot", "local"],
+          default: "full",
+          description: "full = comprehensive; robot = quick /health ping; local = local Python env probe.",
+        },
+        robot_ip: { type: "string", description: "Robot IP (required for scope=robot, optional for full)." },
         python_executable: {
           type: "string",
           description: "Optional Python interpreter to inspect instead of the repo-local .venv.",
         },
+        workspace_root: { type: "string", description: "scope=local only." },
+        api_root: { type: "string", description: "scope=local only." },
+        shared_data_root: { type: "string", description: "scope=local only." },
       },
     },
   },
@@ -3155,7 +2823,7 @@ function buildLiveLiquidGateNextAction({ failedCheckNames = [], warningCheckName
   if (failed.has("loaded_runtime_recovery_self_test")) {
     return {
       recommended_next_action: "reload_or_reinstall_mcp_runtime",
-      allowed_next_tools: ["health_check", "runtime_recovery_self_test"],
+      allowed_next_tools: [ "health_check",  "runtime_recovery_self_test" ],
       human_required: true,
       reason: "loaded_runtime_recovery_self_test_failed",
     };
@@ -3163,7 +2831,7 @@ function buildLiveLiquidGateNextAction({ failedCheckNames = [], warningCheckName
   if (failed.has("robot_readonly_connectivity")) {
     return {
       recommended_next_action: "restore_robot_connectivity",
-      allowed_next_tools: ["health_check", "robot_status", "module_status"],
+      allowed_next_tools: [ "health_check",  "robot_status" ],
       human_required: true,
       reason: "robot_readonly_connectivity_failed",
     };
@@ -3171,7 +2839,7 @@ function buildLiveLiquidGateNextAction({ failedCheckNames = [], warningCheckName
   if (failed.has("door_and_estop")) {
     return {
       recommended_next_action: "resolve_door_or_estop",
-      allowed_next_tools: ["robot_status"],
+      allowed_next_tools: [ "robot_status" ],
       human_required: true,
       reason: "door_or_estop_not_safe",
     };
@@ -3179,7 +2847,7 @@ function buildLiveLiquidGateNextAction({ failedCheckNames = [], warningCheckName
   if (failed.has("source_plan")) {
     return {
       recommended_next_action: "correct_gate_source_plan",
-      allowed_next_tools: ["live_liquid_recovery_gate"],
+      allowed_next_tools: [ "live_liquid_recovery_gate" ],
       human_required: true,
       reason: "unknown_liquid_source_plan",
     };
@@ -3187,7 +2855,7 @@ function buildLiveLiquidGateNextAction({ failedCheckNames = [], warningCheckName
   if (failed.has("source_map_requirements")) {
     return {
       recommended_next_action: "record_or_correct_liquid_source_map",
-      allowed_next_tools: ["record_liquid_source_map", "get_liquid_source_map", "live_liquid_recovery_gate"],
+      allowed_next_tools: [ "record_liquid_source_map",  "liquid_source_map",  "live_liquid_recovery_gate" ],
       human_required: true,
       reason: "required_liquid_sources_missing_or_mismatched",
     };
@@ -3195,7 +2863,7 @@ function buildLiveLiquidGateNextAction({ failedCheckNames = [], warningCheckName
   if (failed.has("pending_probe_writeback")) {
     return {
       recommended_next_action: "apply_pending_probe_writeback",
-      allowed_next_tools: ["apply_liquid_probe_results", "live_liquid_recovery_gate"],
+      allowed_next_tools: [ "apply_liquid_probe_results",  "live_liquid_recovery_gate" ],
       human_required: false,
       reason: "pending_probe_writeback",
     };
@@ -3203,7 +2871,7 @@ function buildLiveLiquidGateNextAction({ failedCheckNames = [], warningCheckName
   if (failed.has("suffix_plan_not_sufficient")) {
     return {
       recommended_next_action: "review_suffix_recovery_plan",
-      allowed_next_tools: ["plan_liquid_source_substitution", "validate_virtual_lab_state_steps", "live_liquid_recovery_gate"],
+      allowed_next_tools: [ "liquid_source_substitution",  "validate_virtual_lab_state_steps",  "live_liquid_recovery_gate" ],
       human_required: true,
       reason: "suffix_plan_not_sufficient",
     };
@@ -3211,7 +2879,7 @@ function buildLiveLiquidGateNextAction({ failedCheckNames = [], warningCheckName
   if (warned.has("source_map_requirements")) {
     return {
       recommended_next_action: "run_observed_mismatch_reprobe",
-      allowed_next_tools: ["probe_wells", "apply_liquid_probe_results", "live_liquid_recovery_gate"],
+      allowed_next_tools: [ "probe_wells",  "apply_liquid_probe_results",  "live_liquid_recovery_gate" ],
       human_required: false,
       reason: "observed_presence_mismatch_reprobe_allowed",
     };
@@ -3219,7 +2887,7 @@ function buildLiveLiquidGateNextAction({ failedCheckNames = [], warningCheckName
   if (failed.has("no_attached_tip_before_liquid_probe_rerun")) {
     return {
       recommended_next_action: "clear_attached_tip_before_liquid_rerun",
-      allowed_next_tools: ["robot_status", "live_liquid_recovery_gate", "experiment_history"],
+      allowed_next_tools: [ "robot_status",  "live_liquid_recovery_gate",  "query_history" ],
       human_required: true,
       reason: "attached_tip_blocks_liquid_probe_rerun",
     };
@@ -3227,7 +2895,7 @@ function buildLiveLiquidGateNextAction({ failedCheckNames = [], warningCheckName
   if (warned.has("source_identity_metadata")) {
     return {
       recommended_next_action: "confirm_liquid_source_identity_before_semantic_recovery",
-      allowed_next_tools: ["record_liquid_source_map", "get_liquid_source_map", "live_liquid_recovery_gate"],
+      allowed_next_tools: [ "record_liquid_source_map",  "liquid_source_map",  "live_liquid_recovery_gate" ],
       human_required: true,
       reason: "liquid_source_identity_metadata_incomplete",
     };
@@ -3235,14 +2903,14 @@ function buildLiveLiquidGateNextAction({ failedCheckNames = [], warningCheckName
   if (warned.has("module_blockers")) {
     return {
       recommended_next_action: "wait_or_resolve_module_blockers",
-      allowed_next_tools: ["module_status", "live_liquid_recovery_gate"],
+      allowed_next_tools: [ "robot_status",  "live_liquid_recovery_gate" ],
       human_required: false,
       reason: "module_blockers_reported",
     };
   }
   return {
     recommended_next_action: "run_live_liquid_recovery_tests",
-    allowed_next_tools: ["runtime_watch_poll", "probe_wells", "run_protocol", "experiment_history"],
+    allowed_next_tools: [ "runtime_watch",  "probe_wells",  "run_protocol",  "query_history" ],
     human_required: false,
     reason: "live_liquid_recovery_gate_passed",
   };
@@ -3272,7 +2940,7 @@ function buildLiveLiquidGateResolutionPlan({
       severity: "blocker",
       action: "reload_or_reinstall_mcp_runtime",
       human_required: true,
-      allowed_next_tools: ["health_check", "runtime_recovery_self_test"],
+      allowed_next_tools: [ "health_check",  "runtime_recovery_self_test" ],
       acceptance_criteria: [
         "Loaded runtime_recovery_self_test returns status=pass.",
         "health_check reports mcp_server.entrypoint under the expected labscriptai-ot clone root.",
@@ -3287,7 +2955,7 @@ function buildLiveLiquidGateResolutionPlan({
       severity: "blocker",
       action: "restore_robot_connectivity",
       human_required: true,
-      allowed_next_tools: ["health_check", "robot_status", "module_status"],
+      allowed_next_tools: [ "health_check",  "robot_status" ],
       acceptance_criteria: ["robot_status can read the robot and reports robot_reachable=true."],
     });
   }
@@ -3297,7 +2965,7 @@ function buildLiveLiquidGateResolutionPlan({
       severity: "blocker",
       action: "resolve_door_or_estop",
       human_required: true,
-      allowed_next_tools: ["robot_status"],
+      allowed_next_tools: [ "robot_status" ],
       acceptance_criteria: ["Door is closed and estop is disengaged in robot_status."],
     });
   }
@@ -3307,7 +2975,7 @@ function buildLiveLiquidGateResolutionPlan({
       severity: "blocker",
       action: "correct_gate_source_plan",
       human_required: true,
-      allowed_next_tools: ["live_liquid_recovery_gate"],
+      allowed_next_tools: [ "live_liquid_recovery_gate" ],
       acceptance_criteria: [`source_plan is one of: ${[...LIQUID_GATE_SOURCE_PLANS].join(", ")}.`],
     });
   }
@@ -3317,7 +2985,7 @@ function buildLiveLiquidGateResolutionPlan({
       severity: "blocker",
       action: "record_or_correct_liquid_source_map",
       human_required: true,
-      allowed_next_tools: ["record_liquid_source_map", "get_liquid_source_map", "live_liquid_recovery_gate"],
+      allowed_next_tools: [ "record_liquid_source_map",  "liquid_source_map",  "live_liquid_recovery_gate" ],
       acceptance_criteria: [
         "All required source-map entries exist.",
         "Each required entry expected_presence matches the gate requirement.",
@@ -3332,7 +3000,7 @@ function buildLiveLiquidGateResolutionPlan({
       severity: "blocker",
       action: "apply_pending_probe_writeback",
       human_required: false,
-      allowed_next_tools: ["apply_liquid_probe_results", "live_liquid_recovery_gate"],
+      allowed_next_tools: [ "apply_liquid_probe_results",  "live_liquid_recovery_gate" ],
       acceptance_criteria: [
         "Each pending probe well has a matching apply_liquid_probe_results writeback.",
         "Pending probe writeback clears before live liquid watcher/probe re-runs.",
@@ -3347,11 +3015,7 @@ function buildLiveLiquidGateResolutionPlan({
       severity: "blocker",
       action: "review_suffix_recovery_plan",
       human_required: true,
-      allowed_next_tools: [
-        "plan_liquid_source_substitution",
-        "validate_virtual_lab_state_steps",
-        "live_liquid_recovery_gate",
-      ],
+      allowed_next_tools: [ "liquid_source_substitution",  "validate_virtual_lab_state_steps",  "live_liquid_recovery_gate" ],
       acceptance_criteria: [
         "Suffix replay passes Virtual Lab State validation after the substitution patch.",
         "final_auto_resume_eligible is true only when suffix_sufficient and auto_resume_eligible are both true.",
@@ -3367,7 +3031,7 @@ function buildLiveLiquidGateResolutionPlan({
       severity: "warning",
       action: "run_observed_mismatch_reprobe",
       human_required: false,
-      allowed_next_tools: ["probe_wells", "apply_liquid_probe_results", "live_liquid_recovery_gate"],
+      allowed_next_tools: [ "probe_wells",  "apply_liquid_probe_results",  "live_liquid_recovery_gate" ],
       acceptance_criteria: [
         "Only probe wells listed in allowed_probe_targets.",
         "The probe protocol uses require_liquid_presence or detect_presence only.",
@@ -3384,7 +3048,7 @@ function buildLiveLiquidGateResolutionPlan({
       severity: "blocker",
       action: "clear_attached_tip_before_liquid_rerun",
       human_required: true,
-      allowed_next_tools: ["robot_status", "live_liquid_recovery_gate", "experiment_history"],
+      allowed_next_tools: [ "robot_status",  "live_liquid_recovery_gate",  "query_history" ],
       acceptance_criteria: ["robot_status reports no pipette with tip_detected=true."],
       caution: "Do not auto-home or run liquid tests while a tip remains attached after Stall/Collision.",
     });
@@ -3396,7 +3060,7 @@ function buildLiveLiquidGateResolutionPlan({
       severity: "warning",
       action: "confirm_liquid_source_identity_before_semantic_recovery",
       human_required: true,
-      allowed_next_tools: ["record_liquid_source_map", "get_liquid_source_map", "live_liquid_recovery_gate"],
+      allowed_next_tools: [ "record_liquid_source_map",  "liquid_source_map",  "live_liquid_recovery_gate" ],
       acceptance_criteria: [
         "C3.A1 and D3.A1-H1 expected-present sources have specific liquid_name.",
         "C3.A1 and D3.A1-H1 expected-present sources have sample_id.",
@@ -3420,8 +3084,8 @@ function buildLiveLiquidGateResolutionPlan({
       severity: "warning",
       action: "wait_or_resolve_module_blockers",
       human_required: false,
-      allowed_next_tools: ["module_status", "live_liquid_recovery_gate"],
-      acceptance_criteria: ["module_status reports no blockers."],
+      allowed_next_tools: [ "robot_status",  "live_liquid_recovery_gate" ],
+      acceptance_criteria: ["robot_status module snapshot reports no blockers."],
     });
   }
 
@@ -3432,7 +3096,7 @@ function buildLiveLiquidGateResolutionPlan({
       action: "run_live_liquid_recovery_tests",
       human_required: false,
       no_robot_motion: false,
-      allowed_next_tools: ["runtime_watch_poll", "probe_wells", "run_protocol", "experiment_history"],
+      allowed_next_tools: [ "runtime_watch",  "probe_wells",  "run_protocol",  "query_history" ],
       acceptance_criteria: [
         "D3 A12 empty-source watcher stops before aspirate and returns needs_user.",
         "C3.A1 and D3.A1-H1 positive liquid probes detect liquid as expected.",
@@ -5097,7 +4761,23 @@ const TOOL_HANDLERS = {
   },
 
   async robot_status(args) {
-    return readRobotStatus(args);
+    const { include_modules = true, ...rest } = args;
+    const status = await readRobotStatus(rest);
+    if (include_modules !== true) {
+      return status;
+    }
+    const modules = await readModuleStatus(rest);
+    return {
+      ...status,
+      data: {
+        ...status.data,
+        modules: modules.data,
+      },
+      hardwareSnapshot: {
+        ...status.hardwareSnapshot,
+        modules: modules.hardwareSnapshot?.modules ?? null,
+      },
+    };
   },
 
   async module_status(args) {
@@ -5503,6 +5183,22 @@ const TOOL_HANDLERS = {
     return result;
   },
 
+  async liquid_source_map(args) {
+    const { action, ...rest } = args;
+    switch (action) {
+      case "summarize":
+        return TOOL_HANDLERS.summarize_liquid_source_map(rest);
+      case "critical_targets":
+        return TOOL_HANDLERS.list_critical_probe_targets(rest);
+      case "get":
+        return TOOL_HANDLERS.get_liquid_source_map(rest);
+      default:
+        throw new Error(
+          `liquid_source_map: unknown action '${action}'. Use get, summarize, or critical_targets.`,
+        );
+    }
+  },
+
   async validate_virtual_lab_state_steps(args) {
     const sessionId = args.session_id || DEFAULT_SESSION_ID;
     const initialState = args.initial_state || readSessionState(sessionId);
@@ -5817,6 +5513,74 @@ const TOOL_HANDLERS = {
     fs.writeFileSync(bundleOutputPath, `${JSON.stringify({ ...recoveryBundle, output_path: bundleOutputPath }, null, 2)}\n`);
 
     return result;
+  },
+
+  async liquid_source_substitution(args) {
+    const { action, ...rest } = args;
+    switch (action) {
+      case "plan":
+        return TOOL_HANDLERS.plan_liquid_source_substitution(rest);
+      case "generate_protocol":
+        return TOOL_HANDLERS.generate_liquid_source_substitution_protocol(rest);
+      case "prepare_recovery":
+        return TOOL_HANDLERS.prepare_liquid_source_substitution_recovery(rest);
+      default:
+        throw new Error(
+          `liquid_source_substitution: unknown action '${action}'. Use plan, generate_protocol, or prepare_recovery.`,
+        );
+    }
+  },
+
+  async labware_lookup(args) {
+    const { action, ...rest } = args;
+    switch (action) {
+      case "validate":
+        return TOOL_HANDLERS.validate_labware_name(rest);
+      case "inspect":
+        return TOOL_HANDLERS.inspect_labware_definition(rest);
+      default:
+        throw new Error(`labware_lookup: unknown action '${action}'. Use validate or inspect.`);
+    }
+  },
+
+  async deck_slots(args) {
+    const { action, ...rest } = args;
+    switch (action) {
+      case "occupation":
+        return TOOL_HANDLERS.get_slot_occupation(rest);
+      case "available":
+        return TOOL_HANDLERS.list_available_slots(rest);
+      default:
+        throw new Error(`deck_slots: unknown action '${action}'. Use occupation or available.`);
+    }
+  },
+
+  async tip_wells(args) {
+    const { action, ...rest } = args;
+    switch (action) {
+      case "list":
+        return TOOL_HANDLERS.list_tip_candidates(rest);
+      case "suggest_next":
+        return TOOL_HANDLERS.suggest_next_tip_well(rest);
+      default:
+        throw new Error(`tip_wells: unknown action '${action}'. Use list or suggest_next.`);
+    }
+  },
+
+  async control_module(args) {
+    const { module_type, ...rest } = args;
+    switch (module_type) {
+      case "temperature":
+        return TOOL_HANDLERS.control_temperature_module(rest);
+      case "heater_shaker":
+        return TOOL_HANDLERS.control_heater_shaker(rest);
+      case "thermocycler":
+        return TOOL_HANDLERS.control_thermocycler(rest);
+      default:
+        throw new Error(
+          `control_module: unknown module_type '${module_type}'. Use temperature, heater_shaker, or thermocycler.`,
+        );
+    }
   },
 
   async is_home_safe(args) {
@@ -7208,6 +6972,54 @@ const TOOL_HANDLERS = {
     };
   },
 
+  async camera_settings(args) {
+    const { action, ...rest } = args;
+    switch (action) {
+      case "status":
+        return TOOL_HANDLERS.camera_status(rest);
+      case "configure":
+        return TOOL_HANDLERS.configure_camera(rest);
+      default:
+        throw new Error(`camera_settings: unknown action '${action}'. Use status or configure.`);
+    }
+  },
+
+  async capture_image(args) {
+    const { mode, ...rest } = args;
+    switch (mode) {
+      case "preview":
+        return TOOL_HANDLERS.capture_preview_image(rest);
+      case "run":
+        return TOOL_HANDLERS.capture_run_image(rest);
+      default:
+        throw new Error(`capture_image: unknown mode '${mode}'. Use preview or run.`);
+    }
+  },
+
+  async data_files(args) {
+    const { action, ...rest } = args;
+    switch (action) {
+      case "list":
+        return TOOL_HANDLERS.list_data_files(rest);
+      case "download":
+        return TOOL_HANDLERS.download_data_file(rest);
+      default:
+        throw new Error(`data_files: unknown action '${action}'. Use list or download.`);
+    }
+  },
+
+  async analyze_image(args) {
+    const { provider, ...rest } = args;
+    switch (provider) {
+      case "ark":
+        return TOOL_HANDLERS.analyze_image_with_ark(rest);
+      case "kimi":
+        return TOOL_HANDLERS.analyze_image_with_kimi(rest);
+      default:
+        throw new Error(`analyze_image: unknown provider '${provider}'. Use ark or kimi.`);
+    }
+  },
+
   async flex3d_preflight_check(args) {
     const result = await runFlex3dCheck({
       sourcePath: args.source,
@@ -7255,6 +7067,10 @@ const TOOL_HANDLERS = {
   },
 
   async deck_vision_check(args) {
+    if (args.mode === "local") {
+      const { mode: _mode, ...rest } = args;
+      return TOOL_HANDLERS.vision_check(rest);
+    }
     if (!isPreflightVisionEnabled()) {
       return {
         data: {
@@ -8141,6 +7957,60 @@ const TOOL_HANDLERS = {
     };
   },
 
+  async runtime_watch(args) {
+    const { mode, ...rest } = args;
+    switch (mode) {
+      case "poll":
+        return TOOL_HANDLERS.runtime_watch_poll(rest);
+      case "loop":
+        return TOOL_HANDLERS.runtime_watch_loop(rest);
+      default:
+        throw new Error(`runtime_watch: unknown mode '${mode}'. Use poll or loop.`);
+    }
+  },
+
+  async runtime_alerts(args) {
+    const { action, ...rest } = args;
+    switch (action) {
+      case "list":
+        return TOOL_HANDLERS.runtime_get_alerts(rest);
+      case "ack":
+        return TOOL_HANDLERS.runtime_ack_alert(rest);
+      default:
+        throw new Error(`runtime_alerts: unknown action '${action}'. Use list or ack.`);
+    }
+  },
+
+  async runtime_outbox(args) {
+    const { action, ...rest } = args;
+    switch (action) {
+      case "list":
+        return TOOL_HANDLERS.runtime_get_outbox(rest);
+      case "ack":
+        return TOOL_HANDLERS.runtime_ack_outbox(rest);
+      case "deliver":
+        return TOOL_HANDLERS.runtime_deliver_outbox(rest);
+      default:
+        throw new Error(`runtime_outbox: unknown action '${action}'. Use list, ack, or deliver.`);
+    }
+  },
+
+  async query_history(args) {
+    const { scope, ...rest } = args;
+    switch (scope) {
+      case "robot_runs":
+        return TOOL_HANDLERS.get_runs(rest);
+      case "run_commands":
+        return TOOL_HANDLERS.run_history(rest);
+      case "experiment_logs":
+        return TOOL_HANDLERS.experiment_history(rest);
+      default:
+        throw new Error(
+          `query_history: unknown scope '${scope}'. Use robot_runs, run_commands, or experiment_logs.`,
+        );
+    }
+  },
+
   async runtime_recovery_monitor(args) {
     const monitor = await runRuntimeRecoveryMonitor(args, {
       runtimeRecoverySelfTest: async () => buildRuntimeRecoverySelfTestResult(),
@@ -8222,8 +8092,18 @@ const TOOL_HANDLERS = {
     if (gate) {
       return gate;
     }
+    const simulationData = await runSimulationTool(args);
+    let parsedRepair = null;
+    try {
+      parsedRepair = parseSimulationLog({ simulation_output_json: JSON.stringify(simulationData) });
+    } catch {
+      parsedRepair = null;
+    }
     return {
-      data: await runSimulationTool(args),
+      data: {
+        ...simulationData,
+        ...(parsedRepair ? { parsed_repair: parsedRepair } : {}),
+      },
     };
   },
 
@@ -8277,6 +8157,13 @@ const TOOL_HANDLERS = {
   },
 
   async health_check(args) {
+    const { scope = "full", ...rest } = args;
+    if (scope === "robot") {
+      return TOOL_HANDLERS.robot_health(rest);
+    }
+    if (scope === "local") {
+      return TOOL_HANDLERS.doctor_local_runtime(rest);
+    }
     const report = buildHealthCheck(args);
     report.mcp_server.entrypoint = __filename;
     report.mcp_server.required_runtime_tools = buildToolAvailabilitySummary();

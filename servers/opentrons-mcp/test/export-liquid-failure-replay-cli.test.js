@@ -95,7 +95,7 @@ test("export-liquid-failure-replay CLI writes a no-motion fixed-playbook replay"
   assert.equal(result.stdoutJson.no_robot_motion, true);
   assert.equal(result.stdoutJson.failed_source_key, "D3.A1");
   assert.equal(result.stdoutJson.summary.action, "manual_only");
-  assert.equal(result.stdoutJson.summary.next_tool, "prepare_liquid_source_substitution_recovery");
+  assert.equal(result.stdoutJson.summary.next_tool, "liquid_source_substitution (action=prepare_recovery)");
   assert.equal(result.stdoutJson.summary.playbook, "liquid_source_substitution_continuation_protocol");
   assert.deepEqual(result.stdoutJson.summary.required_gates, [
     "live_liquid_recovery_gate",
@@ -124,7 +124,7 @@ test("export-liquid-failure-replay CLI writes a no-motion fixed-playbook replay"
 
   const markdown = fs.readFileSync(markdownPath, "utf8");
   assert.match(markdown, /Liquid Failure Replay/);
-  assert.match(markdown, /Next tool: `prepare_liquid_source_substitution_recovery`/);
+  assert.match(markdown, /Next tool: `liquid_source_substitution \(action=prepare_recovery\)`/);
   assert.match(markdown, /Auto resume eligible: `false`/);
   assert.match(markdown, /Cleanup required: `drop_tip:left`/);
   assert.match(markdown, /Blockers: `attached_tip:left`/);
@@ -141,7 +141,7 @@ test("export-liquid-failure-replay CLI writes a no-motion fixed-playbook replay"
     if (!entry || entry.entry_id !== "${result.stdoutJson.result_log_entry_id}") {
       throw new Error("Expected replay result log entry was not found.");
     }
-    if (entry.data.next_tool !== "prepare_liquid_source_substitution_recovery") {
+    if (entry.data.next_tool !== "liquid_source_substitution (action=prepare_recovery)") {
       throw new Error("Expected fixed recovery playbook next tool in result log.");
     }
     if (entry.data.no_robot_motion !== true) {

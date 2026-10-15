@@ -14,7 +14,7 @@ test("record_liquid_source_map persists operator-confirmed liquid identity", asy
   try {
     const names = new Set(TOOL_DEFINITIONS.map(tool => tool.name));
     assert.equal(names.has("record_liquid_source_map"), true);
-    assert.equal(names.has("get_liquid_source_map"), true);
+    assert.equal(names.has("liquid_source_map"), true);
 
     const result = await TOOL_HANDLERS.record_liquid_source_map({
       session_id: "liquid-map-test",
@@ -134,7 +134,7 @@ test("summarize_liquid_source_map reports incomplete semantic recovery identity"
 
   try {
     const names = new Set(TOOL_DEFINITIONS.map(tool => tool.name));
-    assert.equal(names.has("summarize_liquid_source_map"), true);
+    assert.equal(names.has("liquid_source_map"), true);
 
     await TOOL_HANDLERS.record_liquid_source_map({
       session_id: "liquid-summary-test",
@@ -397,4 +397,58 @@ test("validate_virtual_lab_state_steps handler blocks deterministic liquid viola
   assert.equal(result.data.persisted, false);
   assert.equal(result.stateRevision, 12);
   assert.ok(result.data.violations.some(violation => violation.code === "liquid_volume_exceeds_capacity"));
+});
+
+test("liquid_source_map dispatches merged query actions", async () => {
+  process.env.OPENTRONS_SESSION_STATE_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "liquid-source-dispatch-"));
+
+  await TOOL_HANDLERS.record_liquid_source_map({
+    session_id: "liquid-dispatch-test",
+    sources: [
+      { slot_name: "C3", well_name: "A1", liquid_name: "buffer-a", expected_presence: true, critical: true },
+    ],
+  });
+
+  const got = await TOOL_HANDLERS.liquid_source_map({ action: "get", session_id: "liquid-dispatch-test" });
+  assert.equal(got.data.source_count, 1);
+
+  const summarized = await TOOL_HANDLERS.liquid_source_map({ action: "summarize", session_id: "liquid-dispatch-test" });
+  assert.equal(typeof summarized.data.ready_for_semantic_recovery, "boolean");
+
+  const critical = await TOOL_HANDLERS.liquid_source_map({ action: "critical_targets", session_id: "liquid-dispatch-test" });
+  assert.ok(Array.isArray(critical.data.targets ?? critical.data.critical_targets ?? critical.data.sources));
+
+  await assert.rejects(
+    () => TOOL_HANDLERS.liquid_source_map({ action: "nope", session_id: "liquid-dispatch-test" }),
+    /unknown action/,
+  );
+});
+
+test("liquid_source_substitution dispatches merged playbook stages", async () => {
+  process.env.OPENTRONS_SESSION_STATE_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "liquid-subst-dispatch-"));
+
+  await TOOL_HANDLERS.record_liquid_source_map({
+    session_id: "liquid-subst-dispatch",
+    sources: [
+      { slot_name: "D3", well_name: "A1", liquid_name: "enzyme", expected_presence: true },
+      { slot_name: "C3", well_name: "A1", liquid_name: "enzyme", expected_presence: true },
+    ],
+  });
+
+  const plan = await TOOL_HANDLERS.liquid_source_substitution({
+    action: "plan",
+    session_id: "liquid-subst-dispatch",
+    failed_source_key: "D3.A1",
+  });
+  assert.ok(plan.data.selected_source_key || plan.data.candidates);
+
+  await assert.rejects(
+    () =>
+      TOOL_HANDLERS.liquid_source_substitution({
+        action: "bogus",
+        session_id: "liquid-subst-dispatch",
+        failed_source_key: "D3.A1",
+      }),
+    /unknown action/,
+  );
 });

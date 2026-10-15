@@ -31,7 +31,7 @@ Shorter variant:
 
 1. **Intent** — Confirm robot (Flex), row A serial dilution, volumes, tip strategy.
 2. **Protocol** — Draft from template; load trash on Flex; standard labware names.
-3. **Simulation** — `doctor_local_runtime` → `simulate_protocol` → `parse_simulation_output`.
+3. **Simulation** — `health_check(scope=local)` → `simulate_protocol` → `simulate_protocol`.
 4. **Status** — Agent emits [output-contract](../../policy/output-contract.md) JSON with `"phase": "simulation"`.
 
 ## Prerequisites

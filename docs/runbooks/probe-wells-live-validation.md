@@ -63,7 +63,7 @@ Check `probe_results` in the tool response:
 | `require_presence` | `true` when liquid present; run fails if empty |
 | `measure_height` | positive number (mm from well top) when liquid present |
 
-If `auto_apply_to_session=true`, confirm `apply_liquid_probe_results.applied_count ≥ 1` and call `get_liquid_source_map` to see `observed_presence` / `observed_height_mm`.
+If `auto_apply_to_session=true`, confirm `apply_liquid_probe_results.applied_count ≥ 1` and call `liquid_source_map(action=get)` to see `observed_presence` / `observed_height_mm`.
 
 ## Step 5 — Recovery gate
 
@@ -81,7 +81,7 @@ Gate should pass when observed presence matches expected sources, or provide act
 | Simulation pass, live false negative | Non-conductive tips or empty well | Verify tips and source volume |
 | `measure_height` returns unexpected values | Foam, volatile liquid, wrong labware definition | Try aqueous water first; document liquid class |
 | Attached tip blocks rerun | Prior run left tip on pipette | Drop tip manually or use recovery tooling before reprobe |
-| Gate still blocked after apply | `expected_presence` mismatch | Review `get_liquid_source_map`; update source map or re-probe |
+| Gate still blocked after apply | `expected_presence` mismatch | Review `liquid_source_map(action=get)`; update source map or re-probe |
 
 ## Record results
 

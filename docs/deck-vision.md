@@ -22,7 +22,7 @@ Configured in `automation/deck_layout_policy.json` for robot `192.168.66.102`.
 | D1 | Heater-shaker |
 | A3 | Trash bin |
 
-`vision_check` marks these as `state: fixed` with `source: layout_policy`.
+`deck_vision_check(mode=local)` marks these as `state: fixed` with `source: layout_policy`.
 
 ### Detection slots (7 movable labware positions)
 
@@ -45,13 +45,13 @@ Offline (once / when retraining)
   train_deck_yolo.py     →  vision/models/weights/deck_v2_best.pt
 
 Runtime (each check)
-  camera_status
-    → capture_preview_image
-    → vision_check  (loads calibration + policy + weights automatically)
+  camera_settings(action=status)
+    → capture_image(mode=preview)
+    → deck_vision_check(mode=local)  (loads calibration + policy + weights automatically)
     → reconcile_state  (deck truth for comparison)
 ```
 
-MCP tool reference: [MCP_TOOLS.md](MCP_TOOLS.md) → `vision_check` [L4].
+MCP tool reference: [MCP_TOOLS.md](MCP_TOOLS.md) → `deck_vision_check(mode=local)` [L4].
 
 ---
 
@@ -83,7 +83,7 @@ Click corners in order **A1 → A3 → D3 → D1** (deck view). Writes:
 
 `automation/photo/deck_calibration.json`
 
-`vision_check` loads `optional_deck_corners_norm` from this file automatically. Re-calibrate if the camera mount or angle changes.
+`deck_vision_check(mode=local)` loads `optional_deck_corners_norm` from this file automatically. Re-calibrate if the camera mount or angle changes.
 
 ### 3. Machine layout policy
 
@@ -120,7 +120,7 @@ Ensure `.cursor/mcp.json` sets:
 - `OPENTRONS_PLUGIN_ROOT` → repo root
 - `OPENTRONS_PYTHON` → `.venv\Scripts\python.exe`
 
-Reload MCP only after changing `mcp.json` env vars or if the server is stale. **Not required** after editing `vision_check.py`, policy, calibration, or weights — each `vision_check` call spawns a fresh Python process.
+Reload MCP only after changing `mcp.json` env vars or if the server is stale. **Not required** after editing `deck_vision_check(mode=local).py`, policy, calibration, or weights — each `deck_vision_check(mode=local)` call spawns a fresh Python process.
 
 ---
 
@@ -132,11 +132,11 @@ Stay on `feature/flex-deck-vision`. Ask explicitly (vision is **not** in the def
 
 **Quick deck check**
 
-> 连接 192.168.66.102，拍一张 deck 照片，跑 vision_check，列出 7 个检测槽位的占用和类型，并与 reconcile_state 对比。固定槽位 A1/B1/C1/D1/A3 仅作 layout_policy 参考。
+> 连接 192.168.66.102，拍一张 deck 照片，跑 deck_vision_check(mode=local)，列出 7 个检测槽位的占用和类型，并与 reconcile_state 对比。固定槽位 A1/B1/C1/D1/A3 仅作 layout_policy 参考。
 
 **Before a run**
 
-> 实验开始前：camera_status → capture_preview_image → vision_check。若检测槽位与 protocol 预期 layout 不一致，列出差异，不要自动启动 run。
+> 实验开始前：camera_settings(action=status) → capture_image(mode=preview) → deck_vision_check(mode=local)。若检测槽位与 protocol 预期 layout 不一致，列出差异，不要自动启动 run。
 
 **After rearranging labware**
 
@@ -145,7 +145,7 @@ Stay on `feature/flex-deck-vision`. Ask explicitly (vision is **not** in the def
 Agent tool sequence:
 
 ```
-camera_status → capture_preview_image → vision_check → reconcile_state
+camera_settings(action=status) → capture_image(mode=preview) → deck_vision_check(mode=local) → reconcile_state
 ```
 
 Read `slot_observations` for detection slots; ignore or treat `fixed` slots as machine config, not vision inference.
@@ -172,7 +172,7 @@ Robot IP can also be read from `automation/.env`.
 
 Defaults: `automation/photo/test/test_*.jpg` → JSON + annotated images under `automation/photo/test/vision/`.
 
-**Single-image vision_check** (stdin JSON to script):
+**Single-image deck_vision_check(mode=local)** (stdin JSON to script):
 
 ```powershell
 $payload = @{
@@ -180,7 +180,7 @@ $payload = @{
   image_path = "C:\...\automation\photo\test\test_....jpg"
   conf_threshold = 0.2
 } | ConvertTo-Json -Compress
-$payload | .venv\Scripts\python.exe servers\opentrons-mcp\scripts\vision_check.py
+$payload | .venv\Scripts\python.exe servers\opentrons-mcp\scripts\deck_vision_check(mode=local).py
 ```
 
 Calibration and policy are loaded from repo paths; no need to pass `deck_corners_norm` manually.
@@ -252,7 +252,7 @@ Updates `vision/models/weights/deck_v2_best.pt`.
 | `automation/deck_layout_policy.json` | Fixed slots + detection scope |
 | `automation/photo/deck_calibration.json` | Homography corners |
 | `vision/models/weights/deck_v2_best.pt` | Trained detector |
-| `servers/opentrons-mcp/scripts/vision_check.py` | MCP deck vision backend |
+| `servers/opentrons-mcp/scripts/deck_vision_check(mode=local).py` | MCP deck vision backend |
 | `automation/capture_photo_series.py` | Robot timed capture |
 | `automation/run_test_vision.py` | Offline batch evaluation |
 | `automation/click_deck_corners.py` | Calibration GUI |
@@ -274,7 +274,7 @@ Tooling index: [automation/README.md](../automation/README.md).
 | Fixed slot shows wrong labware | Expected — fixed slots ignore vision; check detection slots only |
 | `plate` never detected | Add plate bbox labels and retrain |
 | MCP vision fails | Check `OPENTRONS_PYTHON`, run `node scripts/verify-setup.mjs` |
-| Capture fails | `camera_status`; confirm robot IP and Flex camera API |
+| Capture fails | `camera_settings(action=status)`; confirm robot IP and Flex camera API |
 | Stale behavior after env change | Reload MCP in Cursor settings |
 
 MCP startup issues: [runbooks/mcp-wont-start.md](runbooks/mcp-wont-start.md).
@@ -285,5 +285,5 @@ MCP startup issues: [runbooks/mcp-wont-start.md](runbooks/mcp-wont-start.md).
 
 - [GETTING_STARTED.md](GETTING_STARTED.md) — install and MCP enablement
 - [policy/workflows.md](../policy/workflows.md) — canonical vision tool sequence
-- [MCP_TOOLS.md](MCP_TOOLS.md) — `vision_check`, `capture_preview_image`
+- [MCP_TOOLS.md](MCP_TOOLS.md) — `deck_vision_check(mode=local)`, `capture_image(mode=preview)`
 - [GLOSSARY.md](GLOSSARY.md) — deck truth vs observation

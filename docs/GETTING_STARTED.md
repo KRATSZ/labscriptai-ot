@@ -210,7 +210,7 @@ After reloading an MCP client, also run the MCP `health_check` tool itself. The 
 
 If this field is missing, the client is still running an older MCP process even if the local files have been updated.
 
-The loaded `health_check` should also include `mcp_server.required_runtime_tools.all_present=true`. The required runtime tools are the minimum self-recovery surface: `runtime_recovery_self_test`, `safe_next_action`, `restart_review`, `validate_virtual_lab_state_steps`, `live_liquid_recovery_gate`, `robot_status`, `module_status`, `is_home_safe`, `experiment_history`, `runtime_watch_loop`, and the liquid source-map tools. If this block is missing, reload or reinstall the plugin before trusting live runtime recovery.
+The loaded `health_check` should also include `mcp_server.required_runtime_tools.all_present=true`. The required runtime tools are the minimum self-recovery surface: `runtime_recovery_self_test`, `safe_next_action`, `safe_next_action(detail=full)`, `validate_virtual_lab_state_steps`, `live_liquid_recovery_gate`, `robot_status`, `robot_status`, `is_home_safe`, `query_history(scope=experiment_logs)`, `runtime_watch(mode=loop)`, and the liquid source-map tools. If this block is missing, reload or reinstall the plugin before trusting live runtime recovery.
 
 Then run `runtime_recovery_self_test` in the same MCP client. It should return:
 
@@ -277,7 +277,7 @@ node scripts/apply-liquid-probe-results.mjs \
   --out runs/self-recovery/artifacts/apply-liquid-probe-results-d3-first-column-latest.json
 ```
 
-This records `observed_presence`, `observed_run_id`, and `observed_source=live_probe` while preserving `expected_presence`. If an expected-present source probes as absent, `summarize_liquid_source_map` reports `observed_presence_mismatch_count>0` and `ready_for_semantic_recovery=false` until the mismatch is resolved or deliberately corrected.
+This records `observed_presence`, `observed_run_id`, and `observed_source=live_probe` while preserving `expected_presence`. If an expected-present source probes as absent, `liquid_source_map(action=summarize)` reports `observed_presence_mismatch_count>0` and `ready_for_semantic_recovery=false` until the mismatch is resolved or deliberately corrected.
 
 When the only source-map problem is an expected-present source whose latest live observation is `observed_presence=false`, the normal live-liquid gate still blocks resume. To collect more evidence, use the narrower re-probe gate:
 
@@ -289,11 +289,11 @@ node scripts/live-liquid-recovery-gate.mjs \
   --allow-observed-mismatch-reprobe
 ```
 
-This may downgrade the source-map check from `fail` to `warn` only for targeted no-aspirate `probe_wells` evidence collection. The gate output lists `allowed_probe_targets`; do not use this mode for `runtime_watch_poll`, `run_protocol` resume, aspirate, or dispense.
+This may downgrade the source-map check from `fail` to `warn` only for targeted no-aspirate `probe_wells` evidence collection. The gate output lists `allowed_probe_targets`; do not use this mode for `runtime_watch(mode=poll)`, `run_protocol` resume, aspirate, or dispense.
 
 For expected-present sources, the gate also warns when the source map only says generic `operator-confirmed-liquid` or omits `sample_id`. This warning does not mean liquid probing is unsafe by itself, but it does mean semantic recovery such as changing sources or resuming sample-dependent work needs human confirmation before any live action.
 
-To inspect this before a gate fails, use the read-only MCP tool `summarize_liquid_source_map`. It reports how many expected-present sources still need a specific `liquid_name` or `sample_id`, whether the current source map is ready for semantic recovery, and a `record_liquid_source_map_template` with the exact wells that need operator-filled identity fields.
+To inspect this before a gate fails, use the read-only MCP tool `liquid_source_map(action=summarize)`. It reports how many expected-present sources still need a specific `liquid_name` or `sample_id`, whether the current source map is ready for semantic recovery, and a `record_liquid_source_map_template` with the exact wells that need operator-filled identity fields.
 
 If the MCP client has not been reloaded yet, use the equivalent local no-motion CLI from the repo root:
 
@@ -302,7 +302,7 @@ node scripts/summarize-liquid-source-map.mjs \
   --session-id self-recovery-liquid
 ```
 
-It calls the local MCP handlers directly, writes a JSON artifact under `<PLUGIN_DATA>/runs/self-recovery/artifacts/` (default; pass `--out` to override), appends a `summarize_liquid_source_map` result-log entry, and exits non-zero when the source map is not ready for semantic recovery. Use `--slot D3` or `--well A1` to narrow the summary without contacting the robot.
+It calls the local MCP handlers directly, writes a JSON artifact under `<PLUGIN_DATA>/runs/self-recovery/artifacts/` (default; pass `--out` to override), appends a `liquid_source_map(action=summarize)` result-log entry, and exits non-zero when the source map is not ready for semantic recovery. Use `--slot D3` or `--well A1` to narrow the summary without contacting the robot.
 
 To generate operator-fillable identity drafts, add template outputs:
 
@@ -364,7 +364,7 @@ node scripts/summarize-liquid-source-map.mjs \
 
 This still does not contact the robot; it only updates local session bookkeeping and then re-runs the source-map readiness summary.
 
-Apply output includes `summary_result_log_entry_id` and the latest `summary_result_log_entry`, so the identity update can be audited through `experiment_history` as well as the saved `--report-out` artifact.
+Apply output includes `summary_result_log_entry_id` and the latest `summary_result_log_entry`, so the identity update can be audited through `query_history(scope=experiment_logs)` as well as the saved `--report-out` artifact.
 
 After the MCP client has been reloaded, prefer the MCP tool `live_liquid_recovery_gate` for the same go/no-go check from inside the plugin. It is also read-only and blocks live liquid watcher/probe re-runs when the loaded recovery self-test fails, the robot cannot be read, door/estop is unsafe, modules report blockers, or a pipette still reports an attached tip.
 
@@ -387,9 +387,9 @@ node scripts/validate-liquid-source-substitution.mjs \
 
 The generated protocol only calls `require_liquid_presence` on the replacement source, then drops the tip. It does not aspirate, dispense, upload, play, or resume a failed experiment. The bundle also includes `liquid_guard_analysis`; it should report `status=pass`, `first_aspirate_guarded=true`, and `no_aspirate_or_dispense=true` for this validation protocol. A `passed` bundle means the replacement-source validation protocol passes local simulation; live execution still requires `live_liquid_recovery_gate` and explicit operator opt-in. The bundle may report `auto_resume_eligible=true` when the fixed playbook can automatically choose a same-liquid replacement with validated presence, but `live_execution_allowed` and `live_protocol_run_allowed` must remain false before the live gate and operator opt-in.
 
-To prepare the registered fixed recovery playbook from inside the MCP runtime, use `prepare_liquid_source_substitution_recovery` with the same source and pipette inputs. This plans the replacement, generates the fixed validation protocol, runs local simulation, writes a recovery bundle, and records `event_kind=liquid_source_substitution_recovery_bundle`. It still does not upload, play, resume, aspirate, dispense, or move the robot. The recovery bundle should report `status=prepared`, `fixed_script_prepared=true`, `liquid_guard_analysis.status=pass`; `auto_resume_eligible=true` is allowed only for same-liquid replacement with validated presence, while `live_execution_allowed=false` remains mandatory until `live_liquid_recovery_gate` and operator opt-in are satisfied.
+To prepare the registered fixed recovery playbook from inside the MCP runtime, use `liquid_source_substitution(action=prepare_recovery)` with the same source and pipette inputs. This plans the replacement, generates the fixed validation protocol, runs local simulation, writes a recovery bundle, and records `event_kind=liquid_source_substitution_recovery_bundle`. It still does not upload, play, resume, aspirate, dispense, or move the robot. The recovery bundle should report `status=prepared`, `fixed_script_prepared=true`, `liquid_guard_analysis.status=pass`; `auto_resume_eligible=true` is allowed only for same-liquid replacement with validated presence, while `live_execution_allowed=false` remains mandatory until `live_liquid_recovery_gate` and operator opt-in are satisfied.
 
-When a runtime liquid-probe failure has same-liquid alternatives in the source map, the recovery suggestion and runtime-watch alert expose the fixed playbook as structured fields: `same_liquid_source_substitution_next_tool=prepare_liquid_source_substitution_recovery`, `same_liquid_source_substitution_playbook=liquid_source_substitution_continuation_protocol`, and `same_liquid_source_substitution_required_gates=["live_liquid_recovery_gate","run_protocol_only_after_operator_opt_in"]`. These fields mean the plugin has a deterministic next tool to prepare recovery; they do not mean the robot may automatically resume.
+When a runtime liquid-probe failure has same-liquid alternatives in the source map, the recovery suggestion and runtime-watch alert expose the fixed playbook as structured fields: `same_liquid_source_substitution_next_tool=liquid_source_substitution(action=prepare_recovery)`, `same_liquid_source_substitution_playbook=liquid_source_substitution_continuation_protocol`, and `same_liquid_source_substitution_required_gates=["live_liquid_recovery_gate","run_protocol_only_after_operator_opt_in"]`. These fields mean the plugin has a deterministic next tool to prepare recovery; they do not mean the robot may automatically resume.
 
 To replay that liquid failure handoff without contacting or moving the robot, export a local recovery-decision artifact:
 
@@ -441,16 +441,16 @@ node scripts/export-safe-next-action.mjs \
 
 Add `--robot-ip 192.168.66.102` when you want the same handoff to include a live, read-only home-safety preview. This still must not move the robot; it only records blockers such as `tip_attached:left` alongside the persisted liquid recovery plan.
 
-The exported JSON artifact includes `rationale_zh`, `operator_steps_zh`, the latest operator-request artifact paths, a liquid identity input summary, and any live home blockers when `--robot-ip` is provided. The optional Markdown artifact is a short Chinese-first operator handoff with the current no-motion boundary and exact wells that still need liquid identity metadata. The result log uses `tool_name=safe_next_action_cli` and `event_kind=resume_guidance`, so it can be read back with `experiment_history`.
+The exported JSON artifact includes `rationale_zh`, `operator_steps_zh`, the latest operator-request artifact paths, a liquid identity input summary, and any live home blockers when `--robot-ip` is provided. The optional Markdown artifact is a short Chinese-first operator handoff with the current no-motion boundary and exact wells that still need liquid identity metadata. The result log uses `tool_name=safe_next_action_cli` and `event_kind=resume_guidance`, so it can be read back with `query_history(scope=experiment_logs)`.
 
 For active monitoring, use `runtime_recovery_monitor` from MCP or the CLI wrapper. This is a bounded monitor tick, not a hidden daemon. It combines four levels:
 
 | Level | What it checks | Motion boundary |
 |---|---|---|
-| L1 | loaded recovery self-test, `health_check`, `robot_status`, `module_status` | no robot motion |
+| L1 | loaded recovery self-test, `health_check`, `robot_status`, `robot_status` | no robot motion |
 | L2 | current run state and, in observe mode, recovery guidance for `awaiting-recovery` / failed runs | observe mode has no robot motion |
 | L3 | `safe_next_action`, optional `live_liquid_recovery_gate`, prepared recovery bundles | no robot motion |
-| L4 | guarded execution boundary for self-recovery | only delegates existing `runtime_watch_poll` L0 fixes when explicitly enabled |
+| L4 | guarded execution boundary for self-recovery | only delegates existing `runtime_watch(mode=poll)` L0 fixes when explicitly enabled |
 
 Before trusting a runtime recovery path, inspect the fixed playbook registry:
 
@@ -462,7 +462,7 @@ Call `list_recovery_playbooks` and confirm the intended recovery class is regist
 
 Before simulation or live recovery, call `validate_virtual_lab_state_steps` for the proposed bookkeeping changes. It is pure software: it checks tip state, source volume, dead volume, destination capacity, and unsupported steps without writing session state or moving the robot. Treat any violation as a stop sign before uploading or playing a live run. The same checks run inline as a pre-simulation gate when you pass `virtual_lab_steps` to `simulate_protocol` (Phase 1.5 gate); the simulation is blocked with `blocked_by: "virtual_lab_state_validation"` instead of spawning Python.
 
-For unattended live runs, arm `runtime_watch_loop` after `run_protocol` returns a `run_id`. It reuses `runtime_watch_poll` on a budgeted schedule, persists `goal-state.json` per run, and emits outbox sentinels so the host IDE can auto-wake. Default `self_fix_mode=observe`; guarded L0 self-fix requires `allow_l4_execution=true` and `operator_opt_in=true`.
+For unattended live runs, arm `runtime_watch(mode=loop)` after `run_protocol` returns a `run_id`. It reuses `runtime_watch(mode=poll)` on a budgeted schedule, persists `goal-state.json` per run, and emits outbox sentinels so the host IDE can auto-wake. Default `self_fix_mode=observe`; guarded L0 self-fix requires `allow_l4_execution=true` and `operator_opt_in=true`.
 
 Default mode is observe-only:
 
@@ -488,7 +488,7 @@ node scripts/runtime-recovery-monitor.mjs \
   --markdown-out runs/self-recovery/artifacts/runtime-recovery-monitor-latest.md
 ```
 
-Only use L0 self-fix mode when the operator has opted in and the intended recovery class is one of the existing `runtime_watch_poll` whitelist cases, such as missing-tip retry or module-wait recovery:
+Only use L0 self-fix mode when the operator has opted in and the intended recovery class is one of the existing `runtime_watch(mode=poll)` whitelist cases, such as missing-tip retry or module-wait recovery:
 
 ```bash
 node scripts/runtime-recovery-monitor.mjs \
@@ -500,9 +500,9 @@ node scripts/runtime-recovery-monitor.mjs \
   --operator-opt-in
 ```
 
-This still does not authorize liquid source changes, aspirate/dispense retries, deck relocation, or arbitrary resume. Liquid recovery remains gated by `live_liquid_recovery_gate` and operator opt-in. The monitor writes a `runtime_recovery_monitor` result-log entry with `notifications`, `recommended_next_tools`, `acceptance`, and `no_robot_motion`, so the agent can use `experiment_history` to resume after restart.
+This still does not authorize liquid source changes, aspirate/dispense retries, deck relocation, or arbitrary resume. Liquid recovery remains gated by `live_liquid_recovery_gate` and operator opt-in. The monitor writes a `runtime_recovery_monitor` result-log entry with `notifications`, `recommended_next_tools`, `acceptance`, and `no_robot_motion`, so the agent can use `query_history(scope=experiment_logs)` to resume after restart.
 
-The monitor also publishes requires-attention and resolved-state notifications into a durable alert/outbox layer. `runtime_get_alerts` reads watcher alerts plus monitor-derived alerts; `runtime_get_outbox` reads host-delivery events; `runtime_ack_alert` and `runtime_ack_outbox` mark handled items. This is the plugin-owned event trigger path. A Codex heartbeat can still consume it, but the message does not depend on heartbeat storage.
+The monitor also publishes requires-attention and resolved-state notifications into a durable alert/outbox layer. `runtime_alerts(action=list)` reads watcher alerts plus monitor-derived alerts; `runtime_outbox(action=list)` reads host-delivery events; `runtime_alerts(action=ack)` and `runtime_outbox(action=ack)` mark handled items. This is the plugin-owned event trigger path. A Codex heartbeat can still consume it, but the message does not depend on heartbeat storage.
 
 Host delivery is adapter based:
 
@@ -534,7 +534,7 @@ node scripts/runtime-recovery-monitor.mjs \
 
 By default only attention, hard-stop, and important resolved-state events enter the outbox. Use `--include-info-notifications` to publish all monitor notifications, or `--no-publish-notifications` when you need a pure inspection tick with no local alert/outbox writes.
 
-For real-machine validation, require `acceptance.metrics.unapproved_motion_count=0` and `acceptance.metrics.experiment_intent_violation_count=0`. `l0_auto_fix_count` should increment only when `self_fix_mode=l0`, `allow_l4_execution=true`, and `operator_opt_in=true` are all present. If those gates are missing, the monitor must report `l0_self_fix_gate_blocked` and must not delegate self-fix execution to `runtime_watch_poll`.
+For real-machine validation, require `acceptance.metrics.unapproved_motion_count=0` and `acceptance.metrics.experiment_intent_violation_count=0`. `l0_auto_fix_count` should increment only when `self_fix_mode=l0`, `allow_l4_execution=true`, and `operator_opt_in=true` are all present. If those gates are missing, the monitor must report `l0_self_fix_gate_blocked` and must not delegate self-fix execution to `runtime_watch(mode=poll)`.
 
 For a shorter go/no-go bundle after a restart, combine the latest live-liquid gate artifact with safe-next:
 
@@ -592,7 +592,7 @@ bash scripts/arm-runtime-watch.sh
 
 > 用 opentrons-experiment-goal 盯 session **self-recovery-liquid** 到 **BLOCKED** 或 **COMPLETE**
 
-The agent arms `runtime_watch_loop` (or the Claude Monitor ticks `runtime-recovery-monitor.mjs`). On each meaningful event, host **Stop** hooks call `scripts/consume-runtime-outbox.mjs`, which injects a continuation containing `GOAL_STATUS` / `GOAL_REASON` lines per the skill contract.
+The agent arms `runtime_watch(mode=loop)` (or the Claude Monitor ticks `runtime-recovery-monitor.mjs`). On each meaningful event, host **Stop** hooks call `scripts/consume-runtime-outbox.mjs`, which injects a continuation containing `GOAL_STATUS` / `GOAL_REASON` lines per the skill contract.
 
 ### Smoke test (no robot)
 

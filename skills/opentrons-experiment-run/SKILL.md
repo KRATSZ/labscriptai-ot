@@ -4,45 +4,45 @@ description: Default entry for new experiments, "what's the robot doing?", resum
 type: prompt-only
 mcp_tools:
   - robot_status
-  - module_status
+  - robot_status
   - simulate_protocol
   - logicpass_check
   - reconcile_state
   - run_protocol
-  - runtime_watch_poll
-  - runtime_watch_loop
-  - runtime_get_outbox
-  - runtime_ack_outbox
-  - runtime_get_alerts
-  - runtime_ack_alert
+  - runtime_watch(mode=poll)
+  - runtime_watch(mode=loop)
+  - runtime_outbox(action=list)
+  - runtime_outbox(action=ack)
+  - runtime_alerts(action=list)
+  - runtime_alerts(action=ack)
   - parse_error
   - suggest_recovery_action
   - execute_protocol_recovery
   - recover_tip_pickup
-  - list_tip_candidates
+  - tip_wells(action=list)
   - estimate_tip_budget
-  - suggest_next_tip_well
+  - tip_wells(action=suggest_next)
   - live_readiness_check
   - live_liquid_recovery_gate
   - probe_wells
   - apply_liquid_probe_results
-  - list_critical_probe_targets
-  - plan_liquid_source_substitution
-  - prepare_liquid_source_substitution_recovery
+  - liquid_source_map(action=critical_targets)
+  - liquid_source_substitution(action=plan)
+  - liquid_source_substitution(action=prepare_recovery)
   - drop_attached_tip
   - safe_next_action
-  - restart_review
-  - experiment_history
+  - safe_next_action(detail=full)
+  - query_history(scope=experiment_logs)
   - is_home_safe
   - health_check
-  - camera_status
-  - capture_preview_image
-  - vision_check
-  - analyze_image_with_ark
+  - camera_settings(action=status)
+  - capture_image(mode=preview)
+  - deck_vision_check(mode=local)
+  - analyze_image(provider=ark)
   - deck_vision_check
   - control_run
-  - get_runs
-  - run_history
+  - query_history(scope=robot_runs)
+  - query_history(scope=run_commands)
 ---
 
 # Experiment Run (MCP State Machine)
@@ -88,7 +88,7 @@ good?” when the gate already cleared.
 
 ### Phase 2 — Simulation Gate (blocking)
 
-- `doctor_local_runtime` -> `simulate_protocol` -> `parse_simulation_output`
+- `health_check(scope=local)` -> `simulate_protocol` (its response already includes `parsed_repair`)
 - Then `logicpass_check` on the same protocol. It reuses the analyze JSON from `simulate_protocol`. `outcome: pass` is required before live; `fail` goes back to the repair loop; `unevaluable` stops and reports the missing evidence.
 - Before `simulate_protocol`, when you have proposed protocol steps, pass
   `virtual_lab_steps` (plus `session_id` / `initial_state`) so the Virtual Lab
@@ -121,17 +121,17 @@ Keep the simulation gate, hard-stops, and vision **observation-only**. Never tre
 #### Phase 3a — Dashboard (no camera, no VLM)
 
 - `health_check` -> `live_readiness_check` (robot_ip, session_id?, file_path?)
-- `robot_status`, `module_status` — door closed, estop clear, modules ready
+- `robot_status`, `robot_status` — door closed, estop clear, modules ready
 - If `guidance.reconcile_first` or session needs reconciliation -> `reconcile_state` (tool-first; do not ask first)
-- **Do not** call `camera_status`, `capture_preview_image`, `vision_check`, or any VLM here
+- **Do not** call `camera_settings(action=status)`, `capture_image(mode=preview)`, `deck_vision_check(mode=local)`, or any VLM here
 - **Fail** on `DOOR_OPEN`, `ESTOP_ENGAGED`, `MODULE_NOT_READY` (hard blockers)
 - On `passed` / warn-continue -> proceed to 3b **without** asking the operator to re-confirm dashboard
 
 #### Phase 3b — Eyes on deck (YOLO first, Ark VLM second opinion)
 
 - Default: `deck_vision_check` (robot_ip, session_id, expected_layout)
-  OR manual chain: `camera_status` -> `capture_preview_image` -> `vision_check`
-- YOLO is the first opinion. Escalate to `analyze_image_with_ark` (Doubao) only when:
+  OR manual chain: `camera_settings(action=status)` -> `capture_image(mode=preview)` -> `deck_vision_check(mode=local)`
+- YOLO is the first opinion. Escalate to `analyze_image(provider=ark)` (Doubao) only when:
   - `uncertainties` include low confidence / ambiguity
   - `mismatches` against `expected_layout`
   - operator sets `force_vlm=true`
@@ -143,7 +143,7 @@ Keep the simulation gate, hard-stops, and vision **observation-only**. Never tre
 
 #### Phase 3c — Critical wells only (no VLM)
 
-- `list_critical_probe_targets` (session_id, critical_sources from intent)
+- `liquid_source_map(action=critical_targets)` (session_id, critical_sources from intent)
 - If the list is empty (zero critical) -> treat as **skip-pass** and continue toward the single go-live confirm; do not invent a full-plate scan or ask for probe permission
 - Probe **only** returned critical wells — never full-plate scan
 - `probe_wells` simulate first. Live probe still requires `OPENTRONS_ENABLE_PROBE_WELLS=1` + explicit opt-in, but **do not** add a separate chat confirm for every subgate — fold probe opt-in into the Phase 4 go-live confirmation when possible
@@ -152,7 +152,7 @@ Keep the simulation gate, hard-stops, and vision **observation-only**. Never tre
 - Empty critical source after probe/gate -> **blocked**, do not `run_protocol`
 
 - After MCP/host restart or when the operator is lost: prefer **`safe_next_action`**
-  for `recommended_next_tool` and `operator_steps`; fall back to **`restart_review`**
+  for `recommended_next_tool` and `operator_steps`; fall back to **`safe_next_action(detail=full)`**
   for the full raw bundle.
 - Before `home`: `is_home_safe`.
 
@@ -161,13 +161,13 @@ Keep the simulation gate, hard-stops, and vision **observation-only**. Never tre
 - **Single go-live confirmation** happens here (once): short ready-state summary + ask to start `run_protocol` / play. A person must be at the robot and say so in this conversation. Simulation and LogicPass do not authorize motion. If that confirmation is missing, stop. Do not call `run_protocol` or `control_run(play)` on a non-loopback robot. If live critical probe is still pending and allowed, include probe opt-in + `OPENTRONS_ENABLE_PROBE_WELLS=1` in **this same** confirmation — do not stack earlier Phase 3 chat confirms.
 - `run_protocol` (file_path, robot_ip, session_id).
 - Simulation gate also runs inside this tool.
-- After a successful `run_protocol` call that returns a `run_id`, immediately call `runtime_watch_poll` for that run.
-- If `runtime_watch_poll.status == "running"`, immediately call `runtime_watch_poll` again and do not emit user-facing text between poll windows.
-- Only report when `runtime_watch_poll` returns `completed`, `needs_user`, `hard_stop`, or `unreachable`.
+- After a successful `run_protocol` call that returns a `run_id`, immediately call `runtime_watch(mode=poll)` for that run.
+- If `runtime_watch(mode=poll).status == "running"`, immediately call `runtime_watch(mode=poll)` again and do not emit user-facing text between poll windows.
+- Only report when `runtime_watch(mode=poll)` returns `completed`, `needs_user`, `hard_stop`, or `unreachable`.
 - **Quiet execution contract:** while the run is active, do **not** call
-  `capture_preview_image`, `vision_check`, `analyze_image_with_ark`, `deck_vision_check`,
+  `capture_image(mode=preview)`, `deck_vision_check(mode=local)`, `analyze_image(provider=ark)`, `deck_vision_check`,
   or `probe_wells` unless Phase 5 recovery routing explicitly requires it.
-- **For unattended / "keep going until done" runs**, arm `runtime_watch_loop` instead of repeated manual polls (see `opentrons-experiment-goal`). It reuses `runtime_watch_poll` on a budgeted schedule, persists `goal-state.json`, and emits outbox sentinels so the host IDE can auto-wake. Default `self_test_mode=observe`; guarded L0 self-fix requires `allow_l4_execution=true` + `operator_opt_in=true`.
+- **For unattended / "keep going until done" runs**, arm `runtime_watch(mode=loop)` instead of repeated manual polls (see `opentrons-experiment-goal`). It reuses `runtime_watch(mode=poll)` on a budgeted schedule, persists `goal-state.json`, and emits outbox sentinels so the host IDE can auto-wake. Default `self_test_mode=observe`; guarded L0 self-fix requires `allow_l4_execution=true` + `operator_opt_in=true`.
 - Before this phase, give the operator a short ready-state summary rather than a
   long internal trace.
 - Include the resolved `dry_run_on` value in that summary. If `True`, require
@@ -176,13 +176,13 @@ Keep the simulation gate, hard-stops, and vision **observation-only**. Never tre
 
 ### Phase 5 — Failure / Recovery (trigger routing)
 
-- Default path after `run_protocol` is the bounded `runtime_watch_poll` loop above.
-- `run_history` -> `parse_error` -> `suggest_recovery_action`.
+- Default path after `run_protocol` is the bounded `runtime_watch(mode=poll)` loop above.
+- `query_history(scope=run_commands)` -> `parse_error` -> `suggest_recovery_action`.
 - Use `recovery_channel` from `suggest_recovery_action` to route:
 
 | Channel | Trigger examples | Tools |
 |---------|------------------|-------|
-| **dashboard** | door open, estop, module not ready | `robot_status`, `module_status`, `live_readiness_check` |
+| **dashboard** | door open, estop, module not ready | `robot_status`, `robot_status`, `live_readiness_check` |
 | **vision** | deck moved, labware mismatch (appearance doubt) | `deck_vision_check` or capture+vision+ark, then **`reconcile_state` before asking human** |
 | **reconcile** | SESSION_NEEDS_RECONCILIATION / state mismatch | `reconcile_state` first — not camera/VLM-first |
 | **manual** | DECK_COLLISION (hard-stop) | stop; physical check; re-run live_readiness — **does not enter vision channel** |
@@ -202,7 +202,7 @@ These gates override “tool says auto_executable” and override casual user �
 Before any `recover_tip_pickup` / `retry_pick_up_tip_with_next_candidate`:
 
 1. Count **remaining** protocol `pick_up_tip` / tip-consuming steps still needed (including the failed one).
-2. Call `list_tip_candidates` / `estimate_tip_budget` (or rack bookkeeping from run history) for usable tips left.
+2. Call `tip_wells(action=list)` / `estimate_tip_budget` (or rack bookkeeping from run history) for usable tips left.
 3. Allow auto tip recovery **only if** `usable_tips_remaining ≥ remaining_tip_pickups`.
 4. If short → **STOP**; escalate with tip count math; do **not** burn the last tips on retries that still cannot finish the protocol.
 
@@ -239,7 +239,7 @@ When the failed step is clearly wash/discard/waste (not mid precious dispense):
 On `liquidNotFound` / `INSUFFICIENT_VOLUME` for a mapped primary source:
 
 1. Call `live_liquid_recovery_gate` (and targeted probe if needed).
-2. Call `plan_liquid_source_substitution` (and/or `prepare_liquid_source_substitution_recovery` when preparing a validated continuation).
+2. Call `liquid_source_substitution(action=plan)` (and/or `liquid_source_substitution(action=prepare_recovery)` when preparing a validated continuation).
 3. If a **same-liquid / same-identity** reserve has **enough volume** for the remaining demand → present a clear FIX proposal to the operator (failed well, candidate reserve, remaining µL needed, confirmation required).
 4. **Never** auto-switch source wells or auto-resume substitution. Short reserve → **STOP** (do not “add a little anyway”).
 5. Wrong-identity wells (wash vs assay, enzyme vs buffer) are never candidates.
@@ -250,8 +250,8 @@ Any user “continue / resume / finish phase 2” request still runs gates **2**
 
 ### Phase 6 — Audit
 
-- `experiment_history` (session_id, run_id, tool_name, status, limit).
-- `restart_review` again if operators rotate or context lost.
+- `query_history(scope=experiment_logs)` (session_id, run_id, tool_name, status, limit).
+- `safe_next_action(detail=full)` again if operators rotate or context lost.
 
 ## Safety Refusals — Offer Alternative Path
 

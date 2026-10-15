@@ -4,7 +4,7 @@ This file is the **single source of truth** for the MCP error taxonomy, recovery
 
 ## Canonical taxonomy fields
 
-Every structured error emitted by `parse_simulation_output`, `parse_error`, `suggest_recovery_action`, blocked `run_protocol` payloads, and `preflight_run_setup` checks should use these fields:
+Every structured error emitted by `simulate_protocol`, `parse_error`, `suggest_recovery_action`, blocked `run_protocol` payloads, and `preflight_run_setup` checks should use these fields:
 
 - `phase`
 - `error_domain`
@@ -58,7 +58,7 @@ auto-resume.
 
 ### Runtime watch autonomy
 
-`runtime_watch_poll` is narrower than `execute_protocol_recovery`. It may auto-execute only L0 branches, in this order:
+`runtime_watch(mode=poll)` is narrower than `execute_protocol_recovery`. It may auto-execute only L0 branches, in this order:
 
 1. L4 hard stop: `hard_stop`, `HARDWARE_FAULT`, `DECK_COLLISION`, `ESTOP_ENGAGED`, `DOOR_OPEN`, or `UNKNOWN` -> write alert and stop.
 2. L3 human review: `escalate_to_human` or `requires_confirmation` -> write alert only.
@@ -67,7 +67,7 @@ auto-resume.
    - `wait_and_poll_module_status`
    - `reconcile_state_first` for module-blocker-only diffs
 
-`runtime_watch_poll` must not auto-execute `suggest_new_destination_slot`, even when candidates look high-confidence. Destination recovery remains human-reviewed.
+`runtime_watch(mode=poll)` must not auto-execute `suggest_new_destination_slot`, even when candidates look high-confidence. Destination recovery remains human-reviewed.
 
 Liquid source-map entries are operator-confirmed bookkeeping only. They may be included in
 `INSUFFICIENT_VOLUME` recovery guidance to preserve liquid/sample identity, but they do not
@@ -135,9 +135,9 @@ Current rollout is **Flex-first**. OT-2 deck-diff modeling is still explicitly s
 
 These rules are implemented in `servers/opentrons-mcp/` and covered by tests under `servers/opentrons-mcp/test/`.
 
-1. **Simulation gate is blocking.** Runtime execution must not bypass `doctor_local_runtime` → `simulate_protocol` → `parse_simulation_output`.
+1. **Simulation gate is blocking.** Runtime execution must not bypass `health_check(scope=local)` → `simulate_protocol` → `simulate_protocol`.
 2. **Reconciliation beats history.** When session state says `needs_reconciliation`, reconcile before autonomous motion even if historical logs show success.
-3. **Result logs stay audit-only.** `experiment_history` is narrative evidence, not live deck truth.
+3. **Result logs stay audit-only.** `query_history(scope=experiment_logs)` is narrative evidence, not live deck truth.
 
 ## See also
 

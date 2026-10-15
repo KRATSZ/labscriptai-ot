@@ -144,9 +144,9 @@ export function buildRestartReview({
   const suggestedToolOrder = uniqueOrdered([
     ...(needsReconcile ? ["reconcile_state"] : []),
     "robot_status",
-    "module_status",
-    ...(followActiveRun ? ["run_history", "parse_error"] : []),
-    "experiment_history",
+    "robot_status",
+    ...(followActiveRun ? ["query_history", "parse_error"] : []),
+    "query_history",
     "is_home_safe",
   ]);
 

@@ -26,7 +26,7 @@ Added `mix`, `blow_out`, `load_labware`, `load_pipette`, and no-op handling for 
 
 ### Phase Q2 — Auto-wake loop (complete + tested)
 
-`runtime_watch_loop` (`lib/runtime-watch/watch-loop.js`) wraps `runtime_watch_poll` on a budgeted schedule (`max_turns`, `max_runtime_ms`, `interval_ms`), persists `goal-state.json` per run, emits one outbox sentinel per tick (deliverable to `claudecode/cursor/codex/cli/webhook`), and returns `goal_status` ∈ {`COMPLETE`, `BLOCKED`, `BUDGET_LIMITED`}. `COMPLETE` requires a `completed` tick or the verify callback. It inherits the L0–L4 safety model: only L0 whitelist fixes auto-execute; `needs_user`/`hard_stop` stop the loop. Default `self_fix_mode=observe`; guarded L0 self-fix requires `allow_l4_execution=true` + `operator_opt_in=true`. The `opentrons-experiment-goal` prompt-only skill documents the agent protocol.
+`runtime_watch(mode=loop)` (`lib/runtime-watch/watch-loop.js`) wraps `runtime_watch(mode=poll)` on a budgeted schedule (`max_turns`, `max_runtime_ms`, `interval_ms`), persists `goal-state.json` per run, emits one outbox sentinel per tick (deliverable to `claudecode/cursor/codex/cli/webhook`), and returns `goal_status` ∈ {`COMPLETE`, `BLOCKED`, `BUDGET_LIMITED`}. `COMPLETE` requires a `completed` tick or the verify callback. It inherits the L0–L4 safety model: only L0 whitelist fixes auto-execute; `needs_user`/`hard_stop` stop the loop. Default `self_fix_mode=observe`; guarded L0 self-fix requires `allow_l4_execution=true` + `operator_opt_in=true`. The `opentrons-experiment-goal` prompt-only skill documents the agent protocol.
 
 This is the `/loop` + `/goal` pattern, but the goal runtime lives in the MCP server (state, verify, budget, levels, hard-stop, multi-backend outbox) — not faked in a Skill + CLI. The host IDE watches its adapter outbox file and wakes the agent on each sentinel.
 
@@ -56,7 +56,7 @@ This is the `/loop` + `/goal` pattern, but the goal runtime lives in the MCP ser
 
 ### Phase Q2.1 — Zero-LLM heartbeat throttling (in progress — parallel workers)
 
-- **Goal.** `runtime_watch_loop` option `zero_llm_when_no_error` suppresses host-agent wake on benign ticks. Outbox entries carry `wake` (boolean) and `kind` ∈ {`heartbeat`, `error`, `blocked`, `hard_stop`, `needs_user`, `completed`}. Heartbeats set `wake:false`; `error` / `blocked` set `wake:true`.
+- **Goal.** `runtime_watch(mode=loop)` option `zero_llm_when_no_error` suppresses host-agent wake on benign ticks. Outbox entries carry `wake` (boolean) and `kind` ∈ {`heartbeat`, `error`, `blocked`, `hard_stop`, `needs_user`, `completed`}. Heartbeats set `wake:false`; `error` / `blocked` set `wake:true`.
 - **Key files.** `lib/runtime-watch/watch-loop.js`, `lib/runtime-outbox.js`, `test/runtime-watch-loop.test.js`.
 - **Status.** **in progress (parallel workers)** — baseline auto-wake loop (Phase Q2) is complete; wake/kind discrimination landing in parallel.
 - **Evidence (partial).** `servers/opentrons-mcp/test/runtime-watch-loop.test.js` (one sentinel per tick); docs/MCP_TOOLS.md (wake/kind contract).
@@ -71,13 +71,13 @@ This is the `/loop` + `/goal` pattern, but the goal runtime lives in the MCP ser
 | **Typed protocol IR (Phase V3)** | `applyStep` consumes generic step JSON; there is no `protocol.py → steps` lowering layer. Callers still construct steps manually. | Long-term; validate with `bundled-library/` round-trip first. |
 | **`applyStep` module-action semantics** | Module steps are treated as no-ops (no temperature/shake state tracked). | Low; only matters if protocols depend on module timing. |
 | **`state_history` sampling** | Capped at 2000 entries (newest kept); no per-field sampling for very long sessions. | Low. |
-| **Real-machine V2 regression** | Runtime-watch + auto-wake tooling is built and unit-tested, but the end-to-end live sequence (reload verify → readonly snapshot → L0 tip recovery → liquid gate → substitution → probe writeback → suffix gate → `runtime_watch_loop` auto-wake) is not yet captured in a single dated `runs/self-recovery/<date>-report.md`. | Medium; needs hardware. |
+| **Real-machine V2 regression** | Runtime-watch + auto-wake tooling is built and unit-tested, but the end-to-end live sequence (reload verify → readonly snapshot → L0 tip recovery → liquid gate → substitution → probe writeback → suffix gate → `runtime_watch(mode=loop)` auto-wake) is not yet captured in a single dated `runs/self-recovery/<date>-report.md`. | Medium; needs hardware. |
 
 ## Hard constraints for the next agent
 
 1. `protocol.py` is not the source of truth; Virtual Lab State + checks are.
 2. Virtual Lab State changes default to no robot motion; pure functions + unit tests first.
-3. Before any live work: reload the plugin, verify `health_check.required_runtime_tools.all_present=true` (now includes `runtime_watch_loop`), and take a read-only real-machine snapshot. These two steps are historically where runs failed.
-4. Do not bypass `simulate_protocol`'s Virtual Lab State gate, `live_liquid_recovery_gate`, or operator opt-in. `runtime_watch_loop` does not bypass them either.
+3. Before any live work: reload the plugin, verify `health_check.required_runtime_tools.all_present=true` (now includes `runtime_watch(mode=loop)`), and take a read-only real-machine snapshot. These two steps are historically where runs failed.
+4. Do not bypass `simulate_protocol`'s Virtual Lab State gate, `live_liquid_recovery_gate`, or operator opt-in. `runtime_watch(mode=loop)` does not bypass them either.
 5. `hard_stop` (collision/stall) stops the loop; never auto-retry it.
 6. Any public use must cite the LabscriptAI bioRxiv preprint (see `AGENTS.md`).
