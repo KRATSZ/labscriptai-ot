@@ -1,7 +1,9 @@
 """Turn an ``opentrons analyze`` result into keyframes for the Flex MuJoCo scene.
 
-The analysis JSON is the only input. ``loadLabware`` gives each labware's slot
-and full definition, ``loadPipette`` the mounts, ``loadLiquid`` the starting
+The analysis JSON is the only input. ``loadModule`` gives each module's model
+and slot (its shape comes from the module JSON in ``cad/``), ``loadLabware``
+each labware's full definition and what it sits on (a slot, a module or the
+labware below), ``loadPipette`` the mounts, ``loadLiquid`` the starting
 volumes, ``pickUpTip.result.tipLength`` how far a mounted tip reaches below the
 nozzle, and every positional command carries ``result.position``: the
 pipette's critical point in deck millimeters. Motion is built around those
@@ -35,16 +37,18 @@ from sim import flex_shell
 from sim.flex_scene import (
     DECK_PATH,
     MM,
+    MODULE_FIXTURES,
     PADDLE_HALF_MM,
     Deck,
     Labware,
+    Module,
     Placed,
     SceneSpec,
     TipDims,
     TrashBin,
     home_point,
     labware_from_definition,
-    labware_origin,
+    load_module,
     robot_m,
 )
 
@@ -92,6 +96,41 @@ NO_MOTION = {
 }
 
 
+MODULE_NAMES = {
+    "heaterShakerModuleType": "加热振荡模块",
+    "temperatureModuleType": "温控模块",
+    "magneticBlockType": "磁力架",
+    "thermocyclerModuleType": "PCR 仪",
+    "absorbanceReaderType": "酶标仪",
+}
+MODULE_ACTIONS = {
+    "setTargetTemperature": "设定温度",
+    "waitForTemperature": "等待温度",
+    "setAndWaitForShakeSpeed": "振荡",
+    "deactivateShaker": "停止振荡",
+    "deactivateHeater": "停止加热",
+    "openLabwareLatch": "打开夹扣",
+    "closeLabwareLatch": "合上夹扣",
+    "deactivate": "关闭",
+    "openLid": "开盖",
+    "closeLid": "合盖",
+    "setTargetBlockTemperature": "设定模块温度",
+    "waitForBlockTemperature": "等待模块温度",
+    "setTargetLidTemperature": "设定热盖温度",
+    "waitForLidTemperature": "等待热盖温度",
+    "deactivateBlock": "关闭模块温控",
+    "deactivateLid": "关闭热盖",
+    "runProfile": "运行温度程序",
+    "runExtendedProfile": "运行温度程序",
+    "initialize": "初始化",
+    "read": "读板",
+}
+MODULE_PREFIXES = ("heaterShaker/", "temperatureModule/", "thermocycler/", "magneticModule/", "absorbanceReader/")
+
+# Where a labware sits: ("slot", "D1"), ("module", module key) or ("labware", labware key).
+Parent = tuple[str, str]
+
+
 class ProtocolError(RuntimeError):
     pass
 
@@ -105,6 +144,9 @@ class LabwareRun:
     slot: str
     labware: Labware
     definition: dict
+    parent: Parent = ("slot", "")
+    # Height drawn above the origin: an adapter stops where the labware on it sits.
+    height: float = 0.0
 
 
 @dataclass
@@ -138,9 +180,52 @@ class ProtocolRun:
     trash: dict[str, TrashBin]
     moved: list[str]
     deck: Deck
+    modules: dict[str, Module] = field(default_factory=dict)
+    # Labware that changes place during the run (moved, or riding on moved labware): it hangs on slide joints.
+    carried: list[str] = field(default_factory=list)
 
     def by_key(self, key: str) -> LabwareRun:
         return next(lw for lw in self.labware.values() if lw.key == key)
+
+    def module_by_key(self, key: str) -> Module:
+        return next(m for m in self.modules.values() if m.key == key)
+
+    def placement(self, key: str, parent: Parent, origin: dict[str, tuple[float, float, float]]) -> tuple[float, float, float]:
+        """Front-left-bottom of labware ``key`` set on ``parent``, deck mm.
+
+        The protocol engine's schema-2 stacking: the parent's placement point
+        (slot, module addressable area less ``stackingOffsetWithModule``, or the
+        labware below at its ``zDimension`` less ``stackingOffsetWithLabware``)
+        plus this labware's ``cornerOffsetFromSlot``. A labware below counts
+        from its own placement point, without its corner offset.
+        """
+
+        run = self.by_key(key)
+        lw = run.labware
+        kind, ref = parent
+        if kind == "slot":
+            base = self.deck.slots[ref]
+        elif kind == "module":
+            mod = self.module_by_key(ref)
+            ov = lw.on_module.get(mod.model, (0.0, 0.0, 0.0))
+            base = tuple(mod.area_mm[i] - ov[i] for i in range(3))
+        else:
+            below = self.by_key(ref)
+            ov = lw.on_labware.get(below.load_name) or lw.on_labware.get("default")
+            if ov is None:
+                raise ProtocolError(f"{run.name} has no stackingOffsetWithLabware for {below.load_name}")
+            o, c = origin[ref], below.labware.offset
+            base = (o[0] - c[0] + ov[0], o[1] - c[1] + ov[1], o[2] - c[2] + below.labware.z - ov[2])
+        return tuple(base[i] + lw.offset[i] for i in range(3))
+
+    def where_text(self, parent: Parent) -> str:
+        kind, ref = parent
+        if kind == "slot":
+            return ref
+        if kind == "module":
+            mod = self.module_by_key(ref)
+            return f"{mod.label}({mod.slot})"
+        return f"{self.by_key(ref).name} 上"
 
 
 def _hex_rgb(value: str) -> tuple[float, float, float]:
@@ -167,21 +252,24 @@ def _trash_bins(deck_raw: dict) -> dict[str, TrashBin]:
     return bins
 
 
-def _slot_of(location: dict) -> str:
-    for key in ("slotName", "addressableAreaName"):
-        if key in location:
-            return location[key]
-    raise ProtocolError(f"labware location {location} is not a deck slot (modules, adapters and off-deck are not modelled)")
+def _location(location, what: str) -> Parent:
+    """``("slot" | "module" | "labware", id)`` for a labware location from the analysis."""
+
+    if isinstance(location, dict):
+        for field_name, kind in (("slotName", "slot"), ("addressableAreaName", "slot"), ("moduleId", "module"), ("labwareId", "labware")):
+            if field_name in location:
+                return kind, location[field_name]
+    raise ProtocolError(f"{what}: location {location} is not modelled (off-deck and the waste chute are not drawn)")
 
 
 def load_analysis(path: Path, deck: Deck) -> ProtocolRun:
-    raw = json.loads(path.read_text())
+    raw = json.loads(path.read_text(encoding="utf-8"))
     if raw.get("errors"):
         first = raw["errors"][0]
         raise ProtocolError(f"analysis has errors: {first.get('errorType')}: {first.get('detail')}")
     if raw.get("robotType") not in (None, "OT-3 Standard"):
         raise ProtocolError(f"robotType is {raw.get('robotType')}, not a Flex")
-    deck_raw = json.loads(DECK_PATH.read_text())
+    deck_raw = json.loads(DECK_PATH.read_text(encoding="utf-8"))
     bins = _trash_bins(deck_raw)
 
     labware: dict[str, LabwareRun] = {}
@@ -192,14 +280,41 @@ def load_analysis(path: Path, deck: Deck) -> ProtocolRun:
     }
     trash: dict[str, TrashBin] = {}
     moved: list[str] = []
+    modules: dict[str, Module] = {}
+
+    def parent_key(location, what: str) -> tuple[Parent, str]:
+        """The parent by scene key, and the deck slot under it."""
+
+        kind, ref = _location(location, what)
+        if kind == "slot":
+            if ref not in deck.slots:
+                raise ProtocolError(f"{what}: slot {ref} is not one of the twelve deck slots")
+            return (kind, ref), ref
+        if kind == "module":
+            mod = modules[ref]
+            return (kind, mod.key), mod.slot
+        below = labware[ref]
+        return (kind, below.key), below.slot
+
     for cmd in raw["commands"]:
         kind, params, result = cmd["commandType"], cmd["params"], cmd.get("result") or {}
-        if kind == "loadLabware":
+        if kind == "loadModule":
+            model = result.get("model") or params["model"]
+            slot = _location(params["location"], model)[1]
+            try:
+                mod = load_module(model, slot, f"mod{len(modules) + 1}")
+            except KeyError:
+                raise ProtocolError(f"{model} is not drawn in this scene. Supported modules: {', '.join(MODULE_FIXTURES)}") from None
+            except ValueError as exc:
+                raise ProtocolError(str(exc)) from None
+            mod.label = MODULE_NAMES.get(mod.module_type, mod.label)
+            modules[result["moduleId"]] = mod
+        elif kind == "loadLabware":
             definition = result["definition"]
+            if definition.get("schemaVersion", 2) != 2:
+                raise ProtocolError(f"{params['loadName']}: labware schema {definition.get('schemaVersion')} is not modelled (schema 2 only)")
             lw = labware_from_definition(definition)
-            slot = _slot_of(params["location"])
-            if slot not in deck.slots:
-                raise ProtocolError(f"slot {slot} is not one of the twelve deck slots")
+            parent, slot = parent_key(params["location"], params["loadName"])
             run = LabwareRun(
                 id=result["labwareId"],
                 key=f"lw{len(labware) + 1}",
@@ -208,6 +323,8 @@ def load_analysis(path: Path, deck: Deck) -> ProtocolRun:
                 slot=slot,
                 labware=lw,
                 definition=definition,
+                parent=parent,
+                height=lw.top,
             )
             labware[run.id] = run
         elif kind == "loadPipette":
@@ -236,7 +353,54 @@ def load_analysis(path: Path, deck: Deck) -> ProtocolRun:
             if params.get("strategy") == "usingGripper" and params["labwareId"] not in moved:
                 moved.append(params["labwareId"])
     title = raw.get("metadata", {}).get("protocolName") or path.stem
-    return ProtocolRun(path, title, labware, pipettes, liquids, raw["commands"], trash, moved, deck)
+    run = ProtocolRun(path, title, labware, pipettes, liquids, raw["commands"], trash, moved, deck, modules)
+    _settle(run)
+    return run
+
+
+def _settle(run: ProtocolRun) -> None:
+    """Walk the moves once: what rides on moved labware, and where every module and adapter seat is.
+
+    A module body and an adapter block are drawn up to the lowest bottom of any
+    labware set on them, so a plate sinking into its seat does not read as a
+    collision.
+    """
+
+    by_key = {lw.key: lw for lw in run.labware.values()}
+    parent = {lw.key: lw.parent for lw in run.labware.values()}
+    carried: set[str] = set()
+    placed: list[tuple[str, Parent]] = list(parent.items())
+
+    def riders(key: str) -> list[str]:
+        out = [k for k, p in parent.items() if p == ("labware", key)]
+        return out + [r for k in out for r in riders(k)]
+
+    for cmd in run.commands:
+        if cmd["commandType"] != "moveLabware":
+            continue
+        params = cmd["params"]
+        lw = run.labware[params["labwareId"]]
+        kind, ref = _location(params["newLocation"], f"moveLabware {lw.name}")
+        if kind == "slot" and ref not in run.deck.slots:
+            raise ProtocolError(f"moveLabware {lw.name}: slot {ref} is not one of the twelve deck slots")
+        dest = (kind, ref if kind == "slot" else (run.modules[ref].key if kind == "module" else run.labware[ref].key))
+        carried.update([lw.key, *riders(lw.key)])
+        parent[lw.key] = dest
+        placed.append((lw.key, dest))
+
+    for key, (kind, ref) in placed:
+        lw = by_key[key].labware
+        if kind == "module":
+            mod = run.module_by_key(ref)
+            ov = lw.on_module.get(mod.model, (0.0, 0.0, 0.0))
+            mod.seat_mm = min(mod.seat_mm, mod.area_mm[2] - ov[2] + lw.offset[2])
+        elif kind == "labware":
+            below = by_key[ref]
+            if below.labware.is_adapter:
+                ov = lw.on_labware.get(below.load_name) or lw.on_labware.get("default") or (0.0, 0.0, 0.0)
+                seat = below.labware.z - ov[2] - below.labware.offset[2] + lw.offset[2]
+                below.height = max(0.0, min(below.height, seat))
+    run.carried = [lw.id for lw in run.labware.values() if lw.key in carried]
 
 
 # ---------------------------------------------------------------- state
@@ -252,7 +416,16 @@ class State:
     tip_liquid: dict[str, list[dict[str, float]]] = field(default_factory=dict)
     falling: dict[str, float] = field(default_factory=dict)
     origin: dict[str, tuple[float, float, float]] = field(default_factory=dict)
+    parent: dict[str, Parent] = field(default_factory=dict)
+    # Thermocycler lids that are closed, by module key.
+    lid_closed: set[str] = field(default_factory=set)
     held: str | None = None
+    # Labware stacked on the held labware (it travels along), and keys the
+    # carried stack may touch while it leaves or enters its seat.
+    riders: tuple[str, ...] = ()
+    seated: tuple[str, ...] = ()
+    # Gripper ``pickUpOffset`` of the held labware: jaw centre minus labware centre at grip height.
+    grip_off: tuple[float, float, float] = (0.0, 0.0, 0.0)
 
     def copy(self) -> "State":
         return copy.deepcopy(self)
@@ -367,7 +540,7 @@ class Planner:
     def __init__(self, run: ProtocolRun) -> None:
         self.run = run
         self.deck = run.deck
-        moved_keys = [run.labware[i].key for i in run.moved]
+        moved_keys = [run.labware[i].key for i in run.carried]
         # Joints that exist in the model: the shared slides, the gripper's, and
         # one Z per mounted pipette. The scene builds only those bodies.
         self.home_tool = next(iter(run.pipettes.values())).tool if run.pipettes else "gripper"
@@ -392,7 +565,8 @@ class Planner:
 
         state = State()
         for lw in run.labware.values():
-            state.origin[lw.key] = labware_origin(self.deck, lw.slot, lw.labware)
+            state.parent[lw.key] = lw.parent
+            state.origin[lw.key] = run.placement(lw.key, lw.parent, state.origin)
             if lw.labware.is_tiprack:
                 state.rack[lw.key] = set(lw.labware.wells)
         for tool, n in CHANNELS.items():
@@ -450,13 +624,38 @@ class Planner:
         return next(p for p in self.run.pipettes.values() if p.tool == tool)
 
     def _top(self, key: str, state: State) -> float:
-        lw = self.run.by_key(key).labware
-        return state.origin[key][2] + lw.top
+        return state.origin[key][2] + self.run.by_key(key).height
 
     def _deck_top(self, state: State) -> float:
-        tops = [self._top(lw.key, state) for lw in self.run.labware.values() if lw.key != state.held]
+        aboard = {state.held, *state.riders}
+        tops = [self._top(lw.key, state) for lw in self.run.labware.values() if lw.key not in aboard]
         tops += [b.origin_mm[2] + b.size_mm[2] for b in self.run.trash.values()]
+        tops += [m.lid_mm if m.key in state.lid_closed else m.top for m in self.run.modules.values()]
         return max(tops + [0.0])
+
+    def _riders(self, key: str, state: State) -> list[str]:
+        """Labware stacked on ``key``, all the way up."""
+
+        out = [k for k, p in state.parent.items() if p == ("labware", key)]
+        return out + [r for k in out for r in self._riders(k, state)]
+
+    def _stack_below(self, parent: Parent, state: State) -> list[str]:
+        """Labware and module keys under a placement, top down."""
+
+        kind, ref = parent
+        if kind == "module":
+            return [ref]
+        if kind == "labware":
+            return [ref, *self._stack_below(state.parent[ref], state)]
+        return []
+
+    def base_slot(self, key: str, state: State) -> str:
+        kind, ref = state.parent[key]
+        if kind == "slot":
+            return ref
+        if kind == "module":
+            return self.run.module_by_key(ref).slot
+        return self.base_slot(ref, state)
 
     def nozzles_mm(self, tool: str, site_mm) -> list[tuple[float, float]]:
         n = CHANNELS.get(tool, 1)
@@ -466,9 +665,10 @@ class Planner:
         """For each nozzle, the (labware key, well) whose opening it is over."""
 
         out: list[tuple[str, str] | None] = []
+        stack = sorted(self.run.labware.values(), key=lambda lw: -self._top(lw.key, state))
         for x, y in self.nozzles_mm(tool, site_mm):
             hit = None
-            for lw in self.run.labware.values():
+            for lw in stack:
                 o = state.origin[lw.key]
                 for name, well in lw.labware.wells.items():
                     if well.contains(x - o[0], y - o[1], 0.05):
@@ -497,8 +697,16 @@ class Planner:
         st = state if state is not None else self.state
         if st.held is not None and tool == "gripper":
             lw = self.run.by_key(st.held).labware
-            origin = (site_mm[0] - lw.x / 2, site_mm[1] - lw.y / 2, site_mm[2] - (lw.grip_z - PADDLE_HALF_MM))
+            off = st.grip_off
+            origin = (
+                site_mm[0] - lw.x / 2 - off[0],
+                site_mm[1] - lw.y / 2 - off[1],
+                site_mm[2] - (lw.grip_z - PADDLE_HALF_MM) - off[2],
+            )
             q.update(self._labware_q(st.held, origin))
+            home = st.origin[st.held]
+            for key in st.riders:
+                q.update(self._labware_q(key, tuple(origin[i] + st.origin[key][i] - home[i] for i in range(3))))
         return self._push(q, st, phase)
 
     def _activate(self, tool: str) -> None:
@@ -627,17 +835,37 @@ class Planner:
                 after.rack[well[0]].add(well[1])
         self._push(dict(self.q), after, "ejected", 0.01)
 
+    def _dest(self, location, what: str) -> Parent:
+        kind, ref = _location(location, what)
+        if kind == "module":
+            return kind, self.run.modules[ref].key
+        if kind == "labware":
+            return kind, self.run.labware[ref].key
+        return kind, ref
+
     def _move_labware(self, params) -> None:
         lw = self.run.labware[params["labwareId"]]
         strategy = params.get("strategy")
-        dest = _slot_of(params["newLocation"]) if isinstance(params["newLocation"], dict) else params["newLocation"]
-        if dest not in self.deck.slots:
-            raise ProtocolError(f"moveLabware to {params['newLocation']} is not a deck slot")
-        new_origin = labware_origin(self.deck, dest, lw.labware)
+        dest = self._dest(params["newLocation"], f"moveLabware {lw.name}")
+        before = self.state
+        riders = tuple(self._riders(lw.key, before))
+        new_origin = self.run.placement(lw.key, dest, before.origin)
+        old = before.origin[lw.key]
+        shift = tuple(new_origin[i] - old[i] for i in range(3))
+
+        def landed(state: State) -> State:
+            state.parent[lw.key] = dest
+            for key in (lw.key, *riders):
+                o = before.origin[key]
+                state.origin[key] = tuple(o[i] + shift[i] for i in range(3))
+            return state
+
         if strategy != "usingGripper":
-            state = self.state.copy()
-            state.origin[lw.key] = new_origin
-            self._push(dict(self.q), state, "manual move", 1.2)
+            state = landed(self.state.copy())
+            q = dict(self.q)
+            for key in (lw.key, *riders):
+                q.update(self._labware_q(key, state.origin[key]))
+            self._push(q, state, "manual move", 1.2)
             return
         offsets = (lw.definition.get("gripperOffsets") or {}).get("default") or {}
         pick_off = offsets.get("pickUpOffset") or {"x": 0, "y": 0, "z": 0}
@@ -648,7 +876,6 @@ class Planner:
         def grip_site(origin, off) -> tuple[float, float, float]:
             return (origin[0] + L.x / 2 + off["x"], origin[1] + L.y / 2 + off["y"], origin[2] + lift + off["z"])
 
-        old = self.state.origin[lw.key]
         src = grip_site(old, pick_off)
         dst = grip_site(new_origin, drop_off)
         self._activate("gripper")
@@ -664,16 +891,19 @@ class Planner:
         q["jaw_f"], q["jaw_b"] = -L.y * MM / 2, L.y * MM / 2
         state = self.state.copy()
         state.held = lw.key
+        state.riders = riders
+        state.grip_off = (pick_off["x"], pick_off["y"], pick_off["z"])
+        state.seated = tuple(self._stack_below(before.parent[lw.key], before) + self._stack_below(dest, before))
         self._push(q, state, "grip")
         self._move_site("gripper", (src[0], src[1], Z_PARK_MM), "lift")
         self._move_site("gripper", (dst[0], dst[1], Z_PARK_MM), "carry")
         self._move_site("gripper", dst, "set down")
         q = dict(self.q)
         q["jaw_f"], q["jaw_b"] = -flex_shell.JAW_OPEN, flex_shell.JAW_OPEN
-        state = self.state.copy()
-        state.held = None
-        state.origin[lw.key] = new_origin
-        q.update(self._labware_q(lw.key, new_origin))
+        state = landed(self.state.copy())
+        state.held, state.riders, state.seated, state.grip_off = None, (), (), (0.0, 0.0, 0.0)
+        for key in (lw.key, *riders):
+            q.update(self._labware_q(key, state.origin[key]))
         self._push(q, state, "release")
         self._move_site("gripper", (dst[0], dst[1], Z_PARK_MM), "clear")
         self.context["gripper"] = None
@@ -751,6 +981,13 @@ class Planner:
                 self._move_labware(params)
             elif kind in ("waitForDuration", "waitForResume", "comment", "delay"):
                 self._push(dict(self.q), self.state, "pause", 0.8)
+            elif kind.startswith(MODULE_PREFIXES):
+                state = self.state
+                mod = self.run.modules.get(params.get("moduleId", ""))
+                if mod is not None and kind in ("thermocycler/openLid", "thermocycler/closeLid"):
+                    state = state.copy()
+                    (state.lid_closed.add if kind.endswith("closeLid") else state.lid_closed.discard)(mod.key)
+                self._push(dict(self.q), state, "module", 0.6)
             else:
                 self.warnings.append(f"command {index + 1}: {kind} is shown as text only")
                 self._push(dict(self.q), self.state, kind, 0.4)
@@ -772,9 +1009,12 @@ class Planner:
         pip = self.run.pipettes.get(params.get("pipetteId", ""))
         tool = pip.tool if pip else None
         lw = self.run.labware.get(params.get("labwareId", ""))
+        mod = self.run.modules.get(params.get("moduleId", ""))
         slots: tuple[str, ...] = ()
         if lw is not None:
             slots = (self._slot_now(lw.key, t0),)
+        elif mod is not None:
+            slots = (mod.slot,)
         vol = params.get("volume")
         prev = self.run.commands[index - 1] if index > 0 else None
         nxt = self.run.commands[index + 1] if index + 1 < len(self.run.commands) else None
@@ -807,11 +1047,18 @@ class Planner:
         elif kind == "dropTip":
             text = f"弃枪头 → {lw.name if lw else ''}"
         elif kind == "moveLabware":
-            src = self._slot_now(lw.key, t0)
-            dst = _slot_of(params["newLocation"])
+            src = self.run.where_text(self.state_at_time(t0).parent[lw.key])
+            dst = self.run.where_text(self._dest(params["newLocation"], lw.name))
             how = "夹爪搬运" if params.get("strategy") == "usingGripper" else "手动移动"
             text = f"{how} {lw.name}: {src} → {dst}"
-            slots = (src, dst)
+            slots = (self._slot_now(lw.key, t0), self._slot_now(lw.key, t1))
+        elif mod is not None and kind.startswith(MODULE_PREFIXES):
+            action = kind.split("/", 1)[1]
+            text = f"{mod.label} {mod.slot}: {MODULE_ACTIONS.get(action, action)}"
+            if params.get("celsius") is not None:
+                text += f" {params['celsius']:g} °C"
+            if params.get("rpm") is not None:
+                text += f" {params['rpm']:g} rpm"
         elif kind == "loadLiquid":
             liquid = self.run.liquids.get(params["liquidId"])
             wells = list(params["volumeByWell"])
@@ -829,12 +1076,7 @@ class Planner:
         self.steps.append(Step(index, kind, t0, t1, text, detail, slots, tool))
 
     def _slot_now(self, key: str, t: float) -> str:
-        origin = self.state_at_time(t).origin[key]
-        lw = self.run.by_key(key).labware
-        for slot in self.deck.slots:
-            if all(abs(a - b) < 1e-6 for a, b in zip(labware_origin(self.deck, slot, lw), origin)):
-                return slot
-        return "?"
+        return self.base_slot(key, self.state_at_time(t))
 
     def state_at_time(self, t: float) -> State:
         for key in reversed(self.keys):
@@ -853,7 +1095,7 @@ def scene_spec(plan_: Plan) -> SceneSpec:
     run = plan_.run
     start = plan_.keys[0].state
     placed = [
-        Placed(lw.key, start.origin[lw.key], lw.labware, movable=lw.id in run.moved, label=lw.name)
+        Placed(lw.key, start.origin[lw.key], lw.labware, movable=lw.id in run.carried, label=lw.name, height_mm=lw.height)
         for lw in run.labware.values()
     ]
     tips = {p.tool: p.tip for p in run.pipettes.values() if p.tip is not None}
@@ -863,6 +1105,7 @@ def scene_spec(plan_: Plan) -> SceneSpec:
     return SceneSpec(
         placed=placed,
         trash=list(run.trash.values()),
+        modules=list(run.modules.values()),
         liquid_wells=set(plan_.liquid_wells),
         tips=tips,
         title=run.title,

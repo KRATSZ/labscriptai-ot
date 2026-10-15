@@ -290,7 +290,7 @@ def _write_obj(path: Path, verts, norms, faces, uvs=None) -> None:
     else:
         out += [f"vt {u:.5f} {v:.5f}" for u, v in uvs]
         out += [f"f {a}/{a}/{a} {b}/{b}/{b} {c}/{c}/{c}" for a, b, c in faces]
-    path.write_text("\n".join(out) + "\n")
+    path.write_text("\n".join(out) + "\n", encoding="utf-8")
 
 
 class _MeshBuilder:
@@ -674,10 +674,22 @@ def cyl(
 # ---------------------------------------------------------------- textures
 
 
-def _font(size: int, bold: bool = False, italic: bool = False, light: bool = False) -> ImageFont.ImageFont:
+CJK_FONTS = (
+    ("/System/Library/Fonts/Hiragino Sans GB.ttc", 0),
+    ("/System/Library/Fonts/STHeiti Medium.ttc", 0),
+    ("C:/Windows/Fonts/msyh.ttc", 0),
+    ("C:/Windows/Fonts/simhei.ttf", 0),
+    ("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc", 0),
+    ("/usr/share/fonts/truetype/wqy/wqy-microhei.ttc", 0),
+)
+
+
+def _font(size: int, bold: bool = False, italic: bool = False, light: bool = False, cjk: bool = False) -> ImageFont.ImageFont:
     index = 4 + italic if light else (1 if bold else 0) + (2 if italic else 0)
     for path, idx in (
+        *(CJK_FONTS if cjk else ()),
         ("/System/Library/Fonts/Helvetica.ttc", index),
+        ("C:/Windows/Fonts/arialbd.ttf" if bold else "C:/Windows/Fonts/arial.ttf", 0),
         ("/System/Library/Fonts/Supplemental/Arial.ttf", 0),
         ("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 0),
     ):
@@ -716,7 +728,7 @@ def _screen(title: str, labware_count: int) -> Image.Image:
     pad = 26
     draw.rectangle((pad, pad, w - pad, h - pad), fill=(246, 247, 249))
     draw.text((pad + 26, pad + 22), "Prepare to run", font=_font(26), fill=(110, 116, 124))
-    title_font = _font(36, bold=True)
+    title_font = _font(36, bold=True, cjk=not title.isascii())
     while draw.textlength(title, font=title_font) > w - 2 * pad - 230 and len(title) > 4:
         title = title.rstrip("\u2026")[:-1].rstrip() + "\u2026"
     draw.text((pad + 26, pad + 56), title, font=title_font, fill=(22, 26, 32))

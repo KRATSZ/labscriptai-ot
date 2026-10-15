@@ -30,6 +30,17 @@ from sim import flex_shell
 # with the plugin; generated meshes and frames go under FLEX3D_EXPORT.
 ROOT = Path(__file__).resolve().parents[1]
 DECK_PATH = ROOT / "cad" / "flex" / "deck" / "ot3_standard.json"
+MODULE_DIR = ROOT / "cad" / "flex" / "modules"
+# Deck-JSON cutout fixture that seats each module model and provides its addressable area.
+MODULE_FIXTURES = {
+    "heaterShakerModuleV1": "heaterShakerModuleV1",
+    "temperatureModuleV2": "temperatureModuleV2",
+    "magneticBlockV1": "magneticBlockV1",
+    "thermocyclerModuleV2": "thermocyclerModuleV2Front",
+    "absorbanceReaderV1": "absorbanceReaderV1",
+}
+# Border of module housing drawn round the labware interface, mm at most.
+MODULE_MARGIN_MM = 4.0
 
 
 def resolve_export() -> Path:
@@ -86,6 +97,11 @@ class Labware:
     is_tiprack: bool = False
     tip_length: float = 0.0
     quirks: tuple[str, ...] = ()
+    is_adapter: bool = False
+    # ``stackingOffsetWithLabware`` / ``stackingOffsetWithModule``: how far this
+    # labware sinks into a parent, by parent load name or module model.
+    on_labware: dict[str, tuple[float, float, float]] = field(default_factory=dict, compare=False)
+    on_module: dict[str, tuple[float, float, float]] = field(default_factory=dict, compare=False)
 
     @property
     def top(self) -> float:
@@ -122,7 +138,7 @@ class Pose:
 
 
 def load_deck(path: Path = DECK_PATH) -> Deck:
-    raw = json.loads(path.read_text())
+    raw = json.loads(path.read_text(encoding="utf-8"))
     cutouts = {item["id"]: tuple(item["position"]) for item in raw["locations"]["cutouts"]}
     slots: dict[str, tuple[float, float, float]] = {}
     # Prefer the standard single-slot fixtures so each of D1–A3 maps once.
@@ -161,6 +177,10 @@ def labware_from_definition(raw: dict) -> Labware:
     dims = raw["dimensions"]
     corner = raw["cornerOffsetFromSlot"]
     params = raw["parameters"]
+
+    def offsets(table: dict | None) -> dict[str, tuple[float, float, float]]:
+        return {name: (float(v["x"]), float(v["y"]), float(v["z"])) for name, v in (table or {}).items()}
+
     return Labware(
         load_name=params["loadName"],
         x=float(dims["xDimension"]),
@@ -172,11 +192,99 @@ def labware_from_definition(raw: dict) -> Labware:
         is_tiprack=bool(params.get("isTiprack")),
         tip_length=float(params.get("tipLength") or 0.0),
         quirks=tuple(params.get("quirks") or ()),
+        is_adapter="adapter" in (raw.get("allowedRoles") or ()),
+        on_labware=offsets(raw.get("stackingOffsetWithLabware")),
+        on_module=offsets(raw.get("stackingOffsetWithModule")),
     )
 
 
 def load_labware(path: Path) -> Labware:
-    return labware_from_definition(json.loads(path.read_text()))
+    return labware_from_definition(json.loads(path.read_text(encoding="utf-8")))
+
+
+@dataclass
+class Module:
+    """A Flex module, placed by the deck JSON fixture that seats it.
+
+    Flex modules sit in caddies below the deck; above it show the labware
+    interface and a narrow border. ``area_mm`` is the front-left-bottom of the
+    module's addressable area: where labware on the module is placed before its
+    ``stackingOffsetWithModule``. ``seat_mm`` is the top of the drawn body (the
+    lowest bottom of labware ever set on it); ``rim_mm`` the fixture height, the
+    top of the housing round the labware; ``lid_mm`` the closed-lid top, 0 when
+    the module has no lid this scene draws.
+    """
+
+    key: str
+    model: str
+    module_type: str
+    slot: str
+    area: str
+    area_mm: tuple[float, float, float]
+    interface: tuple[float, float]
+    margin: tuple[float, float]
+    rim_mm: float
+    seat_mm: float
+    lid_mm: float = 0.0
+    label: str = ""
+
+    @property
+    def has_rim(self) -> bool:
+        """A housing wall rises round the labware. The thermocycler's housing is its lid."""
+
+        return not self.lid_mm and self.rim_mm > self.seat_mm + 1.0
+
+    @property
+    def top(self) -> float:
+        """Top of the module with its lid open, deck mm."""
+
+        return self.rim_mm if self.has_rim else self.seat_mm
+
+
+def module_definition(model: str) -> dict:
+    path = MODULE_DIR / f"{model}.json"
+    if model not in MODULE_FIXTURES or not path.is_file():
+        raise KeyError(model)
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def load_module(model: str, slot: str, key: str, label: str = "", deck_path: Path = DECK_PATH) -> Module:
+    """``model`` loaded in deck ``slot`` (``loadModule.params``), from the module and deck JSON."""
+
+    definition = module_definition(model)
+    raw = json.loads(deck_path.read_text(encoding="utf-8"))
+    cutouts = {c["id"]: c["position"] for c in raw["locations"]["cutouts"]}
+    areas = {a["id"]: a for a in raw["locations"]["addressableAreas"]}
+    fixture = next(f for f in raw["cutoutFixtures"] if f["id"] == MODULE_FIXTURES[model])
+    cutout = f"cutout{slot}"
+    provided = fixture["providesAddressableAreas"].get(cutout)
+    if not provided:
+        raise ValueError(f"{model} cannot be loaded in {slot}")
+    area = areas[provided[0]]
+    off = area["offsetFromCutoutFixture"]
+    origin = tuple(float(cutouts[cutout][i] + off[i]) for i in range(3))
+    dims = definition["dimensions"]
+    ix = float(dims.get("labwareInterfaceXDimension") or area["boundingBox"]["xDimension"])
+    iy = float(dims.get("labwareInterfaceYDimension") or area["boundingBox"]["yDimension"])
+    margin = (
+        min(MODULE_MARGIN_MM, max(0.0, (float(dims["xDimension"]) - ix) / 2)),
+        min(MODULE_MARGIN_MM, max(0.0, (float(dims["yDimension"]) - iy) / 2)),
+    )
+    rim = float(fixture.get("height") or origin[2])
+    return Module(
+        key=key,
+        model=model,
+        module_type=definition["moduleType"],
+        slot=slot,
+        area=area["id"],
+        area_mm=origin,
+        interface=(ix, iy),
+        margin=margin,
+        rim_mm=rim,
+        seat_mm=origin[2],
+        lid_mm=rim if model == "thermocyclerModuleV2" else 0.0,
+        label=label or definition.get("displayName", model),
+    )
 
 
 def robot_m(deck: Deck, deck_mm: tuple[float, float, float]) -> tuple[float, float, float]:
@@ -413,6 +521,10 @@ WELL_RGBA = "0.82 0.86 0.90 0.32"
 LIQUID_RGBA = "0.08 0.44 0.90 1"
 TRASH_RGBA = "0.15 0.16 0.17 1"
 TRASH_LINER_RGBA = "0.32 0.33 0.35 1"
+MODULE_RGBA = "0.84 0.85 0.87 1"
+MODULE_TOP_RGBA = "0.56 0.58 0.61 1"
+MODULE_LID_RGBA = "0.90 0.91 0.92 1"
+ADAPTER_RGBA = "0.70 0.72 0.75 1"
 # Height of tip collar left showing above the rack top. More than the
 # tip-to-nozzle overlap (9.4-9.8 mm), so a seated nozzle stays above the rack.
 TIP_SHOW_MM = 11.0
@@ -431,6 +543,8 @@ class Placed:
     labware: Labware
     movable: bool = False
     label: str = ""
+    # Adapters are drawn as a block up to where the labware on them sits.
+    height_mm: float | None = None
 
 
 @dataclass(frozen=True)
@@ -455,6 +569,7 @@ class TipDims:
 class SceneSpec:
     placed: list[Placed]
     trash: list[TrashBin] = field(default_factory=list)
+    modules: list[Module] = field(default_factory=list)
     # Wells that get a liquid column; initial heights in mm with an rgba string.
     liquid_wells: set[tuple[str, str]] = field(default_factory=set)
     initial_liquid: dict[tuple[str, str], tuple[float, str]] = field(default_factory=dict)
@@ -567,9 +682,47 @@ def _trash_geoms(deck: Deck, bin_: TrashBin) -> list[str]:
     return [_box(f"{name}_{part}", robot_m(deck, c), tuple(v * MM for v in size), rgba) for part, c, size, rgba in parts]
 
 
+def _module_geoms(deck: Deck, mod: Module) -> list[str]:
+    """Body up to the labware seat, the housing rim round it, and the closed thermocycler lid.
+
+    Geoms are ``<key>_body``, ``<key>_top``, ``<key>_rim_*`` and ``<key>_lid``
+    (hidden while the lid is open), world frame.
+    """
+
+    ax, ay, _ = mod.area_mm
+    ix, iy = mod.interface
+    mx, my = mod.margin
+    x0, y0, sx, sy = ax - mx, ay - my, ix + 2 * mx, iy + 2 * my
+    seat = mod.seat_mm
+    top_t = min(1.0, seat)
+    parts = [
+        ("body", (x0 + sx / 2, y0 + sy / 2, (seat - top_t) / 2), (sx, sy, seat - top_t), MODULE_RGBA),
+        ("top", (ax + ix / 2, ay + iy / 2, seat - top_t / 2), (ix, iy, top_t), MODULE_TOP_RGBA),
+    ]
+    if mod.has_rim:
+        h, zc = mod.rim_mm - seat, (mod.rim_mm + seat) / 2
+        parts += [
+            ("rim_front", (x0 + sx / 2, y0 + my / 2, zc), (sx, my, h), MODULE_RGBA),
+            ("rim_back", (x0 + sx / 2, y0 + sy - my / 2, zc), (sx, my, h), MODULE_RGBA),
+            ("rim_left", (x0 + mx / 2, y0 + sy / 2, zc), (mx, sy - 2 * my, h), MODULE_RGBA),
+            ("rim_right", (x0 + sx - mx / 2, y0 + sy / 2, zc), (mx, sy - 2 * my, h), MODULE_RGBA),
+        ]
+    if mod.lid_mm:
+        h = mod.lid_mm - seat
+        parts.append(("lid", (x0 + sx / 2, y0 + sy / 2, seat + h / 2), (sx, sy, h), MODULE_LID_RGBA))
+    return [
+        _box(f"{mod.key}_{part}", robot_m(deck, c), tuple(max(v, 0.2) * MM for v in size), rgba)
+        for part, c, size, rgba in parts
+        if min(size) > 0
+    ]
+
+
 def labware_xml(deck: Deck, item: Placed, spec: SceneSpec, book: flex_shell.AssetBook, ranges) -> str:
     lw = item.labware
-    if lw.is_tiprack:
+    if lw.is_adapter and not lw.wells:
+        h = item.height_mm if item.height_mm is not None else lw.z
+        geoms = [_box(f"{item.key}_block", (lw.x / 2 * MM, lw.y / 2 * MM, h / 2 * MM), (lw.x * MM, lw.y * MM, max(h, 0.2) * MM), ADAPTER_RGBA)]
+    elif lw.is_tiprack:
         geoms = _tiprack_geoms(item.key, lw, book.tip_mesh(lw.tip_length, 2 * lw.wells["A1"].radius))
     else:
         wells = {w for k, w in spec.liquid_wells if k == item.key}
@@ -607,6 +760,7 @@ def build_xml(deck: Deck, spec: SceneSpec, assets: Path = ASSETS) -> str:
 
     labware = [labware_xml(deck, item, spec, book, ranges) for item in spec.placed]
     trash = [g for bin_ in spec.trash for g in _trash_geoms(deck, bin_)]
+    modules = [g for mod in spec.modules for g in _module_geoms(deck, mod)]
 
     def rng(name: str) -> str:
         lo, hi = ranges[name]
@@ -682,6 +836,7 @@ def build_xml(deck: Deck, spec: SceneSpec, assets: Path = ASSETS) -> str:
     {cams}
     {chassis}
     {chr(10).join(trash)}
+    {chr(10).join(modules)}
     {chr(10).join(labware)}
     {gantry}
   </worldbody>
@@ -694,5 +849,19 @@ def write_model(deck: Deck, spec: SceneSpec, folder: Path = EXPORT) -> Path:
 
     folder.mkdir(parents=True, exist_ok=True)
     xml_path = folder / "flex.xml"
-    xml_path.write_text(build_xml(deck, spec, folder / "flex_assets"))
+    xml_path.write_text(build_xml(deck, spec, folder / "flex_assets"), encoding="utf-8")
     return xml_path
+
+
+def load_model(xml_path: Path):
+    """``mujoco.MjModel`` for a ``write_model`` folder, read through Python.
+
+    MuJoCo on Windows cannot open paths with non-ASCII characters (a Chinese
+    protocol name or user folder), so the XML and its assets go in as bytes.
+    """
+
+    import mujoco
+
+    xml_path = Path(xml_path)
+    assets = {item.name: item.read_bytes() for item in (xml_path.parent / "flex_assets").glob("*") if item.is_file()}
+    return mujoco.MjModel.from_xml_string(xml_path.read_text(encoding="utf-8"), assets)

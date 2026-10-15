@@ -25,6 +25,7 @@ FLEX_ROBOTS = {"OT-3 Standard", "Flex"}
 
 
 def emit(payload: dict) -> None:
+    sys.stdout.reconfigure(encoding="utf-8")
     json.dump(payload, sys.stdout, ensure_ascii=False)
     sys.stdout.write("\n")
     raise SystemExit(0)
@@ -91,6 +92,8 @@ def main() -> None:
             [python, "-m", "opentrons.cli", "analyze", "--json-output", str(produced), str(source)],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
         )
         if done.returncode != 0 or not produced.is_file():
             emit({
@@ -123,7 +126,7 @@ def main() -> None:
     try:
         import mujoco
         from sim.flex_protocol import ProtocolError, load_analysis, plan as make_plan, scene_spec
-        from sim.flex_scene import EXPORT, load_deck, write_model
+        from sim.flex_scene import EXPORT, load_deck, load_model, write_model
         from sim.play_protocol import Renderer, Scene, check_clearance, check_liquid, check_targets, render_video
     except ImportError as exc:
         emit({
@@ -143,7 +146,7 @@ def main() -> None:
         run = load_analysis(source, deck)
         plan = make_plan(run)
         xml = write_model(deck, scene_spec(plan), out)
-        model = mujoco.MjModel.from_xml_path(str(xml))
+        model = load_model(xml)
         data = mujoco.MjData(model)
         scene = Scene(plan, model, data)
     except ProtocolError as exc:

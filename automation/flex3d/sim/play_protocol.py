@@ -55,7 +55,7 @@ from sim.flex_protocol import (
     scene_spec,
     step_at,
 )
-from sim.flex_scene import EXPORT, MM, ROOT, camera_axes, deck_camera_pose, liquid_column, load_deck, write_model
+from sim.flex_scene import EXPORT, MM, ROOT, camera_axes, deck_camera_pose, liquid_column, load_deck, load_model, write_model
 
 OUT_ROOT = EXPORT / "protocols"
 NOZZLE_ROWS = flex_shell.NOZZLE_ROWS
@@ -81,6 +81,9 @@ def find_font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont:
         ("/System/Library/Fonts/Hiragino Sans GB.ttc", 1 if bold else 0),
         ("/System/Library/Fonts/STHeiti Medium.ttc" if bold else "/System/Library/Fonts/STHeiti Light.ttc", 0),
         ("/System/Library/Fonts/Supplemental/Arial Unicode.ttf", 0),
+        ("C:/Windows/Fonts/msyhbd.ttc" if bold else "C:/Windows/Fonts/msyh.ttc", 0),
+        ("C:/Windows/Fonts/simhei.ttf", 0),
+        ("/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc" if bold else "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc", 0),
         ("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc", 0),
     ):
         if Path(path).exists():
@@ -159,6 +162,7 @@ class Scene:
                 names = [f"{eight_tip[pip.tool]}_{r}" for r in NOZZLE_ROWS]
             self.tips[pip.tool] = [(_id(model, G, n), _id(model, G, f"{n}_liquid"), model.geom_pos[_id(model, G, n)].copy()) for n in names]
             self.tip_table[pip.tool] = self._tip_volume_table(pip.tip)
+        self.lids = {m.key: _id(model, G, f"{m.key}_lid") for m in run.modules.values() if m.lid_mm}
         # The model builds one pipette body per mount the run loads (an empty
         # mount stays empty), so there is no unused tool left to hide.
         self.base_rgba = model.geom_rgba.copy()
@@ -198,6 +202,9 @@ class Scene:
             m.geom_size[gid] = size
             m.geom_rgba[gid, :3] = self._rgb(mix)
             m.geom_rgba[gid, 3] = LIQUID_ALPHA
+        for key, gid in self.lids.items():
+            if key not in state.lid_closed:
+                m.geom_rgba[gid, 3] = 0.0
         for key, wells in self.rack.items():
             present = state.rack.get(key, set())
             for well, gid in wells.items():
@@ -401,12 +408,16 @@ def check_clearance(plan: Plan, scene: Scene) -> tuple[float, str, int]:
     slider = np.array([g for g in gantry if owner[g] < 0])
 
     lw_keys = {lw.key: lw for lw in run.labware.values()}
+    mod_keys = {m.key for m in run.modules.values()}
     obstacle, obstacle_key, well_of, rack_body = [], [], {}, {}
     for g, n in enumerate(names):
         key = n.split("_", 1)[0]
         if n.startswith("body_"):
             key = n[5:]
-        if key in lw_keys and "_liquid_" not in n:
+        if key in mod_keys:
+            obstacle.append(g)
+            obstacle_key.append(key)
+        elif key in lw_keys and "_liquid_" not in n:
             obstacle.append(g)
             obstacle_key.append(key)
             rest = n.split("_", 1)[1] if not n.startswith("body_") else ""
@@ -431,8 +442,9 @@ def check_clearance(plan: Plan, scene: Scene) -> tuple[float, str, int]:
         visible = model.geom_rgba[:, 3] > 0
         moving = gantry[visible[gantry]]
         carried = []
-        if state.held is not None:
-            carried = [g for g in _subtree(model, f"{state.held}_carrier") if visible[g] and "_liquid_" not in names[g]]
+        aboard = (state.held, *state.riders) if state.held is not None else ()
+        for key in aboard:
+            carried += [g for g in _subtree(model, f"{key}_carrier") if visible[g] and "_liquid_" not in names[g]]
         mov = np.concatenate([moving, np.array(carried, dtype=int)])
         m_lo, m_hi = _bounds(model, data, mov)
         # Tips may dip just below the deck plane into a bin; a set-down plate rests on it.
@@ -445,7 +457,8 @@ def check_clearance(plan: Plan, scene: Scene) -> tuple[float, str, int]:
         if margin.min() < worst:
             worst, worst_geom = float(margin.min()), names[mov[int(np.argmin(margin))]]
 
-        obs_mask = visible[obstacle] & (obstacle_key != (state.held or ""))
+        # The carried stack, and the stacks it is lifted from and set on, touch by design.
+        obs_mask = visible[obstacle] & ~np.isin(obstacle_key, [*aboard, *state.seated])
         obs = obstacle[obs_mask]
         o_lo, o_hi = _bounds(model, data, obs)
         o_xy = (o_lo + o_hi)[:, :2] / 2
@@ -545,7 +558,7 @@ def _wrap(draw, text: str, font, width: int) -> list[str]:
     return lines
 
 
-LABWARE_FILL = {"tiprack": (78, 86, 96), "reservoir": (44, 112, 128), "plate": (214, 222, 232)}
+LABWARE_FILL = {"tiprack": (78, 86, 96), "reservoir": (44, 112, 128), "plate": (214, 222, 232), "adapter": (150, 156, 164)}
 
 
 def draw_deck_map(plan: Plan, state: State, step, fonts: Fonts, size=(PANEL_W, MAP_H)) -> Image.Image:
@@ -575,10 +588,16 @@ def draw_deck_map(plan: Plan, state: State, step, fonts: Fonts, size=(PANEL_W, M
         slot = bin_.name.replace("movableTrash", "")
         draw.rectangle((a, b), fill=(16, 17, 19), outline=(255, 160, 40) if slot in hot else (96, 100, 106), width=3 if slot in hot else 1)
         draw.text(((a[0] + b[0]) / 2 - 20, (a[1] + b[1]) / 2 - 7), "垃圾桶", font=fonts.tiny, fill=(190, 194, 200))
-    for lw in run.labware.values():
+    for mod in run.modules.values():
+        (ax, ay, _), (ix, iy), (mx, my) = mod.area_mm, mod.interface, mod.margin
+        a, b = px(ax - mx, ay + iy + my), px(ax + ix + mx, ay - my)
+        hot_mod = mod.slot in hot
+        draw.rectangle((a, b), fill=(92, 98, 108), outline=(255, 160, 40) if hot_mod else (150, 156, 164), width=3 if hot_mod else 1)
+        draw.text((a[0] + 3, b[1] - 13), mod.label, font=fonts.tiny, fill=(225, 228, 232))
+    for lw in sorted(run.labware.values(), key=lambda item: state.origin[item.key][2]):
         o = state.origin[lw.key]
         L = lw.labware
-        kind = "tiprack" if L.is_tiprack else ("reservoir" if len(L.wells) <= 12 else "plate")
+        kind = "tiprack" if L.is_tiprack else "adapter" if L.is_adapter and not L.wells else ("reservoir" if len(L.wells) <= 12 else "plate")
         a, b = px(o[0], o[1] + L.y), px(o[0] + L.x, o[1])
         draw.rectangle((a, b), fill=LABWARE_FILL[kind], outline=(30, 32, 36))
         r = max(1.5, 0.45 * 9.0 * scale)
@@ -947,9 +966,10 @@ def write_trace(plan: Plan, hits: list[Hit], liquid: dict, path: Path, extra: di
         "protocol": str(run.path),
         "title": run.title,
         "labware": [
-            {"key": lw.key, "name": lw.name, "loadName": lw.load_name, "slot": lw.slot, "moved_by_gripper": lw.id in run.moved}
+            {"key": lw.key, "name": lw.name, "loadName": lw.load_name, "slot": lw.slot, "on": run.where_text(lw.parent), "moved_by_gripper": lw.id in run.moved}
             for lw in run.labware.values()
         ],
+        "modules": [{"key": m.key, "model": m.model, "slot": m.slot, "name": m.label} for m in run.modules.values()],
         "pipettes": [{"name": p.name, "mount": p.mount, "tool": p.tool, "tipLength_mm": p.tip.reach_mm if p.tip else None} for p in run.pipettes.values()],
         "trash": [b.name for b in run.trash.values()],
         **extra,
@@ -957,7 +977,7 @@ def write_trace(plan: Plan, hits: list[Hit], liquid: dict, path: Path, extra: di
         "final_liquid": liquid,
         "commands": commands,
     }
-    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False))
+    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
 def view(plan: Plan, scene: Scene) -> None:
@@ -994,7 +1014,7 @@ def main() -> None:
         raise SystemExit(f"cannot animate {analysis.name}: {exc}")
     folder = OUT_ROOT / name
     xml = write_model(deck, scene_spec(plan), folder)
-    model = mujoco.MjModel.from_xml_path(str(xml))
+    model = load_model(xml)
     data = mujoco.MjData(model)
     scene = Scene(plan, model, data)
 

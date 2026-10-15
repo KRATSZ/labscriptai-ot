@@ -35,7 +35,7 @@ from urllib.parse import parse_qs, urlparse
 import mujoco
 
 from sim.flex_protocol import ProtocolError, load_analysis, plan as make_plan, scene_spec
-from sim.flex_scene import EXPORT, ROOT, load_deck, write_model
+from sim.flex_scene import EXPORT, ROOT, load_deck, load_model, write_model
 from sim.play_protocol import CLOSE_DEFAULT_ORBIT, CLOSE_WEB_H, CLOSE_WEB_W, FRAME_H, MAIN_W, Renderer, Scene, analyze
 from sim.view_scene import write_view
 
@@ -69,7 +69,7 @@ class Model:
         run = load_analysis(analysis, deck)
         plan = make_plan(run)
         xml = write_model(deck, scene_spec(plan), folder)
-        model = mujoco.MjModel.from_xml_path(str(xml))
+        model = load_model(xml)
         data = mujoco.MjData(model)
         self.key = key
         self.title = run.title

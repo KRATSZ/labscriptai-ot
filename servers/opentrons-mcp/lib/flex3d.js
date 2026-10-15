@@ -20,11 +20,13 @@ function runCommand(command, args, { cwd, env } = {}) {
     let stdout = "";
     let stderr = "";
 
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
     child.stdout.on("data", chunk => {
-      stdout += chunk.toString();
+      stdout += chunk;
     });
     child.stderr.on("data", chunk => {
-      stderr += chunk.toString();
+      stderr += chunk;
     });
     child.on("error", reject);
     child.on("close", code => {
@@ -93,7 +95,7 @@ export async function runFlex3dCheck({
   return withUsablePython(preferredPython, async python => {
     const result = await runCommand(python, args, {
       cwd: FLEX3D_ROOT,
-      env: { ...process.env, FLEX3D_EXPORT: out },
+      env: { ...process.env, FLEX3D_EXPORT: out, PYTHONIOENCODING: "utf-8" },
     });
 
     const parsed = parseLastJson(result.stdout);
@@ -158,14 +160,15 @@ export async function startFlex3dViewer({
   return withUsablePython(preferredPython, async python => new Promise(resolve => {
     const child = spawn(python, args, {
       cwd: FLEX3D_ROOT,
-      env: { ...process.env, PYTHONPATH: FLEX3D_ROOT },
+      env: { ...process.env, PYTHONPATH: FLEX3D_ROOT, PYTHONIOENCODING: "utf-8" },
       stdio: ["ignore", "pipe", "pipe"],
       detached: false,
     });
 
     let stderr = "";
+    child.stderr.setEncoding("utf8");
     child.stderr.on("data", chunk => {
-      stderr += chunk.toString();
+      stderr += chunk;
     });
 
     const url = `http://127.0.0.1:${port}/viewer.html`;
