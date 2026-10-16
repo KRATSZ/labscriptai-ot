@@ -419,6 +419,9 @@ class State:
     parent: dict[str, Parent] = field(default_factory=dict)
     # Thermocycler lids that are closed, by module key.
     lid_closed: set[str] = field(default_factory=set)
+    # Continuous visual progress, independent of protocol geometry/thermal logic.
+    module_lid: dict[str, float] = field(default_factory=dict)
+    module_latch: dict[str, float] = field(default_factory=dict)
     held: str | None = None
     # Labware stacked on the held labware (it travels along), and keys the
     # carried stack may touch while it leaves or enters its seat.
@@ -474,6 +477,9 @@ def blend(a: State, b: State, u: float) -> State:
         for tool in a.tip_liquid
     }
     out.falling = {tool: (1 - u) * a.falling.get(tool, 0.0) + u * b.falling.get(tool, 0.0) for tool in a.falling}
+    for field_name in ('module_lid', 'module_latch'):
+        va, vb = getattr(a, field_name), getattr(b, field_name)
+        setattr(out, field_name, {k: (1-u)*va.get(k, 1.)+u*vb.get(k, 1.) for k in va.keys() | vb.keys()})
     return out
 
 
@@ -564,6 +570,13 @@ class Planner:
         self.cmd = -1
 
         state = State()
+        for mod in run.modules.values():
+            if mod.model == 'thermocyclerModuleV2':
+                state.module_lid[mod.key] = 0.
+            elif mod.model == 'absorbanceReaderV1':
+                state.module_lid[mod.key] = 1.
+            elif mod.model == 'heaterShakerModuleV1':
+                state.module_latch[mod.key] = 1.
         for lw in run.labware.values():
             state.parent[lw.key] = lw.parent
             state.origin[lw.key] = run.placement(lw.key, lw.parent, state.origin)
@@ -987,6 +1000,13 @@ class Planner:
                 if mod is not None and kind in ("thermocycler/openLid", "thermocycler/closeLid"):
                     state = state.copy()
                     (state.lid_closed.add if kind.endswith("closeLid") else state.lid_closed.discard)(mod.key)
+                    state.module_lid[mod.key] = float(kind.endswith('closeLid'))
+                elif mod is not None and kind in ('heaterShaker/openLabwareLatch', 'heaterShaker/closeLabwareLatch'):
+                    state = state.copy()
+                    state.module_latch[mod.key] = float(kind.endswith('closeLabwareLatch'))
+                elif mod is not None and kind in ('absorbanceReader/openLid', 'absorbanceReader/closeLid'):
+                    state = state.copy()
+                    state.module_lid[mod.key] = float(kind.endswith('closeLid'))
                 self._push(dict(self.q), state, "module", 0.6)
             else:
                 self.warnings.append(f"command {index + 1}: {kind} is shown as text only")

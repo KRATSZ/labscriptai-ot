@@ -162,7 +162,10 @@ class Scene:
                 names = [f"{eight_tip[pip.tool]}_{r}" for r in NOZZLE_ROWS]
             self.tips[pip.tool] = [(_id(model, G, n), _id(model, G, f"{n}_liquid"), model.geom_pos[_id(model, G, n)].copy()) for n in names]
             self.tip_table[pip.tool] = self._tip_volume_table(pip.tip)
-        self.lids = {m.key: _id(model, G, f"{m.key}_lid") for m in run.modules.values() if m.lid_mm}
+        self.lids = {m.key: _id(model, G, f"{m.key}_lid") for m in run.modules.values()
+                     if m.lid_mm and mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, f'{m.key}_detail_lid') < 0}
+        from sim.flex_module_assets import ModuleMotion
+        self.module_motion = ModuleMotion(model, run)
         # The model builds one pipette body per mount the run loads (an empty
         # mount stays empty), so there is no unused tool left to hide.
         self.base_rgba = model.geom_rgba.copy()
@@ -205,6 +208,7 @@ class Scene:
         for key, gid in self.lids.items():
             if key not in state.lid_closed:
                 m.geom_rgba[gid, 3] = 0.0
+        self.module_motion.apply(state)
         for key, wells in self.rack.items():
             present = state.rack.get(key, set())
             for well, gid in wells.items():
@@ -279,6 +283,11 @@ def expected_position(plan: Plan, arrival, state: State) -> tuple[float, float, 
     o = state.origin[key]
     loc = params.get("wellLocation") or {"origin": "top", "offset": {"x": 0, "y": 0, "z": 0}}
     off = loc.get("offset") or {"x": 0, "y": 0, "z": 0}
+    if loc.get('origin') == 'default' and cmd['commandType'] == 'dropTip':
+        # Modern analyses leave return-tip height hardware-dependent. It is
+        # resolved in result.position, not derivable from the labware alone.
+        # Still check x/y independently and check MuJoCo z against that result.
+        return (o[0] + well.x + off['x'], o[1] + well.y + off['y'], arrival.position_mm[2])
     base = {"top": well.z + well.depth, "bottom": well.z, "center": well.z + well.depth / 2}[loc.get("origin", "top")]
     return (o[0] + well.x + off["x"], o[1] + well.y + off["y"], o[2] + base + off["z"])
 
@@ -415,8 +424,9 @@ def check_clearance(plan: Plan, scene: Scene) -> tuple[float, str, int]:
         if n.startswith("body_"):
             key = n[5:]
         if key in mod_keys:
-            obstacle.append(g)
-            obstacle_key.append(key)
+            if '_visual_' not in n:
+                obstacle.append(g)
+                obstacle_key.append(key)
         elif key in lw_keys and "_liquid_" not in n:
             obstacle.append(g)
             obstacle_key.append(key)

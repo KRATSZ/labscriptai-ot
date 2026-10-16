@@ -1,0 +1,65 @@
+[
+  {
+    "file": "thermocycler.png",
+    "url": "https://docs.opentrons.com/flex/images/thermocycler.png",
+    "sha256": "3b234db5b8b98b6a58b40cedda840a14cdd358980028dc8801ceb74cc1b8ef4d",
+    "role": "Manufacturer visual reference; not reusable 3D CAD",
+    "rights": "Opentrons source material, retained for model reference"
+  },
+  {
+    "file": "thermocycler-lid-warning.png",
+    "url": "https://docs.opentrons.com/flex/images/thermocycler-lid-warning.png",
+    "sha256": "c42782bc1d823df6e888b969f108983d2324eb3f358f63ce10bc48f43813fca6",
+    "role": "Manufacturer visual reference; not reusable 3D CAD",
+    "rights": "Opentrons source material, retained for model reference"
+  },
+  {
+    "file": "heater-shaker-module.png",
+    "url": "https://docs.opentrons.com/flex/images/heater-shaker-module.png",
+    "sha256": "f9e1c8f9e1efa5b36b54edadc4b84fe38b855adb946d669116c2fe5e97ecd230",
+    "role": "Manufacturer visual reference; not reusable 3D CAD",
+    "rights": "Opentrons source material, retained for model reference"
+  },
+  {
+    "file": "heater-shaker-adapter-pcr.png",
+    "url": "https://docs.opentrons.com/flex/images/heater-shaker-adapter-pcr.png",
+    "sha256": "3c51af33d46f9edaf2b154c57cb2adbcff76090d96899a65d6138ec6bbd96f86",
+    "role": "Manufacturer visual reference; not reusable 3D CAD",
+    "rights": "Opentrons source material, retained for model reference"
+  },
+  {
+    "file": "heater-shaker-adapter-flat-bottom.png",
+    "url": "https://docs.opentrons.com/flex/images/heater-shaker-adapter-flat-bottom.png",
+    "sha256": "5710ed831d6aee8c21268c90d5499be4c07e54dc5bff9a08f6c21c5390d316ed",
+    "role": "Manufacturer visual reference; not reusable 3D CAD",
+    "rights": "Opentrons source material, retained for model reference"
+  },
+  {
+    "file": "temperature-module.png",
+    "url": "https://docs.opentrons.com/flex/images/temperature-module.png",
+    "sha256": "051691d8afc5c6c830cd41b8e6d1861512af6f2b75fe11eb73028c0a3cb2fbaf",
+    "role": "Manufacturer visual reference; not reusable 3D CAD",
+    "rights": "Opentrons source material, retained for model reference"
+  },
+  {
+    "file": "temperature-module-block-96-well.png",
+    "url": "https://docs.opentrons.com/flex/images/temperature-module-block-96-well.png",
+    "sha256": "c6cb606128a15064a996a6bd9478957c50c69ea63416a25551ca313c24d64191",
+    "role": "Manufacturer visual reference; not reusable 3D CAD",
+    "rights": "Opentrons source material, retained for model reference"
+  },
+  {
+    "file": "magnetic-block.png",
+    "url": "https://docs.opentrons.com/flex/images/magnetic-block.png",
+    "sha256": "39252af4946af7ab8e9f730894fee1d11808a09fe8ee73007381ce5c34eeadb7",
+    "role": "Manufacturer visual reference; not reusable 3D CAD",
+    "rights": "Opentrons source material, retained for model reference"
+  },
+  {
+    "file": "plate-reader-hero-lid-off.png",
+    "url": "https://docs.opentrons.com/flex/images/plate-reader-hero-lid-off.png",
+    "sha256": "67582c8423076c72079491ef0acd08d82b90d861b62c99a327af75172c949dbd",
+    "role": "Manufacturer visual reference; not reusable 3D CAD",
+    "rights": "Opentrons source material, retained for model reference"
+  }
+]
