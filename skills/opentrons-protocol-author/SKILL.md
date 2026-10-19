@@ -39,16 +39,14 @@ mcp_tools: []
 - `apiLevel` must appear **only** in `requirements`, never inside `metadata`.
 - Flex apiLevel must be **2.24 or higher** in bundled templates — compatible with verified liquid classes and RTP; raise toward `opentrons.protocol_api.MAX_SUPPORTED_VERSION` when your install allows. Older 2.20-only protocols may still run on robot but new drafts should not default below **2.24**.
 - Call out custom labware dependencies explicitly.
+- Declare known starting liquids and volumes with `protocol.define_liquid(...)` and `well.load_liquid(liquid, volume)` before transfers. Use separate liquid objects for independent samples; a shared liquid ID asserts shared identity and must not make different samples appear substitutable. Missing source amounts are a clarification, not permission to invent enough liquid just to pass LogicPass or 3D checks.
 - **Flex trash bin is NOT a Labware.** `load_trash_bin()` returns a `TrashBin` object,
   not a labware with wells. You CANNOT subscript it (`trash_bin["A1"]` is invalid).
   To dispose of liquid waste: `pipette.dispense(vol, location=trash_bin)` or
   `pipette.blow_out(location=trash_bin)`. To drop tips: `pipette.drop_tip(trash_bin)`.
   You CANNOT `aspirate()` from a TrashBin.
 - Do not claim validated unless verify tooling ran or user provided validated result.
-- **Questions describe simplified workflows.** Real protocols have intermediate steps
-  (aspiration between reagent additions, neutralization, temperature control) that
-  question descriptions omit. Add biologically necessary steps even when the
-  question doesn't mention them.
+- **Questions may omit essential assay steps.** Ask about missing assay-specific volumes, reagents or incubation conditions; do not invent them. Implement steps established by the user's instructions or applicable SOP and record that basis.
 - **Implement known limitations.** If your draft protocol has steps you know are
   biologically or mechanically incomplete, go back and implement them before
   finalizing. Document in `known_limitations` only steps that truly cannot be
@@ -65,7 +63,7 @@ mcp_tools: []
 - Never silently turn on `dry_run_on` for live execution. Surface the selected
   value in the ready-state summary.
 - **Tip budget is a hard constraint.** Before finalizing, COUNT every `pick_up_tip` / `transfer` / `mix` call and verify total ≤ 96 × number_of_tip_racks. Running out of tips mid-protocol is a fatal simulation failure. If tip budget is tight: use `new_tip="once"` for same-reagent consecutive transfers (NOT for different reagents or different destination types), or add a second tip rack. Document `pick_up_tip_count` in `design-notes.json` / comments so live recovery can re-check **remaining** tips vs remaining pickups before `recover_tip_pickup`.
-- **PCR / 96-well tip math example:** 96 wells × 4 reagent additions + 96 mix passes = up to 384 tips. With one 96-tip rack this is IMPOSSIBLE. You MUST either: (a) use `new_tip="once"` within the same reagent step, (b) use multi-channel pipette (96 tips covers a full column), or (c) add multiple tip racks. Always calculate before writing.
+- **PCR / 96-well tip math example:** 96 wells × 4 additions + 96 separate mixes = 480 tips if every operation uses a fresh tip. One 96-tip rack is insufficient. Reuse only where the contamination policy permits it, mix with the addition tip where appropriate, or add racks. An 8-channel pickup consumes 8 tips; changing channel count alone does not reduce tips per treated well. Always calculate before writing.
 - **Primary / reserve sources:** When a backup well shares liquid identity with the primary, annotate both in protocol comments and `design-notes.json` (`liquid_sources.primary` / `liquid_sources.reserve`, same `liquid_id`, minimum usable µL). Never imply wash/enzyme wells are interchangeable with assay buffer.
 - **Hold / time windows:** If a later phase must finish within a wall-clock window after an earlier phase (enzyme, activated reagent), write a parseable marker such as `max_hold_minutes: N` (protocol comment and/or `design-notes.json` `timing.max_hold_minutes`). Mark hold-tolerant pauses explicitly (`hold_tolerant: true`) so runtime resume can FIX short holds and STOP strict timeouts.
 

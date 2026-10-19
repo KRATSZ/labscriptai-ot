@@ -172,20 +172,22 @@ export async function startFlex3dViewer({
   }
 
   return withUsablePython(preferredPython, async python => new Promise((resolve, reject) => {
-    const child = spawn(python, args, {
-      cwd: FLEX3D_ROOT,
-      env: { ...process.env, FLEX3D_EXPORT: FLEX3D_DEFAULT_OUT, PYTHONPATH: FLEX3D_ROOT, PYTHONIOENCODING: "utf-8" },
-      stdio: ["ignore", "pipe", "pipe"],
-      detached: false,
-    });
+    fs.mkdirSync(FLEX3D_DEFAULT_OUT, { recursive: true });
+    const logPath = path.join(FLEX3D_DEFAULT_OUT, `viewer-${port}-${Date.now()}.log`);
+    const log = fs.openSync(logPath, "w", 0o600);
+    let child;
+    try {
+      child = spawn(python, args, {
+        cwd: FLEX3D_ROOT,
+        env: { ...process.env, FLEX3D_EXPORT: FLEX3D_DEFAULT_OUT, PYTHONPATH: FLEX3D_ROOT, PYTHONIOENCODING: "utf-8" },
+        stdio: ["ignore", log, log],
+        detached: true,
+        windowsHide: true,
+      });
+    } finally {
+      fs.closeSync(log);
+    }
     child.on("error", reject);
-    child.stdout.resume();
-
-    let stderr = "";
-    child.stderr.setEncoding("utf8");
-    child.stderr.on("data", chunk => {
-      stderr += chunk;
-    });
 
     const url = hasProtocol
       ? `http://127.0.0.1:${port}/viewer.html?key=${FLEX3D_EXAMPLE_KEY}`
@@ -193,6 +195,7 @@ export async function startFlex3dViewer({
 
     pollHealth(`http://127.0.0.1:${port}/flex3d/health`, child).then(status => {
       if (status.exited) {
+        const stderr = fs.readFileSync(logPath, "utf8").slice(-4000);
         const mujocoMissing = /No module named ["']?mujoco/i.test(stderr);
         resolve({
           ok: false,
@@ -210,15 +213,17 @@ export async function startFlex3dViewer({
           ok: false,
           error: "viewer_start_timeout",
           message: `The 3D viewer did not become ready within 45s: ${url}`,
-          stderr: stderr.slice(-4000),
+          stderr: fs.readFileSync(logPath, "utf8").slice(-4000),
         });
         return;
       }
+      child.unref();
       resolve({
         ok: true,
         url,
         port,
         pid: child.pid,
+        log_path: logPath,
         protocol: protocolPath ? path.resolve(String(protocolPath)) : null,
         note: "Open the url in a browser to interact; stop the process with: kill <pid>",
       });

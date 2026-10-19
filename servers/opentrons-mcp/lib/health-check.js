@@ -88,12 +88,14 @@ export function buildHealthCheck(args = {}) {
       cwd: PLUGIN_ROOT,
       timeout: 3000,
       encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
     }).trim();
 
     const porcelain = execSync("git status --porcelain", {
       cwd: PLUGIN_ROOT,
       timeout: 3000,
       encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
     }).trim();
     report.git.uncommitted_changes = porcelain ? porcelain.split("\n").length : 0;
   } catch {

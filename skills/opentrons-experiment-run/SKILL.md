@@ -55,7 +55,7 @@ Phases are **ordered**. Finish each gate before the next. If a gate fails,
 Hide internal complexity from the operator. The default interaction model is:
 
 1. One user input
-2. At most one blocking clarification round
+2. One initial clarification round; focused follow-up only if a blocking fact remains unresolved
 3. **One** confirmation before live execution (`run_protocol` / play) — not one per preflight subgate
 
 If a runnable protocol exists, the default next step is the simulation gate. Do
@@ -63,7 +63,7 @@ not wait for the user to explicitly ask for simulate.
 
 **Do not over-ask.** After a Phase 3a/3b/3c tool returns `passed` (or skip-pass
 for zero critical wells), continue to the next subphase without verbal
-re-confirmation. Emit status JSON; do not pause the chat to ask “does this look
+re-confirmation. Record status per `policy/output-contract.md`; do not pause the chat to ask “does this look
 good?” when the gate already cleared.
 
 ### Phase 0 — Intent (multi-well / pattern / ambiguous mapping)
@@ -103,7 +103,7 @@ good?” when the gate already cleared.
 
 ### Phase 3 — Live Preflight (3a → 3b → 3c, mandatory order)
 
-Finish each sub-gate before the next. Emit `output-contract` status JSON with
+Finish each sub-gate before the next. Record `output-contract` status with
 `subphase`: `dashboard` | `deck_vision` | `critical_probe`.
 
 #### Continue-vs-ask (agents must follow)

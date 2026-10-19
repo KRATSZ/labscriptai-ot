@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build a deterministic runtime bundle and an optional Flex module detail pack."""
+"""Build one deterministic runtime bundle, including detailed Flex module models."""
 import argparse
 import hashlib
 import json
@@ -54,9 +54,7 @@ def core_files(root):
 
 
 def detail_files(root):
-    manifest = root / DETAIL / 'manifest.json'
-    if not manifest.exists():
-        return []
+    manifest = root / checked(root, DETAIL / 'manifest.json')
     pack = json.loads(manifest.read_text())
     paths = {Path('LICENSE'), Path('CITATION.cff'), DETAIL / 'README.md', DETAIL / 'manifest.json', DETAIL / 'sources.json'}
     for module in pack['modules'].values():
@@ -83,10 +81,7 @@ def build(root=ROOT, out=None):
     version = json.loads((root / '.codex-plugin/plugin.json').read_text())['version']
     if not version or any(c not in '0123456789abcdefghijklmnopqrstuvwxyz.-' for c in version):
         raise ValueError('Invalid release version')
-    bundles = [(f'labscriptai-ot-{version}.zip', core_files(root))]
-    detail = detail_files(root)
-    if detail:
-        bundles.append((f'labscriptai-ot-flex3d-details-{version}.zip', detail))
+    bundles = [(f'labscriptai-ot-{version}.zip', sorted(set(core_files(root) + detail_files(root))))]
     out.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=out.parent) as stage:
         stage = Path(stage)
@@ -99,6 +94,9 @@ def build(root=ROOT, out=None):
         result = {'version': version, 'assets': assets}
         (stage / 'release-manifest.json').write_text(json.dumps(result, indent=2) + '\n')
         out.mkdir(parents=True, exist_ok=True)
+        for stale in out.glob('labscriptai-ot-*.zip'):
+            if stale.name not in {asset['name'] for asset in assets}:
+                stale.unlink()
         for path in stage.iterdir():
             shutil.move(str(path), out / path.name)
     return result

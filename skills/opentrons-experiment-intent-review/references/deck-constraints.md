@@ -16,7 +16,7 @@ Row D  [  D1  ]    [  D2  ]    [  D3  ]    [  D4  ]
 - **Working area**: A1-D3 (12 slots). Pipettes can reach all positions.
 - **Staging area**: A4-D4 (4 slots). Only gripper can reach; pipettes cannot.
 - **Expansion slot**: behind A1, used only by Thermocycler.
-- Slots are interchangeable within a column (1, 2, or 3) but NOT across columns.
+- The removable **metal deck-slot pieces** are interchangeable only within their hardware column. This is not a rule that labware must stay in one column: standalone labware may use available working slots subject to fixtures, modules and simulated clearance. Update protocol locations and re-check after changing the layout. See [robot hardware](https://docs.opentrons.com/flex/system-description/robot/) and [API deck slots](https://docs.opentrons.com/python-api/deck-slots/).
 
 ## Fixture placement
 

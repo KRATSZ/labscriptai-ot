@@ -36,7 +36,7 @@ from urllib.parse import parse_qs, urlparse
 import mujoco
 
 from sim.flex_protocol import ProtocolError, load_analysis, plan as make_plan, scene_spec
-from sim.flex_scene import EXPORT, ROOT, load_deck, load_model, write_model
+from sim.flex_scene import EXPORT, ROOT, deck_camera_pose, load_deck, load_model, write_model
 from sim.play_protocol import CLOSE_DEFAULT_ORBIT, CLOSE_WEB_H, CLOSE_WEB_W, FRAME_H, MAIN_W, Renderer, Scene, analyze
 from sim.view_scene import write_view
 
@@ -79,9 +79,18 @@ class Model:
         self.folder = folder
         posed = Scene(plan, model, data)
         self.view_path = write_view(plan, posed, folder)
-        self.renderer = Renderer(plan, posed)
-        self.renderer.build_track(FPS)
-        self.main_default = self.renderer.default_orbit()
+        self.plan, self.scene = plan, posed
+        self._renderer = None
+        # Browser meshes need no server-side OpenGL context. JPEG routes opt in.
+        pos, look = deck_camera_pose(deck)
+        offset = [b - a for a, b in zip(pos, look)]
+        distance = math.sqrt(sum(v * v for v in offset))
+        self.main_default = {
+            "azimuth": math.degrees(math.atan2(offset[1], offset[0])),
+            "elevation": math.degrees(math.asin(offset[2] / distance)),
+            "distance": distance,
+            "lookat": list(look),
+        }
         self.pipettes = [{"mount": p.mount, "name": p.name, "tool": p.tool} for p in run.pipettes.values()]
         self.steps = [
             {
@@ -129,6 +138,13 @@ class Model:
             "steps": self.steps,
         }
 
+    @property
+    def renderer(self):
+        if self._renderer is None:
+            self._renderer = Renderer(self.plan, self.scene)
+            self._renderer.build_track(FPS)
+        return self._renderer
+
     def main_jpeg(self, t: float, azimuth: float, elevation: float, distance: float) -> bytes:
         t = min(max(t, 0.0), self.duration)
         orbit = (azimuth, _clamp(elevation, EL_RANGE), _clamp(distance, MAIN_DIST))
@@ -140,8 +156,9 @@ class Model:
         return _jpeg(self.renderer.web_close(t, orbit))
 
     def close(self) -> None:
-        for renderer in (self.renderer.main, self.renderer.close, self.renderer.close_web):
-            renderer.close()
+        if self._renderer is not None:
+            for renderer in (self._renderer.main, self._renderer.close, self._renderer.close_web):
+                renderer.close()
 
 
 class Registry:

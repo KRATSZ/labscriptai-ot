@@ -6,12 +6,15 @@ Author: `gaoyuan` · Contact: `gaoyuanbio@qq.com` · Repository: https://github.
 
 ## Install
 
+Download and extract the ZIP from the [latest release](https://github.com/KRATSZ/labscriptai-ot/releases/latest), then run:
+
 ```bash
-git clone https://github.com/KRATSZ/labscriptai-ot.git
 cd labscriptai-ot
 bash install-labscriptai-ot.sh          # macOS / Linux; installs Node and Python dependencies
 # .\install-labscriptai-ot.ps1          # Windows PowerShell
 ```
+
+For source development, clone this repository instead of downloading the ZIP.
 
 Then enable the plugin in your client. **Start here:** [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) (Claude Code, Codex, and Cursor setup, first commands, troubleshooting).
 
@@ -28,7 +31,7 @@ Then enable the plugin in your client. **Start here:** [docs/GETTING_STARTED.md]
 MuJoCo-based 3D preflight and an interactive browser viewer for **Flex protocols** (OT-2 is refused). The installer includes the required Python dependencies.
 
 - MCP tool `flex3d_preflight_check` — runs geometry / liquid / targets / clearance checks on an analyze JSON or protocol `.py`; failing checks carry `command_index` aligned with LogicPass `step_index`. Degrades gracefully when mujoco is missing. Returns `status=passed/failed/unknown/not_applicable`; a failed check sets `ok=false`. Analysis, check reports and scene assets stay under `PLUGIN_DATA`. No images or videos are rendered.
-- MCP tool `flex3d_open_viewer` — starts the interactive viewer and returns the browser URL (with the `?key=` the page needs). This is the 3D preview path: **online only**, no video rendering and no file export beyond the scene assets it serves. A bare `/viewer.html` is redirected to the loaded model.
+- MCP tool `flex3d_open_viewer` — starts the interactive viewer and returns the browser URL (with the `?key=` the page needs). This is the 3D preview path: **online only**, no video rendering and only scene assets and a startup log are written. A bare `/viewer.html` is redirected to the loaded model.
 - CLI: `python automation/flex3d/scripts/render_protocol_3d.py <analysis.json|protocol.py> [--out DIR]` prints one JSON object (checks only, no video).
 - CLI: `python -m sim.play_protocol <analysis.json|protocol.py>` prints the checks and writes a trace. Rendering is opt-in and off by default: `--stills` adds still PNGs plus a contact sheet, `--video` adds an MP4, `--frame T` renders single frames, `--view` opens the MuJoCo window.
 - `node scripts/verify-setup.mjs` verifies the core runtime. Vision and external VLM services are optional and off by default.
@@ -36,9 +39,9 @@ MuJoCo-based 3D preflight and an interactive browser viewer for **Flex protocols
 
 ## Lightweight downloads
 
-One `labscriptai-ot-<version>.zip` works across all three clients. It includes the 52-tool MCP server, skills, protocol library and basic Flex 3D models. Dependencies install locally; training weights, tests, developer notes and Blender sources stay out of the download.
+One `labscriptai-ot-<version>.zip` works across all three clients. It includes the 52-tool MCP server, skills, protocol library and detailed Flex module models, used automatically by the 3D preview. Dependencies install locally; training weights, tests, developer notes, Blender sources and duplicate model exports stay out of the download.
 
-Detailed module appearances are optional: extract `labscriptai-ot-flex3d-details-<version>.zip` beside the same `labscriptai-ot/` folder. The core package works without it. Enable deck vision only after following [its setup guide](docs/deck-vision.md).
+No separate model download is needed. Enable deck vision only after following [its setup guide](docs/deck-vision.md).
 
 ## Citation
 
