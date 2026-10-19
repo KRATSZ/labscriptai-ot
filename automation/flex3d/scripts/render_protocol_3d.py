@@ -9,6 +9,7 @@ a degraded error and exits 0 so the caller can keep going.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -25,6 +26,7 @@ FLEX_ROBOTS = {"OT-3 Standard", "Flex"}
 
 
 def emit(payload: dict) -> None:
+    payload.setdefault("status", "unknown")
     sys.stdout.reconfigure(encoding="utf-8")
     json.dump(payload, sys.stdout, ensure_ascii=False)
     sys.stdout.write("\n")
@@ -84,9 +86,12 @@ def main() -> None:
     if not source.is_file():
         emit({"ok": False, "error": "missing_source", "message": f"missing file: {source}", "checks": [], "files": []})
 
+    export = args.out or os.environ.get("FLEX3D_EXPORT") or Path(os.environ.get("PLUGIN_DATA", ROOT.parents[1] / ".plugin-data")) / "flex3d"
+    os.environ["FLEX3D_EXPORT"] = str(Path(export).resolve())
     if source.suffix == ".py":
         python = os.environ.get("OPENTRONS_PYTHON", sys.executable)
-        produced = source.with_suffix(".analysis.json")
+        produced = Path(export) / "analyses" / f"{source.stem}-{hashlib.sha256(source.read_bytes()).hexdigest()[:12]}.analysis.json"
+        produced.parent.mkdir(parents=True, exist_ok=True)
         done = subprocess.run(
             [python, "-m", "opentrons.cli", "analyze", "--json-output", str(produced), str(source)],
             capture_output=True,
@@ -114,6 +119,7 @@ def main() -> None:
         emit({
             "ok": False,
             "supported": False,
+            "status": "not_applicable",
             "error": "ot2_not_supported",
             "robot_type": kind,
             "message": f"the 3D preview only supports Flex; this protocol is {kind}",
@@ -121,7 +127,6 @@ def main() -> None:
             "files": [],
         })
 
-    os.environ.setdefault("FLEX3D_EXPORT", str(args.out or (ROOT / "runs")))
     try:
         import mujoco
         from sim.flex_protocol import ProtocolError, load_analysis, plan as make_plan, scene_spec
@@ -217,7 +222,8 @@ def main() -> None:
 
     failed = [item["name"] for item in checks if item["status"] == "fail"]
     emit({
-        "ok": True,
+        "ok": not failed,
+        "status": "failed" if failed else "passed",
         "supported": True,
         "advisory": True,
         "robot_type": kind or "OT-3 Standard",

@@ -2,11 +2,11 @@ import fs from "fs";
 import path from "path";
 import { spawn } from "child_process";
 
-import { PLUGIN_ROOT, resolvePythonCandidates } from "./paths.js";
+import { DATA_DIR, PLUGIN_ROOT, resolvePythonCandidates } from "./paths.js";
 
 const FLEX3D_ROOT = path.join(PLUGIN_ROOT, "automation", "flex3d");
 const FLEX3D_SCRIPT = path.join(FLEX3D_ROOT, "scripts", "render_protocol_3d.py");
-const FLEX3D_DEFAULT_OUT = path.join(PLUGIN_ROOT, ".plugin-data", "flex3d");
+const FLEX3D_DEFAULT_OUT = path.join(DATA_DIR, "flex3d");
 const FLEX3D_DEFAULT_PORT = 8791;
 // web_player.py registers a preloaded protocol under this fixed key
 // (EXAMPLE_KEY in automation/flex3d/sim/web_player.py), and viewer.js refuses
@@ -118,7 +118,7 @@ export async function runFlex3dCheck({
   });
 }
 
-function pollHealth(url, child, timeoutMs = 10000) {
+function pollHealth(url, child, timeoutMs = 45000) {
   const deadline = Date.now() + timeoutMs;
 
   return new Promise(resolve => {
@@ -131,9 +131,14 @@ function pollHealth(url, child, timeoutMs = 10000) {
         resolve({ exited: false, timedOut: true });
         return;
       }
-      fetch(url)
-        .then(response => {
-          resolve({ exited: false, timedOut: false, healthy: response.ok });
+      fetch(url, { signal: AbortSignal.timeout(1000) })
+        .then(async response => {
+          const health = response.ok ? await response.json() : null;
+          if (health?.service === "labscriptai-flex3d" && health.pid === child.pid) {
+            resolve({ healthy: true });
+          } else {
+            setTimeout(attempt, 300);
+          }
         })
         .catch(() => {
           setTimeout(attempt, 300);
@@ -163,13 +168,15 @@ export async function startFlex3dViewer({
     args.push("--protocol", path.resolve(String(protocolPath)));
   }
 
-  return withUsablePython(preferredPython, async python => new Promise(resolve => {
+  return withUsablePython(preferredPython, async python => new Promise((resolve, reject) => {
     const child = spawn(python, args, {
       cwd: FLEX3D_ROOT,
-      env: { ...process.env, PYTHONPATH: FLEX3D_ROOT, PYTHONIOENCODING: "utf-8" },
+      env: { ...process.env, FLEX3D_EXPORT: FLEX3D_DEFAULT_OUT, PYTHONPATH: FLEX3D_ROOT, PYTHONIOENCODING: "utf-8" },
       stdio: ["ignore", "pipe", "pipe"],
       detached: false,
     });
+    child.on("error", reject);
+    child.stdout.resume();
 
     let stderr = "";
     child.stderr.setEncoding("utf8");
@@ -181,7 +188,7 @@ export async function startFlex3dViewer({
       ? `http://127.0.0.1:${port}/viewer.html?key=${FLEX3D_EXAMPLE_KEY}`
       : `http://127.0.0.1:${port}/viewer.html`;
 
-    pollHealth(`http://127.0.0.1:${port}/health`, child).then(status => {
+    pollHealth(`http://127.0.0.1:${port}/flex3d/health`, child).then(status => {
       if (status.exited) {
         const mujocoMissing = /No module named ["']?mujoco/i.test(stderr);
         resolve({
@@ -195,10 +202,11 @@ export async function startFlex3dViewer({
         return;
       }
       if (status.timedOut && !status.healthy) {
+        child.kill();
         resolve({
           ok: false,
           error: "viewer_start_timeout",
-          message: `web_player did not pass /health within 10s: ${url}`,
+          message: `The 3D viewer did not become ready within 45s: ${url}`,
           stderr: stderr.slice(-4000),
         });
         return;

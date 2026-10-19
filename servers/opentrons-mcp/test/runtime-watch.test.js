@@ -668,3 +668,36 @@ test("runtime_watch_loop records one event per tick with status kind", async () 
   const runningEvent = events.find(event => event.status === "running");
   assert.equal(runningEvent?.kind, "heartbeat");
 });
+
+test("watch events recommend public tools with the required selector", async t => {
+  const dir = tempWatchDir();
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const names = new Set(TOOL_DEFINITIONS.map(tool => tool.name));
+  for (const [status, selector] of [["running", "mode"], ["completed", "scope"], ["needs_user", "action"]]) {
+    const events = [];
+    await runtimeWatchLoop({ run_id: status, watch_dir: dir, max_turns: 1 }, {
+      runtimeWatchPoll: async () => loopTick(status),
+      emitSentinel: ({ event }) => events.push(event), sleep: async () => {},
+    });
+    assert.equal(names.has(events[0].recommended_next_tool), true);
+    assert.ok(events[0].recommended_next_args[selector]);
+  }
+});
+
+test("resuming an exhausted watch grants a fresh budget and keeps its history", async t => {
+  const dir = tempWatchDir();
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const args = { run_id: "resume-budget", watch_dir: dir, max_turns: 1, max_runtime_ms: 1000 };
+  const deps = { runtimeWatchPoll: async () => loopTick("running"), emitSentinel: () => {}, sleep: async () => {} };
+  const first = await runtimeWatchLoop(args, deps);
+  const saved = JSON.parse(fs.readFileSync(first.goal_state_path, "utf8"));
+  saved.started_at = "2000-01-01T00:00:00.000Z";
+  fs.writeFileSync(first.goal_state_path, JSON.stringify(saved));
+  const resumed = await runtimeWatchLoop({ ...args, resume: true }, {
+    ...deps, runtimeWatchPoll: async () => loopTick("completed"),
+  });
+  assert.equal(resumed.goal_id, first.goal_id);
+  assert.equal(resumed.turns_completed, 2);
+  assert.equal(resumed.ticks.length, 2);
+  assert.equal(resumed.goal_status, "COMPLETE");
+});

@@ -1,6 +1,6 @@
 [project]
 name = "labscriptai-ot"
-version = "0.1.0"
+version = "0.1.1"
 description = "LabscriptAI OT plugin — local simulation runtime for Opentrons protocol authoring (Python side)."
 readme = "README.md"
 requires-python = ">=3.11,<3.14"

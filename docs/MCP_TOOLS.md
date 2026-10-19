@@ -312,15 +312,15 @@ Deck vision observation (observation-only; does not mutate session state; compar
 
 ### `flex3d_open_viewer` [L4]
 
-Start the interactive Flex 3D viewer (MuJoCo + Three.js) on 127.0.0.1 and return the browser URL. Requires mujoco in the plugin Python env; degrades with a clear error when missing. Pass protocol_path to preload an analyze JSON or protocol .py; otherwise POST the analysis to /flex3d/load from the page.
+Start the interactive Flex 3D viewer (MuJoCo + Three.js) on 127.0.0.1 and return the browser URL. Requires mujoco in the plugin Python env; degrades with a clear error when missing. Pass protocol_path to preload an analyze JSON or protocol .py (the returned URL then carries the required ?key=example). Online preview only: no video is rendered and no rendered image is exported — the only files written are the scene the page serves (flex.xml, view.json and flex_assets). Startup takes ~20 s for a long protocol, and the health poll can report a false timeout on slow starts — the process usually comes up anyway.
 
 **Parameters:** `protocol_path` (optional), `port` (optional), `python_executable` (optional)
 
 ### `flex3d_preflight_check` [L4]
 
-Flex 3D physical preflight (MuJoCo). Runs automation/flex3d/scripts/render_protocol_3d.py on an opentrons analyze JSON or protocol .py: geometry, liquid, targets, clearance checks with command_index aligned to LogicPass step_index. Flex only (OT-2 refused). Degrades gracefully (ok=false, error=mujoco_missing) when mujoco is not installed. Optional: --video writes an MP4.
+Flex 3D physical preflight (MuJoCo). Runs automation/flex3d/scripts/render_protocol_3d.py on an opentrons analyze JSON or protocol .py: geometry, liquid, targets, clearance checks with command_index aligned to LogicPass step_index. Flex only (OT-2 refused). Degrades gracefully (ok=false, error=mujoco_missing) when mujoco is not installed. Returns passed/failed/unknown/not_applicable; failed checks set ok=false. Uses the shared analysis cache. Checks and scene assets stay under PLUGIN_DATA; no image or video export. For a live 3D look at the deck use flex3d_open_viewer, which returns an online preview URL.
 
-**Parameters:** `source`, `out_dir` (optional), `video` (optional), `python_executable` (optional)
+**Parameters:** `source`, `out_dir` (optional), `python_executable` (optional)
 
 ### `generate_continuation_protocol` [L4]
 

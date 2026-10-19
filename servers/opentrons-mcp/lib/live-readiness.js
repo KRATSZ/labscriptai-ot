@@ -278,10 +278,10 @@ function resolveRecommendedNextTools({
   const byName = Object.fromEntries(checks.map(check => [check.name, check]));
 
   if (byName.local_runtime?.status === "fail") {
-    return ["doctor_local_runtime"];
+    return ["health_check"];
   }
   if (byName.robot_connectivity?.status === "fail") {
-    return ["robot_health"];
+    return ["health_check"];
   }
   if (byName.session_state?.status === "fail" && safeNextAction) {
     return uniqueOrdered([

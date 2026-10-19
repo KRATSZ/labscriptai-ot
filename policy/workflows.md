@@ -157,7 +157,7 @@ Bookkeeping only until `execute_on_robot=true`: `apply_liquid_probe_results` nev
 
 ## Legacy optional deck vision (ad-hoc outside default preflight)
 
-Default Phase 3b already runs observation-only vision during preflight. For ad-hoc visual checks outside that sequence, the same tool chain applies:
+Optional Phase 3b runs observation-only vision when configured or requested. For ad-hoc visual checks outside that sequence, the same tool chain applies:
 
 ```
 camera_settings(action=status) → capture_image(mode=preview) → deck_vision_check(mode=local) (image_path = path returned by capture)

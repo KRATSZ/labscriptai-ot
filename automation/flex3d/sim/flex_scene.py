@@ -50,7 +50,7 @@ def resolve_export() -> Path:
     override = os.environ.get("FLEX3D_EXPORT")
     if override:
         return Path(override)
-    return ROOT.parents[1] / ".plugin-data" / "flex3d"
+    return Path(os.environ.get("PLUGIN_DATA", ROOT.parents[1] / ".plugin-data")) / "flex3d"
 
 
 EXPORT = resolve_export()

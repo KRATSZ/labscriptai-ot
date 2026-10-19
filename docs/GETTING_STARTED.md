@@ -13,7 +13,7 @@ Clone repo → Run installer → Verify setup → Enable plugin → Send first c
 | Step | Action | Verify |
 |------|--------|--------|
 | 1 | Clone this repository | You have a local folder path |
-| 2 | Run `install-labscriptai-ot.sh` (macOS/Linux) or `install-labscriptai-ot.ps1` (Windows) | `npm install` completes in `servers/opentrons-mcp/` |
+| 2 | Run `install-labscriptai-ot.sh` (macOS/Linux) or `install-labscriptai-ot.ps1` (Windows) | Node dependencies and the local Python runtime install successfully |
 | 3 | Run `node scripts/verify-setup.mjs` | No failures; `health_check: runtime capabilities` reports `liquid-source-map-v2`, and `runtime_recovery_self_test` passes |
 | 4 | Enable the plugin in your client (see platform sections below) | MCP server `opentrons-lab` appears |
 | 5 | Send a [recommended first command](#recommended-first-commands) | Agent responds and uses MCP tools |
@@ -43,31 +43,13 @@ cd labscriptai-ot
 node scripts\verify-setup.mjs
 ```
 
-### Python for simulation (optional but recommended)
+### Local runtime
 
-The installer sets up Node/MCP only. For local simulation and LogicPass you also need Python with Opentrons. The repo now ships a `pyproject.toml` that pins `opentrons` to 9.x, so `uv sync` is enough:
+The installer sets up Node/MCP and a project-local Python environment with Opentrons 9.x, MuJoCo and Pillow. Install **Node.js 18+** and either **uv** or **Python 3.11–3.13** first. With uv, dependencies follow `uv.lock`; the Python fallback installs the supported dependency ranges from `pyproject.toml`.
 
-```bash
-# from repo root
-uv sync                                   # creates .venv, installs opentrons>=9,<10 (from pyproject.toml + uv.lock)
-export OPENTRONS_PYTHON="$(pwd)/.venv/bin/python"   # Git Bash / macOS / Linux
-```
+No manual `OPENTRONS_PYTHON` setting is needed for the bundled `.venv` on macOS, Linux or Windows. Use it only to override the interpreter. Re-run `node scripts/verify-setup.mjs` after moving or updating the plugin.
 
-No uv? Any Python 3.11–3.13 works:
-
-```bash
-python3 -m venv .venv
-.venv/bin/python -m pip install "opentrons>=9.0.0,<10"
-export OPENTRONS_PYTHON="$(pwd)/.venv/bin/python"
-```
-
-```powershell
-# Windows example:
-uv sync
-$env:OPENTRONS_PYTHON = "$PWD\.venv\Scripts\python.exe"
-```
-
-Re-run `node scripts/verify-setup.mjs` until Opentrons imports cleanly. LogicPass also needs this Python: `logicpass_check` runs the vendored checker with the same interpreter and reads real per-well capacities from the installed `opentrons_shared_data` labware definitions.
+Release downloads contain one common runtime ZIP. Extract the optional `flex3d-details` ZIP beside the same `labscriptai-ot/` folder to add detailed module appearances. Training weights and external VLM services are optional; core simulation and 3D work without them.
 
 ### Environment variables
 

@@ -5,7 +5,7 @@ const ERROR_LEAF_DEFINITIONS = {
     recoverability: "environment_fix_required",
     requires_human_review: false,
     auto_executable: false,
-    default_next_step: "doctor_local_runtime",
+    default_next_step: "health_check",
     evidence_sources: ["stdout", "stderr"],
   },
   PYTHON_ENV_BROKEN: {
@@ -113,7 +113,7 @@ const ERROR_LEAF_DEFINITIONS = {
     recoverability: "manual_recovery",
     requires_human_review: true,
     auto_executable: false,
-    default_next_step: "robot_health",
+    default_next_step: "health_check",
     evidence_sources: ["health_endpoint"],
   },
   DOOR_OPEN: {

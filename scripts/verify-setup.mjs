@@ -191,7 +191,8 @@ function checkMcpManifestPaths() {
     );
   }
 
-  const codexLocalConfig = readTextFile(".codex/config.toml");
+  const codexLocalConfig = fs.existsSync(path.join(PLUGIN_ROOT, ".codex/config.toml"))
+    ? readTextFile(".codex/config.toml") : null;
   if (codexLocalConfig) {
     const args0 = extractTomlArrayFirstString(codexLocalConfig, "args");
     const configuredRoot = extractTomlString(codexLocalConfig, "OPENTRONS_PLUGIN_ROOT");
@@ -238,10 +239,10 @@ function checkPython() {
   }
 
   if (!found) {
-    warn(
+    fail(
       "Python",
       "No working Python interpreter found",
-      "Install Python 3.10+ and set OPENTRONS_PYTHON, or create .venv with Opentrons simulation deps (uv sync --extra protocol)."
+      "Install Python 3.11–3.13 and set OPENTRONS_PYTHON, or create .venv with Opentrons simulation deps (uv sync --frozen)."
     );
     return null;
   }
@@ -257,10 +258,10 @@ function checkPython() {
   if (otCheck.status === 0) {
     pass("Opentrons package", `opentrons ${(otCheck.stdout || "").trim()}`);
   } else {
-    warn(
+    fail(
       "Opentrons package",
       "opentrons not importable in detected Python",
-      "Install simulation deps: uv venv .venv && uv sync --extra protocol  (then set OPENTRONS_PYTHON)"
+      "Install simulation deps: uv sync --frozen  (then set OPENTRONS_PYTHON)"
     );
   }
 
@@ -268,6 +269,10 @@ function checkPython() {
 }
 
 function checkVision(pythonExe) {
+  if (!["on", "1"].includes(process.env.OPENTRONS_PREFLIGHT_VISION)) {
+    checks.push({ name: "Optional deck vision", status: "skip", detail: "Not enabled; see docs/deck-vision.md to configure." });
+    return;
+  }
   const policyPath = path.join(PLUGIN_ROOT, "automation", "deck_layout_policy.json");
   const calibrationPath = path.join(PLUGIN_ROOT, "automation", "photo", "deck_calibration.json");
   const weightsPath = path.join(PLUGIN_ROOT, "vision", "models", "weights", "deck_v2_best.pt");
@@ -367,6 +372,7 @@ function checkFlex3d(pythonExe) {
 }
 
 function checkArkVlm() {
+  if (!["on", "1"].includes(process.env.OPENTRONS_PREFLIGHT_VISION)) return;
   const envPath = path.join(PLUGIN_ROOT, "automation", ".env");
   let arkKey = process.env.ARK_API_KEY || null;
   if (!arkKey && fs.existsSync(envPath)) {
@@ -524,7 +530,7 @@ async function checkRuntimeRecoverySelfTest() {
 }
 
 function printReport() {
-  const icons = { pass: "✓", fail: "✗", warn: "!" };
+  const icons = { pass: "✓", fail: "✗", warn: "!", skip: "–" };
   console.log("");
   console.log("LabscriptAI OT setup verification");
   console.log(`Plugin root: ${PLUGIN_ROOT}`);

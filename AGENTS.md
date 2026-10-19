@@ -76,7 +76,7 @@ Or on Windows: `.\install-labscriptai-ot.ps1`
 - `OPENTRONS_ENABLE_PROBE_WELLS=1`: explicit opt-in for live probe motion only.
 - `ARK_API_KEY`: Volcengine Ark (Doubao VLM) API key; default read from `automation/.env`.
 - `ARK_MODEL_ENDPOINT`: Ark model endpoint id (default `ep-20260716144817-n6rgn`).
-- `OPENTRONS_PREFLIGHT_VISION`: set `off` to skip Phase 3b deck vision (default on).
+- `OPENTRONS_PREFLIGHT_VISION`: set `on` after configuring optional Phase 3b deck vision (off by default).
 - `OPENTRONS_VLM_PROVIDER`: `ark` (default), `kimi`, or `off`.
 
 ## Safety Boundary

@@ -75,15 +75,15 @@ function recommendedNextTool(status, tickData = {}) {
     return tickData.recommended_next_tool;
   }
   if (status === "completed") {
-    return "experiment_history";
+    return "query_history";
   }
   if (status === "needs_user" || status === "hard_stop") {
-    return "runtime_get_alerts";
+    return "runtime_alerts";
   }
   if (status === "unreachable") {
     return "robot_status";
   }
-  return "runtime_watch_poll";
+  return "runtime_watch";
 }
 
 function severityForStatus(status) {
@@ -112,6 +112,11 @@ function levelForStatus(status) {
 function buildTickSentinelEvent({ goal, turn, status, goalStatus, tick }) {
   const tickData = tick?.data || {};
   const recommended = recommendedNextTool(status, tickData);
+  const recommendedArgs = {
+    ...({ query_history: { scope: "experiment_logs" }, runtime_alerts: { action: "list" }, runtime_watch: { mode: "poll" } }[recommended] || {}),
+    run_id: goal.run_id,
+    session_id: goal.session_id,
+  };
   const requiresAttention = goalStatus === "blocked";
   const kind = tickOutboxKind(status, goalStatus);
   return {
@@ -129,6 +134,7 @@ function buildTickSentinelEvent({ goal, turn, status, goalStatus, tick }) {
     requires_attention: requiresAttention,
     requires_ack: requiresAttention,
     recommended_next_tool: recommended,
+    recommended_next_args: recommendedArgs,
     no_robot_motion: true,
     dedupe_key: `${goal.goal_id}:turn:${turn}:${status}`,
     data: {
@@ -139,6 +145,7 @@ function buildTickSentinelEvent({ goal, turn, status, goalStatus, tick }) {
       tick_reason: tickData.reason || null,
       last_event: tickData.last_event || null,
       recommended_next_tool: recommended,
+      recommended_next_args: recommendedArgs,
       run_status: tickData.run_status || null,
       error: tickData.error || null,
     },
@@ -193,9 +200,11 @@ export async function runtimeWatchLoop(args = {}, deps = {}) {
       };
 
   if (resumable) {
-    goal.max_turns = maxTurns;
+    goal.max_turns = goal.turns_completed + maxTurns;
     goal.max_runtime_ms = maxRuntimeMs;
     goal.interval_ms = intervalMs;
+    goal.started_at = new Date().toISOString();
+    goal.ended_at = null;
     goal.updated_at = now;
   }
 

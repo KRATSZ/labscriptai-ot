@@ -1202,7 +1202,7 @@ const TOOL_DEFINITIONS = [
   {
     name: "flex3d_preflight_check",
     description:
-      "Flex 3D physical preflight (MuJoCo). Runs automation/flex3d/scripts/render_protocol_3d.py on an opentrons analyze JSON or protocol .py: geometry, liquid, targets, clearance checks with command_index aligned to LogicPass step_index. Flex only (OT-2 refused). Degrades gracefully (ok=false, error=mujoco_missing) when mujoco is not installed. Checks only: this tool never renders or exports a video or image file, and its only artifact is the checks JSON. For a live 3D look at the deck use flex3d_open_viewer, which returns an online preview URL.",
+      "Flex 3D physical preflight (MuJoCo). Runs automation/flex3d/scripts/render_protocol_3d.py on an opentrons analyze JSON or protocol .py: geometry, liquid, targets, clearance checks with command_index aligned to LogicPass step_index. Flex only (OT-2 refused). Degrades gracefully (ok=false, error=mujoco_missing) when mujoco is not installed. Returns passed/failed/unknown/not_applicable; failed checks set ok=false. Uses the shared analysis cache. Checks and scene assets stay under PLUGIN_DATA; no image or video export. For a live 3D look at the deck use flex3d_open_viewer, which returns an online preview URL.",
     inputSchema: {
       type: "object",
       properties: {
@@ -4018,7 +4018,7 @@ async function enforceSimulationGate(args) {
       errorLeaf: doctor?.python ? "RUNTIME_UNAVAILABLE" : "PYTHON_ENV_BROKEN",
       message: "Simulation gate blocked because the local runtime is not ready.",
       overrides: {
-        default_next_step: "doctor_local_runtime",
+        default_next_step: "health_check",
         evidence_sources: ["doctor_local_runtime"],
       },
     });
@@ -7007,8 +7007,14 @@ const TOOL_HANDLERS = {
   },
 
   async flex3d_preflight_check(args) {
+    let source = args.source;
+    if (path.extname(source || "").toLowerCase() === ".py") {
+      const analyzed = await analyzeProtocolOnce({ protocol_path: source, python_executable: args.python_executable });
+      if (!analyzed.ok) return { data: { ...analyzed, status: "failed", checks: [] } };
+      source = analyzed.analysis_path;
+    }
     const result = await runFlex3dCheck({
-      sourcePath: args.source,
+      sourcePath: source,
       outDir: args.out_dir,
       preferredPython: args.python_executable,
     });
@@ -7016,8 +7022,14 @@ const TOOL_HANDLERS = {
   },
 
   async flex3d_open_viewer(args) {
+    let source = args.protocol_path;
+    if (path.extname(source || "").toLowerCase() === ".py") {
+      const analyzed = await analyzeProtocolOnce({ protocol_path: source, python_executable: args.python_executable });
+      if (!analyzed.ok) return { data: { ...analyzed, status: "failed" } };
+      source = analyzed.analysis_path;
+    }
     const result = await startFlex3dViewer({
-      protocolPath: args.protocol_path,
+      protocolPath: source,
       port: args.port,
       preferredPython: args.python_executable,
     });

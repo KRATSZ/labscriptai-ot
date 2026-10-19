@@ -26,6 +26,7 @@ import hashlib
 import io
 import json
 import math
+import os
 import re
 from collections import OrderedDict
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -253,7 +254,7 @@ def make_handler(registry: Registry) -> type[BaseHTTPRequestHandler]:
                 self._bytes(static.read_bytes(), "text/javascript; charset=utf-8")
                 return
             if parsed.path == "/flex3d/health":
-                self._json({"ok": True, "service": "labscriptai-flex3d", "models": registry.keys()})
+                self._json({"ok": True, "service": "labscriptai-flex3d", "pid": os.getpid(), "models": registry.keys()})
                 return
             asset = ASSET.match(parsed.path)
             if asset is not None:

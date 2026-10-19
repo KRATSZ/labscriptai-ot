@@ -343,7 +343,7 @@ function buildL2RunWatch({
           message: `Runtime watch returned ${status}.`,
           messageZh: `运行监控返回 ${status}，需要处理后再继续。`,
           requiresAttention: true,
-          recommendedNextTool: "runtime_get_alerts",
+          recommendedNextTool: "runtime_alerts",
           data: watchData,
         }),
       );

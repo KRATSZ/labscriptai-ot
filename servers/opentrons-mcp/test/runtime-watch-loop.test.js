@@ -91,7 +91,7 @@ test("runtime_watch_loop stops and blocks on needs_user", async () => {
   const blockedEvent = events.find(event => event.status === "needs_user");
   assert.ok(blockedEvent);
   assert.equal(blockedEvent.requires_attention, true);
-  assert.equal(blockedEvent.recommended_next_tool, "runtime_get_alerts");
+  assert.equal(blockedEvent.recommended_next_tool, "runtime_alerts");
 });
 
 test("runtime_watch_loop hard_stop blocks and never retries", async () => {

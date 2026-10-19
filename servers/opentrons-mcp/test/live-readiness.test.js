@@ -34,7 +34,7 @@ test("buildLiveReadinessReport prioritizes local runtime blockers", () => {
   assert.equal(report.overall_status, "fail");
   assert.equal(report.checks[0].name, "local_runtime");
   assert.equal(report.checks[0].error_leaf, "RUNTIME_UNAVAILABLE");
-  assert.deepEqual(report.recommended_next_tools, ["doctor_local_runtime"]);
+  assert.deepEqual(report.recommended_next_tools, ["health_check"]);
 });
 
 test("buildLiveReadinessReport warns on stale session and preflight warnings", () => {

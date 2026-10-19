@@ -10,7 +10,7 @@ const DEV_REPO_ROOT = path.resolve(MCP_ROOT, "../..");
 function firstEnv(...names) {
   for (const name of names) {
     const value = process.env[name];
-    if (value && String(value).trim()) {
+    if (value && String(value).trim() && !/\$\{[^}]+\}/.test(value)) {
       return String(value).trim();
     }
   }
@@ -57,6 +57,7 @@ export function resolvePythonCandidates(preferredPython = null) {
   const candidates = [
     preferredPython,
     process.env.OPENTRONS_PYTHON,
+    path.join(PLUGIN_ROOT, ".venv/Scripts/python.exe"),
     path.join(PLUGIN_ROOT, ".venv/bin/python"),
     path.join(DEV_REPO_ROOT, ".venv/bin/python"),
     "python3",

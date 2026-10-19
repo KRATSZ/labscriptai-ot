@@ -2,7 +2,7 @@
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "labscriptai-ot",
   "displayName": "LabscriptAI OT",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Single-package LabscriptAI Opentrons plugin with MCP, skills, safety policy, and curated protocols.",
   "author": {
     "name": "gaoyuan",
@@ -11,7 +11,13 @@
   "homepage": "https://github.com/KRATSZ/labscriptai-ot",
   "repository": "https://github.com/KRATSZ/labscriptai-ot",
   "license": "SEE LICENSE IN LICENSE",
-  "keywords": ["opentrons", "labscriptai", "mcp", "robotics", "protocol-authoring"],
+  "keywords": [
+    "opentrons",
+    "labscriptai",
+    "mcp",
+    "robotics",
+    "protocol-authoring"
+  ],
   "defaultEnabled": true,
   "skills": "./skills/",
   "mcpServers": "./.claude-plugin/mcp.json",
@@ -21,7 +27,11 @@
     "longDescription": "LabscriptAI OT bundles Opentrons skills, a local MCP server, safety policy, and a small curated protocol library. Live robot actions stay opt-in and simulation remains the gate before unattended execution.",
     "developerName": "gaoyuan",
     "category": "Coding",
-    "capabilities": ["Interactive", "Read", "Write"],
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write"
+    ],
     "defaultPrompt": [
       "Help me design a Flex liquid-handling experiment from scratch — review intent first, then write and simulate the protocol",
       "Check whether this Opentrons protocol can pass local simulation safely",

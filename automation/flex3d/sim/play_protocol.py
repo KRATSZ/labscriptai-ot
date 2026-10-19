@@ -5,8 +5,8 @@
     PYTHONPATH=. ~/Library/Python/3.9/bin/mjpython -m sim.play_protocol <protocol> --view
 
 A ``.py`` is analyzed first with the Opentrons package found through
-``OPENTRONS_PYTHON`` (default: the Flexagent ``labscriptai`` venv next to this
-folder), which writes ``<name>.analysis.json`` beside it.
+``OPENTRONS_PYTHON`` (or the current interpreter). Analysis files stay under
+``PLUGIN_DATA/flex3d/analyses``.
 
 Checks, all against the analysis JSON, before anything is rendered:
 
@@ -34,6 +34,7 @@ open the interactive MuJoCo window instead of rendering anything.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import os
@@ -65,7 +66,7 @@ from sim.flex_scene import EXPORT, MM, ROOT, camera_axes, deck_camera_pose, liqu
 
 OUT_ROOT = EXPORT / "protocols"
 NOZZLE_ROWS = flex_shell.NOZZLE_ROWS
-DEFAULT_OPENTRONS_PYTHON = os.environ.get("OPENTRONS_PYTHON", "python3")
+DEFAULT_OPENTRONS_PYTHON = os.environ.get("OPENTRONS_PYTHON", sys.executable)
 
 FRAME_W, FRAME_H = 1440, 810
 MAIN_W = 1000
@@ -105,7 +106,8 @@ def find_font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont:
 
 def analyze(protocol: Path) -> Path:
     python = os.environ.get("OPENTRONS_PYTHON", DEFAULT_OPENTRONS_PYTHON)
-    out = protocol.with_suffix(".analysis.json")
+    out = EXPORT / "analyses" / f"{protocol.stem}-{hashlib.sha256(protocol.read_bytes()).hexdigest()[:12]}.analysis.json"
+    out.parent.mkdir(parents=True, exist_ok=True)
     done = subprocess.run(
         [str(python), "-m", "opentrons.cli", "analyze", "--json-output", str(out), str(protocol)],
         capture_output=True,

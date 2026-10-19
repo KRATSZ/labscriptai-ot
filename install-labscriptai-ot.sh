@@ -5,14 +5,17 @@ PLUGIN_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MCP_ROOT="$PLUGIN_ROOT/servers/opentrons-mcp"
 
 cd "$MCP_ROOT"
-npm install
+npm ci --omit=dev --no-audit --no-fund
+
+cd "$PLUGIN_ROOT"
+node scripts/install-runtime.mjs
 
 export OPENTRONS_PLUGIN_ROOT="$PLUGIN_ROOT"
 node "$PLUGIN_ROOT/scripts/verify-setup.mjs" || VERIFY_EXIT=$?
 
 cat <<EOF
 
-LabscriptAI OT plugin is installed.
+LabscriptAI OT installation finished. See the verification result above.
 
 Set these variables in your client if it does not inject them:
   OPENTRONS_PLUGIN_ROOT=$PLUGIN_ROOT

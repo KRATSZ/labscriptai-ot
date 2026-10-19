@@ -1,4 +1,6 @@
 node_modules/
+dist/
+.agent-runs/
 .plugin-data/
 .venv/
 __pycache__/

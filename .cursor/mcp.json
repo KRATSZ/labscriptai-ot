@@ -6,8 +6,7 @@
       "env": {
         "OPENTRONS_PLUGIN_ROOT": "${workspaceFolder}",
         "OPENTRONS_PROTOCOL_LIBRARY_PATH": "${workspaceFolder}/bundled-library",
-        "PLUGIN_DATA": "${workspaceFolder}/.plugin-data",
-        "OPENTRONS_PYTHON": "${workspaceFolder}/.venv/Scripts/python.exe"
+        "PLUGIN_DATA": "${workspaceFolder}/.plugin-data"
       }
     }
   }

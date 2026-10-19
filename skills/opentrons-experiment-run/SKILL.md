@@ -121,7 +121,7 @@ Keep the simulation gate, hard-stops, and vision **observation-only**. Never tre
 #### Phase 3a — Dashboard (no camera, no VLM)
 
 - `health_check` -> `live_readiness_check` (robot_ip, session_id?, file_path?)
-- `robot_status`, `robot_status` — door closed, estop clear, modules ready
+- `robot_status(include_modules=true)` — door closed, estop clear, modules ready
 - If `guidance.reconcile_first` or session needs reconciliation -> `reconcile_state` (tool-first; do not ask first)
 - **Do not** call `camera_settings(action=status)`, `capture_image(mode=preview)`, `deck_vision_check(mode=local)`, or any VLM here
 - **Fail** on `DOOR_OPEN`, `ESTOP_ENGAGED`, `MODULE_NOT_READY` (hard blockers)
@@ -129,13 +129,13 @@ Keep the simulation gate, hard-stops, and vision **observation-only**. Never tre
 
 #### Phase 3b — Eyes on deck (YOLO first, Ark VLM second opinion)
 
-- Default: `deck_vision_check` (robot_ip, session_id, expected_layout)
+- When configured or requested: `deck_vision_check` (robot_ip, session_id, expected_layout)
   OR manual chain: `camera_settings(action=status)` -> `capture_image(mode=preview)` -> `deck_vision_check(mode=local)`
 - YOLO is the first opinion. Escalate to `analyze_image(provider=ark)` (Doubao) only when:
   - `uncertainties` include low confidence / ambiguity
   - `mismatches` against `expected_layout`
   - operator sets `force_vlm=true`
-- Skip when `OPENTRONS_PREFLIGHT_VISION=off`
+- Vision is optional. Enable the configured path with `OPENTRONS_PREFLIGHT_VISION=on`; otherwise skip it. If unavailable, report it as **not checked** and include a physical deck-layout check in the final go-live confirmation. Never label a missing vision check as passed.
 - Vision is **observation-only** — never treat as deck truth
 - On consensus `passed` (YOLO clear, or VLM second opinion agrees / no actionable mismatch) -> continue to 3c **without** verbal re-confirm
 - On mismatch / needs reconcile -> call `reconcile_state` **before** asking the human; only escalate if still blocked after reconcile and allowed auto tools
@@ -188,7 +188,7 @@ Keep the simulation gate, hard-stops, and vision **observation-only**. Never tre
 
 | Channel | Trigger examples | Tools |
 |---------|------------------|-------|
-| **dashboard** | door open, estop, module not ready | `robot_status`, `robot_status`, `live_readiness_check` |
+| **dashboard** | door open, estop, module not ready | `robot_status(include_modules=true)`, `live_readiness_check` |
 | **vision** | deck moved, labware mismatch (appearance doubt) | `deck_vision_check` or capture+vision+ark, then **`reconcile_state` before asking human** |
 | **reconcile** | SESSION_NEEDS_RECONCILIATION / state mismatch | `reconcile_state` first — not camera/VLM-first |
 | **manual** | DECK_COLLISION (hard-stop) | stop; physical check; re-run live_readiness — **does not enter vision channel** |

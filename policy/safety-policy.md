@@ -28,7 +28,7 @@ This file is the **single source of truth** for safety rules and hard bans in th
 
 Vision / `deck_vision_check(mode=local)` / `deck_vision_check` is **observation-only**. It does not mutate session state or override `reconcile_state`. Never treat vision as committed deck truth — always compare with robot APIs and reconciled deck state.
 
-**Default preflight may run observation-only Phase 3b** (unless `OPENTRONS_PREFLIGHT_VISION=off`). Ad-hoc vision outside preflight remains available when useful (see [workflows.md](workflows.md)).
+**Optional Phase 3b uses observation-only vision** when configured or requested (`OPENTRONS_PREFLIGHT_VISION=on`). An unavailable vision check is reported as not checked; include deck-layout confirmation in the final go-live check. Ad-hoc vision outside preflight remains available when useful (see [workflows.md](workflows.md)).
 
 On vision uncertainty or soft mismatch: prefer **auto-reconcile** (`reconcile_state`, re-check APIs) before any human ask. Sensor-aligned agreement (e.g. VLM agrees with expected layout) is a machine **pass**, not a prompt to confirm the subgate. See HumanConfirmBudget in [output-contract.md](output-contract.md).
 
