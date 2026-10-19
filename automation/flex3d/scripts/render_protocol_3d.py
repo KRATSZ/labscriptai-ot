@@ -194,8 +194,8 @@ def main() -> None:
         clearance, tightest, samples = check_clearance(plan, scene)
         checks.append(check_item(
             "clearance",
-            "pass",
-            f"{samples} samples; tightest enclosure gap {clearance * 1000:.1f} mm at {tightest}",
+            "pass" if samples else "not_applicable",
+            f"{samples} samples; tightest enclosure gap {clearance * 1000:.1f} mm at {tightest}" if samples else tightest,
         ))
     except RuntimeError as exc:
         checks.append(check_item("clearance", "fail", str(exc), plan))

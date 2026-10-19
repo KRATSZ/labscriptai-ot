@@ -405,6 +405,8 @@ def _subtree(model, root: str) -> list[int]:
 def check_clearance(plan: Plan, scene: Scene) -> tuple[float, str, int]:
     """Sweep the path: tools and carried labware against labware, trash, enclosure and each other."""
 
+    if all(key.q == plan.keys[0].q for key in plan.keys):
+        return 0.0, "no gantry or labware movement", 0
     model, data, run = scene.model, scene.data, plan.run
     layout = flex_shell.Layout.for_deck(run.deck)
     inner_lo = np.array([layout.ix0, layout.iy0, 0.0])
@@ -1058,7 +1060,7 @@ def main() -> None:
     print(f"Geometry: PASS ({len(hits)} positional commands; JSON vs labware definition worst {worst_json:.3f} mm)")
     print(f"Targets: PASS (MuJoCo tip end vs JSON position worst {worst_sim:.3f} mm; every nozzle over its well, tip ends inside the wells)")
     clearance, tightest, samples = check_clearance(plan, scene)
-    print(f"Clearance: PASS ({samples} samples; no labware, trash, wall or tool collisions; tightest enclosure gap {clearance * 1000:.1f} mm at {tightest})")
+    print(f"Clearance: PASS ({samples} samples; tightest enclosure gap {clearance * 1000:.1f} mm at {tightest})" if samples else "Clearance: NOT APPLICABLE (no gantry or labware movement)")
     liquid = check_liquid(plan)
     print("Liquid: PASS (no negative volumes)")
     for lw_name, wells in liquid.items():

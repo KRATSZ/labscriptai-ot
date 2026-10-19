@@ -37,6 +37,11 @@ class ProtocolRegressions(unittest.TestCase):
         model = load_model(write_model(self.deck, scene_spec(planned), folder))
         return planned, Scene(planned, model, mujoco.MjData(model))
 
+    def test_noop_does_not_check_an_unmeasured_parked_pose_as_a_motion_path(self):
+        run = self.analyze(ROOT / 'servers/opentrons-mcp/test/fixtures/harness/protocol_valid_flex.py')
+        planned, scene = self.scene(run, self.folder / 'noop')
+        self.assertEqual(check_clearance(planned, scene)[2], 0)
+
     def test_serial_templates_preserve_volume_and_twofold_concentration(self):
         sources = ['examples/01-flex-serial-dilution/protocol.py',
                    'examples/02-flex-gradient-dilution/protocol.py',
