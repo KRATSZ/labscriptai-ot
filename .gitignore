@@ -19,3 +19,6 @@ automation/flex3d/runs/
 # runtime artifacts live under PLUGIN_DATA (see lib/paths.js); never commit them
 runs/self-recovery/artifacts/
 servers/opentrons-mcp/test/fixtures/harness/*.analysis.json
+.DS_Store
+# legacy flex3d default output before .plugin-data/flex3d
+automation/flex3d/runs/

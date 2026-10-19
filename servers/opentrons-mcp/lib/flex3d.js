@@ -180,8 +180,8 @@ export async function startFlex3dViewer({
           ok: false,
           error: mujocoMissing ? "mujoco_missing" : "viewer_start_failed",
           message: mujocoMissing
-            ? "未安装 mujoco，三维查看器起不来。在插件 Python 环境里执行: pip install mujoco pillow"
-            : `web_player 启动失败: ${stderr.slice(-2000)}`,
+            ? "mujoco is not installed, so the 3D viewer cannot start. Run `uv sync` in the repo root (mujoco and pillow are pinned in pyproject.toml), or pip install mujoco pillow into the plugin Python env."
+            : `web_player failed to start: ${stderr.slice(-2000)}`,
           stderr: stderr.slice(-4000),
         });
         return;
@@ -190,7 +190,7 @@ export async function startFlex3dViewer({
         resolve({
           ok: false,
           error: "viewer_start_timeout",
-          message: `web_player 在 10s 内没有通过 /health 就绪: ${url}`,
+          message: `web_player did not pass /health within 10s: ${url}`,
           stderr: stderr.slice(-4000),
         });
         return;
@@ -201,7 +201,7 @@ export async function startFlex3dViewer({
         port,
         pid: child.pid,
         protocol: protocolPath ? path.resolve(String(protocolPath)) : null,
-        note: "浏览器打开 url 即可交互查看；停止进程: kill <pid>",
+        note: "Open the url in a browser to interact; stop the process with: kill <pid>",
       });
     });
   }));
