@@ -446,7 +446,7 @@ def check_clearance(plan: Plan, scene: Scene) -> tuple[float, str, int]:
                 well_of[g] = (key, lw.wells[rest], lw.is_tiprack)
             if n.startswith("body_"):
                 rack_body[g] = key
-        elif n.startswith("trash_"):
+        elif n.startswith(("trash_", "waste_chute_")):
             obstacle.append(g)
             obstacle_key.append("trash")
     obstacle = np.array(obstacle)

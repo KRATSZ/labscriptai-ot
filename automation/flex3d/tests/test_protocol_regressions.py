@@ -90,6 +90,14 @@ def run(p):
         plate = next(lw for lw in run.labware.values() if lw.slot == 'C3')
         for row in 'ABCDEFGH':
             self.assertAlmostEqual(sum(planned.keys[-1].state.wells[(plate.key, f'{row}1')].values()), 10)
+        # A chute wall moved into the gantry path must be an actual obstacle.
+        wall = mujoco.mj_name2id(scene.model, mujoco.mjtObj.mjOBJ_GEOM, 'waste_chute_wall_front')
+        carriage = mujoco.mj_name2id(scene.model, mujoco.mjtObj.mjOBJ_GEOM, 'carriage_block')
+        scene.at(0)
+        scene.model.geom_pos[wall] = scene.data.geom_xpos[carriage]
+        scene.model.geom_size[wall] = [.05, .05, .05]
+        with self.assertRaisesRegex(RuntimeError, 'waste_chute'):
+            check_clearance(planned, scene)
 
     def test_modules_and_stacked_adapter_keep_official_target_geometry(self):
         source = self.folder / 'modules.py'
