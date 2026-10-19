@@ -312,7 +312,7 @@ Deck vision observation (observation-only; does not mutate session state; compar
 
 ### `flex3d_open_viewer` [L4]
 
-Start the interactive Flex 3D viewer (MuJoCo + Three.js) on 127.0.0.1 and return the browser URL. Requires mujoco in the plugin Python env; degrades with a clear error when missing. Requires protocol_path (analyze JSON or protocol .py); the returned URL carries ?key=example. Online preview only: no video is rendered and no rendered image is exported — the only files written are the scene the page serves (flex.xml, view.json and flex_assets). Readiness is verified against this viewer process; a failed start is reported and timed-out processes are stopped.
+Start the interactive Flex 3D viewer (MuJoCo + Three.js) on 127.0.0.1 and return the browser URL. Requires mujoco in the plugin Python env; degrades with a clear error when missing. Requires protocol_path (analyze JSON or protocol .py); the returned URL carries ?key=example. Online preview only: writes scene assets and a startup log under PLUGIN_DATA, with no rendered images or videos. The viewer stays running after the client exits; pid and log_path allow stopping and diagnosis. Readiness is verified against this viewer process; a failed start is reported and timed-out processes are stopped.
 
 **Parameters:** `protocol_path`, `port` (optional), `python_executable` (optional)
 

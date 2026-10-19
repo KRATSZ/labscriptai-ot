@@ -15,11 +15,17 @@ class ReleasePackage(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.folder = Path(self.tmp.name)
 
-    def test_runtime_and_optional_pack_are_complete_and_repeatable(self):
+    def test_single_runtime_with_detailed_models_is_complete_and_repeatable(self):
+        out = self.folder / 'first'
+        out.mkdir()
+        for name in ['labscriptai-ot-0.1.0.zip', 'labscriptai-ot-flex3d-details-0.1.1.zip', 'unrelated.txt']:
+            (out / name).write_text('previous output')
         first = build(out=self.folder / 'first')
         second = build(out=self.folder / 'second')
         self.assertEqual(first, second)
-        self.assertEqual(len(first['assets']), 2)
+        self.assertEqual(len(first['assets']), 1)
+        self.assertEqual({p.name for p in out.glob('*.zip')}, {first['assets'][0]['name']})
+        self.assertTrue((out / 'unrelated.txt').exists())
         for asset in first['assets']:
             a, b = [self.folder / name / asset['name'] for name in ['first', 'second']]
             self.assertEqual(a.read_bytes(), b.read_bytes())
@@ -29,16 +35,13 @@ class ReleasePackage(unittest.TestCase):
                 self.assertTrue(all(allowed(p) for p in paths))
                 self.assertIn(Path('LICENSE'), paths)
                 self.assertIn(Path('CITATION.cff'), paths)
-                if 'details' in asset['name']:
-                    pack = json.loads(z.read('labscriptai-ot/' + str(DETAIL / 'manifest.json')))
-                    for module in pack['modules'].values():
-                        for part in module['parts']:
-                            self.assertIn(DETAIL / part['file'], paths)
-                else:
-                    self.assertTrue({Path(p) for p in FILES} <= paths)
-                    self.assertFalse(any(p.is_relative_to(DETAIL) for p in paths))
-                    self.assertFalse(any('ROADMAP' in str(p) or 'deepseek' in str(p) for p in paths))
-                    self.assertIn(Path('automation/flex3d/web/vendor/three.module.js'), paths)
+                pack = json.loads(z.read('labscriptai-ot/' + str(DETAIL / 'manifest.json')))
+                for module in pack['modules'].values():
+                    for part in module['parts']:
+                        self.assertIn(DETAIL / part['file'], paths)
+                self.assertTrue({Path(p) for p in FILES} <= paths)
+                self.assertFalse(any('ROADMAP' in str(p) or 'deepseek' in str(p) for p in paths))
+                self.assertIn(Path('automation/flex3d/web/vendor/three.module.js'), paths)
 
     def test_missing_runtime_file_fails_before_creating_archives(self):
         root = self.folder / 'broken'
@@ -53,6 +56,13 @@ class ReleasePackage(unittest.TestCase):
         with zipfile.ZipFile(self.folder / 'original' / original['assets'][0]['name']) as z:
             z.extractall(self.folder / 'extracted')
         root = self.folder / 'extracted' / 'labscriptai-ot'
+        mesh = next((root / DETAIL).rglob('*.obj'))
+        mesh_bytes = mesh.read_bytes()
+        mesh.unlink()
+        with self.assertRaisesRegex(ValueError, 'runtime file'):
+            build(root, self.folder / 'missing-model')
+        self.assertFalse((self.folder / 'missing-model').exists())
+        mesh.write_bytes(mesh_bytes)
         secret = self.folder / 'private.txt'
         secret.write_text('MUST_NOT_SHIP')
         for name in ['.env', '.env.production', 'secret.key', 'secret.pem', 'model.pt', 'model.blend']:

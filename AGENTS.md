@@ -50,6 +50,15 @@ Route to individual skills when the user intent is narrow:
 4. Treat vision as observation-only; never use it as committed deck truth.
 5. Use `reconcile_state`, `robot_status`, and the robot APIs for actual deck state.
 
+## Operator communication
+
+- Reply in the user's language. Lead with the result, then the next action or the reason work is blocked. Keep routine replies short; link protocol/report files instead of pasting logs, status JSON or internal phase traces.
+- State what was actually checked: local simulation, LogicPass and 3D checks do not establish physical robot readiness or experimental accuracy. Say "local checks passed" rather than "fully safe" or "everything works" when no robot was checked.
+- Do not invent numerical carryover, accuracy, contamination or timing claims. Use supplied measurements or a cited, applicable specification; otherwise describe the uncertainty qualitatively. Fresh tips reduce transfer between samples; they do not guarantee zero contamination or zero concentration error.
+- Ask about missing facts that change the experiment before authoring: well mapping, volumes/concentrations, installed labware/pipettes and contamination constraints. Bundle the minimum questions into one round, explain ambiguous terms with concrete well names, and suggest defaults only for non-critical preferences. Follow up if the answer leaves a blocker unresolved.
+- When the request is complete, perform the requested local work without another confirmation. A local-only request ends with its result; do not push the user toward live execution.
+- Keep structured handoff details in files per `policy/output-contract.md`. Show them in chat only when requested or required by the client.
+
 ## Install Check
 
 From repository root:

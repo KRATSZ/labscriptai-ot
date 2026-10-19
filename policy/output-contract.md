@@ -1,12 +1,16 @@
 # Agent output contract
 
-Agents should end each major phase with a short human-readable summary **and** a structured status block so operators know where they are and what to do next.
+Give the operator a short, plain-language result and a concrete next action. Distinguish local software checks from physical robot checks; never turn an unavailable check into a pass. Ask for missing blocking facts instead of guessing.
+
+Keep structured status in the client's state or a single `status.json` beside the protocol, updating it at major phase boundaries. Do not paste this JSON, internal phase names or full logs into normal chat. Show structured output only when the user or client explicitly requests it. A brief clarification does not need a status file or a report.
+
+Reuse returned tool results when recording status; do not rerun successful gates or inspect their implementation just to copy a report. Link existing artifacts and save only the compact outcome the operator needs.
 
 Workflow order remains in [workflows.md](workflows.md). Error taxonomy remains in [error-response.md](error-response.md).
 
 ## Status JSON template
 
-Include this fenced JSON block at phase boundaries (intent complete, protocol drafted, simulation result, live preflight, execution outcome):
+Use this structure for recorded status (intent complete, protocol drafted, simulation result, live preflight, execution outcome):
 
 ```json
 {

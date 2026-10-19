@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
+import { createServer } from "node:net";
 import path from "path";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
@@ -54,4 +55,32 @@ test("runFlex3dCheck wrapper returns degraded structured results", async () => {
     () => runFlex3dCheck({ sourcePath: "  " }),
     /requires `source`/,
   );
+});
+
+test("viewer remains usable after its launching client exits", async t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "flex3d-lifetime-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const reservation = createServer();
+  await new Promise(resolve => reservation.listen(0, "127.0.0.1", resolve));
+  const port = reservation.address().port;
+  await new Promise(resolve => reservation.close(resolve));
+  const source = path.join(dir, "empty.analysis.json");
+  fs.writeFileSync(source, JSON.stringify({ robotType: "OT-3 Standard", commands: [] }));
+  const moduleUrl = new URL("../lib/flex3d.js", import.meta.url).href;
+  const code = `import {startFlex3dViewer} from ${JSON.stringify(moduleUrl)};
+    console.log(JSON.stringify(await startFlex3dViewer(${JSON.stringify({ protocolPath: source, port, preferredPython: python })})));`;
+  const done = spawnSync(process.execPath, ["--input-type=module", "-e", code], {
+    env: { ...process.env, OPENTRONS_PLUGIN_ROOT: pluginRoot, PLUGIN_DATA: dir },
+    encoding: "utf8", timeout: 60000,
+  });
+  const info = JSON.parse(done.stdout.trim().split("\n").at(-1));
+  try {
+    assert.equal(done.status, 0, done.stderr);
+    assert.equal(info.ok, true, JSON.stringify(info));
+    const health = await fetch(`http://127.0.0.1:${port}/flex3d/health`).then(r => r.json());
+    assert.equal(health.pid, info.pid);
+    assert.equal((await fetch(info.url)).status, 200);
+  } finally {
+    if (info.pid) process.kill(info.pid);
+  }
 });

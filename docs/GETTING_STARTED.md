@@ -7,12 +7,12 @@ LabscriptAI OT is a single plugin bundle for **Claude Code**, **Codex**, and **C
 ## Decision flow
 
 ```
-Clone repo → Run installer → Verify setup → Enable plugin → Send first command → Simulation passes
+Download ZIP → Extract → Run installer → Verify setup → Enable plugin → Send first command → Simulation passes
 ```
 
 | Step | Action | Verify |
 |------|--------|--------|
-| 1 | Clone this repository | You have a local folder path |
+| 1 | Download the [latest release ZIP](https://github.com/KRATSZ/labscriptai-ot/releases/latest) and extract it | You have a `labscriptai-ot/` folder |
 | 2 | Run `install-labscriptai-ot.sh` (macOS/Linux) or `install-labscriptai-ot.ps1` (Windows) | Node dependencies and the local Python runtime install successfully |
 | 3 | Run `node scripts/verify-setup.mjs` | No failures; `health_check: runtime capabilities` reports `liquid-source-map-v2`, and `runtime_recovery_self_test` passes |
 | 4 | Enable the plugin in your client (see platform sections below) | MCP server `opentrons-lab` appears |
@@ -27,8 +27,9 @@ Terms: [GLOSSARY.md](GLOSSARY.md). Workflows: [policy/workflows.md](../policy/wo
 
 ### macOS / Linux
 
+After extracting the release ZIP:
+
 ```bash
-git clone https://github.com/KRATSZ/labscriptai-ot.git
 cd labscriptai-ot
 bash install-labscriptai-ot.sh
 node scripts/verify-setup.mjs
@@ -36,12 +37,15 @@ node scripts/verify-setup.mjs
 
 ### Windows (PowerShell)
 
+After extracting the release ZIP:
+
 ```powershell
-git clone https://github.com/KRATSZ/labscriptai-ot.git
 cd labscriptai-ot
 .\install-labscriptai-ot.ps1
 node scripts\verify-setup.mjs
 ```
+
+For source development, `git clone https://github.com/KRATSZ/labscriptai-ot.git` is an alternative to the ZIP. The remaining steps are the same.
 
 ### Local runtime
 
@@ -49,7 +53,7 @@ The installer sets up Node/MCP and a project-local Python environment with Opent
 
 No manual `OPENTRONS_PYTHON` setting is needed for the bundled `.venv` on macOS, Linux or Windows. Use it only to override the interpreter. Re-run `node scripts/verify-setup.mjs` after moving or updating the plugin.
 
-Release downloads contain one common runtime ZIP. Extract the optional `flex3d-details` ZIP beside the same `labscriptai-ot/` folder to add detailed module appearances. Training weights and external VLM services are optional; core simulation and 3D work without them.
+Release downloads contain one common runtime ZIP with detailed Flex module models already included and used automatically. No separate model installation is needed. Training weights and external VLM services are optional; simulation and 3D work without them.
 
 ### Environment variables
 
