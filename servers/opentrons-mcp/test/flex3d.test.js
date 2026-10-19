@@ -57,7 +57,7 @@ test("runFlex3dCheck wrapper returns degraded structured results", async () => {
   );
 });
 
-test("viewer remains usable after its launching client exits", async t => {
+test("viewer works without server OpenGL and survives its launching client", async t => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "flex3d-lifetime-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const reservation = createServer();
@@ -70,7 +70,7 @@ test("viewer remains usable after its launching client exits", async t => {
   const code = `import {startFlex3dViewer} from ${JSON.stringify(moduleUrl)};
     console.log(JSON.stringify(await startFlex3dViewer(${JSON.stringify({ protocolPath: source, port, preferredPython: python })})));`;
   const done = spawnSync(process.execPath, ["--input-type=module", "-e", code], {
-    env: { ...process.env, OPENTRONS_PLUGIN_ROOT: pluginRoot, PLUGIN_DATA: dir },
+    env: { ...process.env, OPENTRONS_PLUGIN_ROOT: pluginRoot, PLUGIN_DATA: dir, MUJOCO_GL: "disable" },
     encoding: "utf8", timeout: 60000,
   });
   const info = JSON.parse(done.stdout.trim().split("\n").at(-1));
@@ -80,6 +80,10 @@ test("viewer remains usable after its launching client exits", async t => {
     const health = await fetch(`http://127.0.0.1:${port}/flex3d/health`).then(r => r.json());
     assert.equal(health.pid, info.pid);
     assert.equal((await fetch(info.url)).status, 200);
+    const meta = await fetch(`http://127.0.0.1:${port}/flex3d/example/info`).then(r => r.json());
+    assert.ok(meta.camera.main.distance > 0);
+    const scene = await fetch(`http://127.0.0.1:${port}/flex3d/example/view.json`).then(r => r.json());
+    assert.ok(scene.geoms.length > 0);
   } finally {
     if (info.pid) process.kill(info.pid);
   }
