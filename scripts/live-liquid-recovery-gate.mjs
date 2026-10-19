@@ -348,7 +348,7 @@ function buildSourcePlanCheck(sourcePlan = null, invalidSourcePlan = null) {
   );
 }
 
-function buildNextAction({ failedCheckNames = [], warningCheckNames = [], manualGateNames = [] } = {}) {
+function selectNextAction({ failedCheckNames = [], warningCheckNames = [], manualGateNames = [] } = {}) {
   const failed = new Set(failedCheckNames);
   const warned = new Set(warningCheckNames);
   const manual = new Set(manualGateNames);
@@ -388,7 +388,7 @@ function buildNextAction({ failedCheckNames = [], warningCheckNames = [], manual
   if (failed.has("source_map_requirements")) {
     return {
       recommended_next_action: "record_or_correct_liquid_source_map",
-      allowed_next_tools: ["record_liquid_source_map", "get_liquid_source_map", "live_liquid_recovery_gate"],
+      allowed_next_tools: ["record_liquid_source_map", "liquid_source_map", "live_liquid_recovery_gate"],
       human_required: true,
       reason: "required_liquid_sources_missing_or_mismatched",
     };
@@ -396,7 +396,7 @@ function buildNextAction({ failedCheckNames = [], warningCheckNames = [], manual
   if (failed.has("no_attached_tip_before_liquid_probe_rerun")) {
     return {
       recommended_next_action: "clear_attached_tip_before_liquid_rerun",
-      allowed_next_tools: ["robot_status", "live_liquid_recovery_gate", "experiment_history"],
+      allowed_next_tools: ["robot_status", "live_liquid_recovery_gate", "query_history"],
       human_required: true,
       reason: "attached_tip_blocks_liquid_probe_rerun",
     };
@@ -404,7 +404,7 @@ function buildNextAction({ failedCheckNames = [], warningCheckNames = [], manual
   if (warned.has("source_identity_metadata")) {
     return {
       recommended_next_action: "confirm_liquid_source_identity_before_semantic_recovery",
-      allowed_next_tools: ["record_liquid_source_map", "get_liquid_source_map", "live_liquid_recovery_gate"],
+      allowed_next_tools: ["record_liquid_source_map", "liquid_source_map", "live_liquid_recovery_gate"],
       human_required: true,
       reason: "liquid_source_identity_metadata_incomplete",
     };
@@ -435,13 +435,25 @@ function buildNextAction({ failedCheckNames = [], warningCheckNames = [], manual
   }
   return {
     recommended_next_action: "run_live_liquid_recovery_tests",
-    allowed_next_tools: ["runtime_watch_poll", "probe_wells", "run_protocol", "experiment_history"],
+    allowed_next_tools: ["runtime_watch", "probe_wells", "run_protocol", "query_history"],
     human_required: false,
     reason: "live_liquid_recovery_gate_passed",
   };
 }
 
-function buildResolutionPlan({
+function toolCalls(tools = []) {
+  return tools.map(tool => ({ tool, args: ({
+    liquid_source_map: { action: "get" }, query_history: { scope: "experiment_logs" },
+    runtime_watch: { mode: "poll" }, robot_status: { include_modules: true },
+  })[tool] || {} }));
+}
+
+export function buildNextAction(args) {
+  const action = selectNextAction(args);
+  return { ...action, allowed_next_tool_calls: toolCalls(action.allowed_next_tools) };
+}
+
+export function buildResolutionPlan({
   failedCheckNames = [],
   warningCheckNames = [],
   manualGateNames = [],
@@ -458,6 +470,7 @@ function buildResolutionPlan({
       order: plan.length + 1,
       no_robot_motion: true,
       ...item,
+      allowed_next_tool_calls: toolCalls(item.allowed_next_tools),
     });
   };
 
@@ -512,7 +525,7 @@ function buildResolutionPlan({
       severity: "blocker",
       action: "record_or_correct_liquid_source_map",
       human_required: true,
-      allowed_next_tools: ["record_liquid_source_map", "get_liquid_source_map", "live_liquid_recovery_gate"],
+      allowed_next_tools: ["record_liquid_source_map", "liquid_source_map", "live_liquid_recovery_gate"],
       acceptance_criteria: [
         "All required source-map entries exist.",
         "Each required entry expected_presence matches the gate requirement.",
@@ -544,7 +557,7 @@ function buildResolutionPlan({
       severity: "blocker",
       action: "clear_attached_tip_before_liquid_rerun",
       human_required: true,
-      allowed_next_tools: ["robot_status", "live_liquid_recovery_gate", "experiment_history"],
+      allowed_next_tools: ["robot_status", "live_liquid_recovery_gate", "query_history"],
       acceptance_criteria: ["robot_status reports no pipette with tip_detected=true."],
       caution: "Do not auto-home or run liquid tests while a tip remains attached after Stall/Collision.",
     });
@@ -556,7 +569,7 @@ function buildResolutionPlan({
       severity: "warning",
       action: "confirm_liquid_source_identity_before_semantic_recovery",
       human_required: true,
-      allowed_next_tools: ["record_liquid_source_map", "get_liquid_source_map", "live_liquid_recovery_gate"],
+      allowed_next_tools: ["record_liquid_source_map", "liquid_source_map", "live_liquid_recovery_gate"],
       acceptance_criteria: [
         "C3.A1 and D3.A1-H1 expected-present sources have specific liquid_name.",
         "C3.A1 and D3.A1-H1 expected-present sources have sample_id.",
@@ -607,7 +620,7 @@ function buildResolutionPlan({
       action: "run_live_liquid_recovery_tests",
       human_required: false,
       no_robot_motion: false,
-      allowed_next_tools: ["runtime_watch_poll", "probe_wells", "run_protocol", "experiment_history"],
+      allowed_next_tools: ["runtime_watch", "probe_wells", "run_protocol", "query_history"],
       acceptance_criteria: [
         "D3 A12 empty-source watcher stops before aspirate and returns needs_user.",
         "C3.A1 and D3.A1-H1 positive liquid probes detect liquid as expected.",
@@ -630,6 +643,7 @@ function buildOperatorRequest(resolutionPlan = []) {
       prompt: `Please resolve ${step.action}.`,
       prompt_zh: `请处理：${step.action}。`,
       allowed_next_tools: step.allowed_next_tools || [],
+      allowed_next_tool_calls: step.allowed_next_tool_calls || [],
       acceptance_criteria: step.acceptance_criteria || [],
     };
     if (step.check_name === "no_attached_tip_before_liquid_probe_rerun") {
@@ -1033,6 +1047,7 @@ async function main() {
       manual_gates: gate.manual_gates,
       recommended_next_action: gate.recommended_next_action,
       allowed_next_tools: gate.allowed_next_tools,
+      allowed_next_tool_calls: gate.allowed_next_tool_calls,
       human_required: gate.human_required,
       resolution_plan: gate.resolution_plan,
       operator_request: gate.operator_request,
@@ -1088,6 +1103,7 @@ async function main() {
     manual_gates: gate.manual_gates,
     recommended_next_action: gate.recommended_next_action,
     allowed_next_tools: gate.allowed_next_tools,
+      allowed_next_tool_calls: gate.allowed_next_tool_calls,
     human_required: gate.human_required,
     resolution_plan: gate.resolution_plan,
     operator_request: gate.operator_request,
@@ -1099,7 +1115,7 @@ async function main() {
   process.exit(gate.status === "pass" ? 0 : 2);
 }
 
-main().catch(error => {
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main().catch(error => {
   console.error(error);
   process.exit(1);
 });

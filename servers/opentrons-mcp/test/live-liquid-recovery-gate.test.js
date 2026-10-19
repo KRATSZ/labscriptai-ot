@@ -748,3 +748,27 @@ test("live_liquid_recovery_gate allows targeted no-aspirate re-probe for observe
     }
   }
 });
+
+
+test("standalone gate and resolution plans only recommend public MCP calls", async () => {
+  const { buildNextAction, buildResolutionPlan } = await import("../../../scripts/live-liquid-recovery-gate.mjs");
+  const defs = new Map(TOOL_DEFINITIONS.map(tool => [tool.name, tool]));
+  for (const failedCheckNames of [[], ["source_map_requirements"],
+    ["no_attached_tip_before_liquid_probe_rerun"], ["robot_readonly_connectivity"]]) {
+    const args = { failedCheckNames, warningCheckNames: [], manualGateNames: [] };
+    const next = buildNextAction(args);
+    const plan = buildResolutionPlan(args);
+    for (const item of [next, ...plan]) {
+      assert.deepEqual(item.allowed_next_tool_calls.map(call => call.tool), item.allowed_next_tools);
+      for (const { tool, args: params } of item.allowed_next_tool_calls) {
+        assert.ok(defs.has(tool), `Unknown public tool: ${tool}`);
+        for (const key of ["action", "scope", "mode"]) {
+          const field = defs.get(tool).inputSchema.properties[key];
+          if (field?.enum && defs.get(tool).inputSchema.required?.includes(key)) {
+            assert.ok(field.enum.includes(params[key]), `${tool} needs ${key}`);
+          }
+        }
+      }
+    }
+  }
+});
