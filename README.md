@@ -36,6 +36,7 @@ MuJoCo-based 3D preflight and an interactive browser viewer for **Flex protocols
 - MCP tool `flex3d_open_viewer` — starts the interactive viewer and returns `http://127.0.0.1:8791/viewer.html` (two orbit views, step list, drag to rotate/zoom).
 - CLI: `python automation/flex3d/scripts/render_protocol_3d.py <analysis.json|protocol.py> [--video] [--out DIR]` prints one JSON object.
 - `node scripts/verify-setup.mjs` reports mujoco availability as a warning, never a failure.
+- Drawn and checked: Heater-Shaker, Temperature Module GEN2, Magnetic Block, Thermocycler GEN2 (lid open/closed), Absorbance Plate Reader, and schema-2 labware stacked on adapters or modules (positions follow the Opentrons engine's stacking offsets). Not drawn: Flex Stacker, off-deck and waste-chute locations.
 
 ## Citation
 
