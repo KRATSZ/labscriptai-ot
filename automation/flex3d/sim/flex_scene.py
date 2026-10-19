@@ -25,6 +25,7 @@ from pathlib import Path
 import numpy as np
 
 from sim import flex_shell
+from sim.flex_module_assets import module_xml
 
 # Package root is automation/flex3d (sim/ is one level down). Deck JSON ships
 # with the plugin; generated meshes and frames go under FLEX3D_EXPORT.
@@ -760,7 +761,15 @@ def build_xml(deck: Deck, spec: SceneSpec, assets: Path = ASSETS) -> str:
 
     labware = [labware_xml(deck, item, spec, book, ranges) for item in spec.placed]
     trash = [g for bin_ in spec.trash for g in _trash_geoms(deck, bin_)]
-    modules = [g for mod in spec.modules for g in _module_geoms(deck, mod)]
+    modules = []
+    for mod in spec.modules:
+        detail = module_xml(deck, mod, book, robot_m)
+        proxies = _module_geoms(deck, mod)
+        # Detailed visuals and coarse collision proxies have separate roles.
+        modules.extend(g.replace('<geom ', '<geom group="5" ') if detail else g for g in proxies
+                       if not (detail and f'name="{mod.key}_lid"' in g))
+        if detail:
+            modules.append(detail)
 
     def rng(name: str) -> str:
         lo, hi = ranges[name]
