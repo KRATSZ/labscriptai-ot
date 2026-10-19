@@ -20,9 +20,15 @@ Checks, all against the analysis JSON, before anything is rendered:
   trash bin, the enclosure or another tool;
 * liquid: volumes never go negative and the final plate is reported.
 
-Outputs go to ``exports/mujoco/protocols/<name>/``: ``flex.xml``, an MP4, key
-stills, a contact sheet and ``<name>_trace.json`` (per command: position from
-the JSON, position in MuJoCo, error, wells under each nozzle, video time).
+Outputs go to ``runs/protocols/<name>/`` (or ``FLEX3D_EXPORT`` when set): the
+``flex.xml`` model and its scene assets, which are needed to build the scene at
+all, plus ``<name>_trace.json`` (per command: position from the JSON, position in
+MuJoCo, error, wells under each nozzle, video time).
+
+Rendering is opt-in and off by default, so a plain run leaves no images behind:
+``--stills`` writes the key stills and the contact sheet, ``--video`` writes an
+MP4, and ``--frame T`` writes single frames at specific times. Use ``--view`` to
+open the interactive MuJoCo window instead of rendering anything.
 """
 
 from __future__ import annotations
@@ -1016,7 +1022,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Animate a Flex protocol from its opentrons analysis")
     parser.add_argument("protocol", type=Path, help="protocol .py (analyzed first) or .analysis.json")
     parser.add_argument("--view", action="store_true", help="open the MuJoCo window instead of rendering")
-    parser.add_argument("--no-video", action="store_true", help="checks and stills only")
+    parser.add_argument("--stills", action="store_true", help="also write the still PNGs and the contact sheet (off by default)")
+    parser.add_argument("--video", action="store_true", help="also write an MP4 (slow; off by default)")
     parser.add_argument("--fps", type=int, default=30)
     parser.add_argument("--frame", type=float, action="append", help="render only the frame at this time (s); repeatable")
     args = parser.parse_args()
@@ -1065,16 +1072,27 @@ def main() -> None:
         view(plan, scene)
         return
 
-    renderer = Renderer(plan, scene)
+    # Rendering is opt-in: without --frame/--stills/--video nothing is drawn, so a
+    # plain run cannot leave PNG or MP4 files behind. The MuJoCo renderers are only
+    # built when something actually needs them.
+    renderer = None
+    if args.frame or args.stills or args.video:
+        renderer = Renderer(plan, scene)
+
     if args.frame:
         for t in args.frame:
             path = folder / f"{name}_t{t:06.2f}.png"
             renderer.frame(t, smooth_focus=False).save(path)
             print(f"Frame: {path}")
         return
-    stills = render_stills(plan, renderer, folder, name)
-    for path in stills:
-        print(f"Still: {path}")
+
+    if args.stills:
+        stills = render_stills(plan, renderer, folder, name)
+        for path in stills:
+            print(f"Still: {path}")
+    else:
+        print("Stills: skipped (pass --stills to also write PNGs)")
+
     extra = {
         "checks": {
             "json_vs_definition_worst_mm": round(worst_json, 4),
@@ -1084,7 +1102,7 @@ def main() -> None:
         },
         "duration_s": round(plan.duration, 2),
     }
-    if not args.no_video:
+    if args.video:
         video = folder / f"{name}.mp4"
         started = time.monotonic()
         frames = render_video(plan, renderer, video, args.fps)

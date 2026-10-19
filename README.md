@@ -32,9 +32,10 @@ MuJoCo-based 3D preflight and an interactive browser viewer for **Flex protocols
 .venv/bin/pip install mujoco pillow
 ```
 
-- MCP tool `flex3d_preflight_check` — runs geometry / liquid / targets / clearance checks on an analyze JSON or protocol `.py`; failing checks carry `command_index` aligned with LogicPass `step_index`. Degrades gracefully when mujoco is missing.
-- MCP tool `flex3d_open_viewer` — starts the interactive viewer and returns `http://127.0.0.1:8791/viewer.html` (two orbit views, step list, drag to rotate/zoom).
-- CLI: `python automation/flex3d/scripts/render_protocol_3d.py <analysis.json|protocol.py> [--video] [--out DIR]` prints one JSON object.
+- MCP tool `flex3d_preflight_check` — runs geometry / liquid / targets / clearance checks on an analyze JSON or protocol `.py`; failing checks carry `command_index` aligned with LogicPass `step_index`. Degrades gracefully when mujoco is missing. Checks only — never renders or exports a video or image file; its only artifact is `<out_dir>/<stem>_checks.json`.
+- MCP tool `flex3d_open_viewer` — starts the interactive viewer and returns the browser URL (with the `?key=` the page needs). This is the 3D preview path: **online only**, no video rendering and no file export beyond the scene assets it serves. A bare `/viewer.html` is redirected to the loaded model.
+- CLI: `python automation/flex3d/scripts/render_protocol_3d.py <analysis.json|protocol.py> [--out DIR]` prints one JSON object (checks only, no video).
+- CLI: `python -m sim.play_protocol <analysis.json|protocol.py>` prints the checks and writes a trace. Rendering is opt-in and off by default: `--stills` adds still PNGs plus a contact sheet, `--video` adds an MP4, `--frame T` renders single frames, `--view` opens the MuJoCo window.
 - `node scripts/verify-setup.mjs` reports mujoco availability as a warning, never a failure.
 - Drawn and checked: Heater-Shaker, Temperature Module GEN2, Magnetic Block, Thermocycler GEN2 (lid open/closed), Absorbance Plate Reader, and schema-2 labware stacked on adapters or modules (positions follow the Opentrons engine's stacking offsets). Not drawn: Flex Stacker, off-deck and waste-chute locations.
 

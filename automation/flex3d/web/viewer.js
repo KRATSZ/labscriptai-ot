@@ -10,7 +10,7 @@ const UI = {
     time: "时间",
     empty: "还没有命令。",
     fail: "打不开",
-    noKey: "地址里没有 key。",
+    noKey: "地址里没有 key，服务上也没有已加载的协议。",
     linked: (n, c, type) => `步骤 ${n} → 命令 ${c} ${type}`,
     matched: "与分析 JSON 对得上",
     mismatched: "commandId 对不上",
@@ -37,7 +37,7 @@ const UI = {
     time: "Time",
     empty: "No command yet.",
     fail: "Could not open",
-    noKey: "The address has no key.",
+    noKey: "The address has no key and the server has no loaded protocol.",
     linked: (n, c, type) => `Step ${n} → command ${c} ${type}`,
     matched: "Matches the analysis JSON",
     mismatched: "commandId does not match",
@@ -59,7 +59,9 @@ const UI = {
 };
 
 const params = new URLSearchParams(location.search);
-const key = params.get("key");
+// Reassignable: when the address arrives without ?key= the page adopts the
+// model the server has loaded (see adoptRegisteredKey) instead of failing.
+let key = params.get("key");
 const stepsEl = document.getElementById("steps");
 const commandEl = document.getElementById("command");
 const timeEl = document.getElementById("time");
@@ -419,8 +421,27 @@ function mount(payload) {
   window.__flex = { camera, controls, scene, renderer };
 }
 
+async function adoptRegisteredKey() {
+  // The address is easy to hand over without ?key=. Ask which model is loaded
+  // and adopt it, so a bare /viewer.html (or an old bookmark) still works.
+  try {
+    const res = await fetch("/flex3d/health");
+    if (!res.ok) return false;
+    const health = await res.json();
+    const models = Array.isArray(health.models) ? health.models : [];
+    if (!models.length) return false;
+    key = models[models.length - 1];
+    const url = new URL(location.href);
+    url.searchParams.set("key", key);
+    history.replaceState(null, "", url);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function boot() {
-  if (!key) {
+  if (!key && !(await adoptRegisteredKey())) {
     broken = "nokey";
     renderChrome();
     return;
