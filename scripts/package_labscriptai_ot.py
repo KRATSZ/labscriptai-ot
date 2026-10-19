@@ -15,11 +15,11 @@ FILES = '''AGENTS.md LICENSE CITATION.cff README.md pyproject.toml uv.lock serve
 scripts/install-runtime.mjs scripts/verify-setup.mjs scripts/lint-manifests.mjs
 servers/opentrons-mcp/index.js servers/opentrons-mcp/package.json servers/opentrons-mcp/package-lock.json
 servers/opentrons-mcp/scripts/local_simulation.py servers/opentrons-mcp/scripts/logicpass_check.py
-servers/opentrons-mcp/scripts/vision_check.py automation/deck_layout_policy.json
+servers/opentrons-mcp/scripts/vision_check.py automation/deck_layout_policy.json automation/verify_pe_tip_pickup.py
 automation/flex3d/viewer.html automation/flex3d/scripts/render_protocol_3d.py
 docs/GETTING_STARTED.md docs/GLOSSARY.md docs/MCP_TOOLS.md docs/custom-labware-guide.md docs/deck-vision.md'''.split()
 DIRS = '''.claude-plugin .codex-plugin .cursor-plugin .cursor skills policy rules bundled-library
-servers/opentrons-mcp/lib automation/vendor automation/flex3d/sim automation/flex3d/web
+servers/opentrons-mcp/lib automation/vendor automation/labware automation/flex3d/sim automation/flex3d/web
 automation/flex3d/cad docs/runbooks examples'''.split()
 EXCLUDE = {'.git', '.venv', 'node_modules', '.agent-runs', '.plugin-data', '__pycache__', 'test', 'tests', 'fixtures'}
 SUFFIXES = {'.pyc', '.pyo', '.pt', '.blend', '.blend1', '.glb', '.stl', '.mp4', '.mov', '.pem', '.key'}
