@@ -6,19 +6,9 @@ import { DATA_DIR } from "./paths.js";
 import { appendAlert } from "./runtime-watch/alert-store.js";
 
 const OUTBOX_DIR_ENV = "OPENTRONS_RUNTIME_OUTBOX_DIR";
-const HOST_ADAPTER_DIR_ENV = "OPENTRONS_RUNTIME_HOST_ADAPTER_DIR";
 const WEBHOOK_URL_ENV = "OPENTRONS_RUNTIME_ALERT_WEBHOOK_URL";
 const DEFAULT_SESSION_ID = "default";
-const DEFAULT_ADAPTERS = [
-  "claudecode",
-  "claude",
-  "codex",
-  "cursor",
-  "piagent",
-  "opencode",
-  "cli",
-  "webhook",
-];
+const DEFAULT_ADAPTERS = ["cli", "webhook"];
 
 function sanitizePart(value, fallback = "default") {
   return String(value || fallback).replace(/[^a-zA-Z0-9._-]/g, "_");
@@ -26,14 +16,6 @@ function sanitizePart(value, fallback = "default") {
 
 function resolveOutboxRoot(outboxDir = null) {
   return path.resolve(outboxDir || process.env[OUTBOX_DIR_ENV] || path.join(DATA_DIR, "runtime-outbox"));
-}
-
-function resolveHostAdapterRoot(hostAdapterDir = null) {
-  return path.resolve(
-    hostAdapterDir ||
-      process.env[HOST_ADAPTER_DIR_ENV] ||
-      path.join(DATA_DIR, "host-adapters"),
-  );
 }
 
 function sessionDir(sessionId = DEFAULT_SESSION_ID, { outboxDir = null } = {}) {
@@ -46,14 +28,6 @@ function outboxPath(sessionId = DEFAULT_SESSION_ID, options = {}) {
 
 function monitorStatePath(sessionId = DEFAULT_SESSION_ID, options = {}) {
   return path.join(sessionDir(sessionId, options), "monitor-state.json");
-}
-
-function adapterOutboxPath(adapter, sessionId = DEFAULT_SESSION_ID, { hostAdapterDir = null } = {}) {
-  return path.join(
-    resolveHostAdapterRoot(hostAdapterDir),
-    sanitizePart(adapter, "adapter"),
-    `${sanitizePart(sessionId, DEFAULT_SESSION_ID)}.jsonl`,
-  );
 }
 
 function parseJsonlLine(line) {
@@ -116,7 +90,6 @@ function normalizeAdapterList(adapters = []) {
   const requested = Array.isArray(adapters) ? adapters : [];
   const normalized = requested
     .map(item => String(item || "").trim().toLowerCase())
-    .map(item => (item === "claude" ? "claudecode" : item))
     .filter(item => DEFAULT_ADAPTERS.includes(item));
   return [...new Set(normalized)];
 }
@@ -159,14 +132,9 @@ function normalizeOutboxEvent(event = {}) {
     event.dedupe_key ||
     `${sessionId}:${runId || "session"}:${type}:${shortHash(stableJson(event.data || {}))}`;
   const kind = event.kind ?? event.data?.kind ?? null;
-  const wake =
-    event.wake === true ? true : event.wake === false ? false : null;
   const data = { ...(event.data || {}) };
   if (kind != null && data.kind == null) {
     data.kind = kind;
-  }
-  if (wake != null && data.wake == null) {
-    data.wake = wake;
   }
   return {
     outbox_id: event.outbox_id || randomUUID(),
@@ -193,7 +161,6 @@ function normalizeOutboxEvent(event = {}) {
     deliveries: event.deliveries || {},
     delivery_status: event.delivery_status || "pending",
     kind,
-    wake,
     data,
   };
 }
@@ -539,39 +506,6 @@ async function deliverToAdapter(event, adapter, options = {}) {
     };
   }
 
-  if (["claudecode", "codex", "cursor", "piagent", "opencode"].includes(adapter)) {
-    const filePath = adapterOutboxPath(adapter, event.session_id, options);
-    fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    const payload = {
-      delivered_at: new Date().toISOString(),
-      adapter,
-      event,
-    };
-    const line = `${JSON.stringify(payload)}\n`;
-    const existing = fs.existsSync(filePath) ? fs.readFileSync(filePath, "utf8") : "";
-    const tempPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
-    fs.writeFileSync(tempPath, existing + line);
-    fs.renameSync(tempPath, filePath);
-    const lastLine = fs.readFileSync(filePath, "utf8").trim().split("\n").pop();
-    let verified = null;
-    try {
-      verified = JSON.parse(lastLine);
-    } catch {
-      verified = null;
-    }
-    if (verified?.event?.outbox_id !== event.outbox_id) {
-      return {
-        status: "failed",
-        target: filePath,
-        error: "adapter mailbox write verification failed",
-      };
-    }
-    return {
-      status: "delivered",
-      target: filePath,
-    };
-  }
-
   if (adapter === "webhook") {
     const webhookUrl = options.webhookUrl || process.env[WEBHOOK_URL_ENV] || null;
     if (!webhookUrl) {
@@ -618,7 +552,6 @@ export async function deliverRuntimeOutbox({
   limit = 20,
   includeDelivered = false,
   outboxDir = null,
-  hostAdapterDir = null,
   webhookUrl = null,
 } = {}) {
   const adapterList = normalizeAdapterList(adapters);
@@ -656,7 +589,6 @@ export async function deliverRuntimeOutbox({
       const attempt = {
         attempted_at: new Date().toISOString(),
         ...(await deliverToAdapter(nextEvent, adapter, {
-          hostAdapterDir,
           webhookUrl,
         })),
       };
@@ -694,11 +626,9 @@ export async function deliverRuntimeOutbox({
 export function runtimeOutboxPaths({
   sessionId = DEFAULT_SESSION_ID,
   outboxDir = null,
-  hostAdapterDir = null,
 } = {}) {
   return {
     outbox_path: outboxPath(sessionId, { outboxDir }),
     monitor_state_path: monitorStatePath(sessionId, { outboxDir }),
-    host_adapter_root: resolveHostAdapterRoot(hostAdapterDir),
   };
 }

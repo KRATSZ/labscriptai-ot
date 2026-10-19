@@ -21,17 +21,6 @@ const DEFAULT_OUT_DIR = path.join(
 );
 const DEFAULT_SESSION_ID = "self-recovery-liquid";
 const DEFAULT_OUTBOX_DIR = path.join(DEFAULT_OUT_DIR, "runtime-outbox");
-const CONFIGURABLE_NOTIFY_ADAPTERS = [
-  "claudecode",
-  "claude",
-  "codex",
-  "cursor",
-  "piagent",
-  "opencode",
-  "cli",
-  "webhook",
-];
-
 function parseCsv(value) {
   return String(value || "")
     .split(",")
@@ -65,7 +54,6 @@ function parseArgs(argv) {
     notify_adapters_explicit: false,
     notify_limit: 20,
     outbox_dir: null,
-    host_adapter_dir: null,
     webhook_url: null,
   };
 
@@ -133,9 +121,6 @@ function parseArgs(argv) {
       index += 1;
     } else if (item === "--outbox-dir") {
       args.outbox_dir = argv[index + 1];
-      index += 1;
-    } else if (item === "--host-adapter-dir") {
-      args.host_adapter_dir = argv[index + 1];
       index += 1;
     } else if (item === "--webhook-url") {
       args.webhook_url = argv[index + 1];
@@ -229,14 +214,6 @@ function renderMarkdown(payload = {}) {
   return lines.join("\n");
 }
 
-function resolveHostAdapterRoot(args) {
-  return path.resolve(
-    args.host_adapter_dir ||
-      process.env.OPENTRONS_RUNTIME_HOST_ADAPTER_DIR ||
-      path.join(PLUGIN_ROOT, ".plugin-data", "host-adapters"),
-  );
-}
-
 function resolveDefaultOutboxDir(args) {
   return path.resolve(
     args.outbox_dir ||
@@ -251,17 +228,6 @@ function resolveConfiguredNotifyAdapters(args) {
   }
 
   const adapters = new Set(["cli"]);
-  const hostAdapterRoot = resolveHostAdapterRoot(args);
-  for (const adapter of ["claudecode", "claude", "codex", "cursor", "piagent", "opencode"]) {
-    const normalized = adapter === "claude" ? "claudecode" : adapter;
-    if (!CONFIGURABLE_NOTIFY_ADAPTERS.includes(normalized)) {
-      continue;
-    }
-    const adapterDir = path.join(hostAdapterRoot, normalized);
-    if (fs.existsSync(adapterDir)) {
-      adapters.add(normalized);
-    }
-  }
   if (args.webhook_url || process.env.OPENTRONS_RUNTIME_ALERT_WEBHOOK_URL) {
     adapters.add("webhook");
   }
@@ -290,7 +256,6 @@ function buildMonitorRequest(args) {
     outbox_dir: outboxDir,
     ...(notifyAdapters.length > 0 ? { notify_adapters: notifyAdapters } : {}),
     notify_limit: Number.isFinite(args.notify_limit) ? args.notify_limit : 20,
-    ...(args.host_adapter_dir ? { host_adapter_dir: args.host_adapter_dir } : {}),
     ...(args.webhook_url ? { webhook_url: args.webhook_url } : {}),
   };
 }

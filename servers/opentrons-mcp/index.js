@@ -1564,14 +1564,14 @@ const TOOL_DEFINITIONS = [
   {
     name: "runtime_watch",
     description:
-      "Bounded runtime watch for a live protocol run. mode=poll runs one bounded poll (run status plus narrow L0 self-fix branches only; returns running/completed/needs_user/hard_stop/unreachable). mode=loop reuses those polls on a budgeted schedule (max_turns / max_runtime_ms / interval_ms), emits one outbox sentinel per tick for host-adapter wake (claudecode/cursor/codex/cli/webhook), and persists a goal-state.json per run (resume=true continues an active goal; goal status COMPLETE/BLOCKED/BUDGET_LIMITED). Safety model is shared: only L0 whitelist fixes auto-execute; needs_user/hard_stop stop the loop and emit a BLOCKED sentinel. Default self_fix_mode=observe (no robot motion).",
+      "Bounded runtime watch for a live protocol run. mode=poll runs one bounded poll (run status plus narrow L0 self-fix branches only; returns running/completed/needs_user/hard_stop/unreachable). mode=loop reuses those polls on a budgeted schedule (max_turns / max_runtime_ms / interval_ms), records outbox events, and persists a goal-state.json per run (resume=true continues an active goal; goal status COMPLETE/BLOCKED/BUDGET_LIMITED). Safety model is shared: only L0 whitelist fixes auto-execute; needs_user/hard_stop stop the loop and record a BLOCKED event. Default self_fix_mode=observe (no robot motion).",
     inputSchema: {
       type: "object",
       properties: {
         mode: {
           type: "string",
           enum: ["poll", "loop"],
-          description: "poll = single bounded poll; loop = budgeted auto-wake watch loop.",
+          description: "poll = single bounded poll; loop = budgeted watch loop.",
         },
         robot_ip: { type: "string", description: "Robot IP or full base URL" },
         run_id: { type: "string" },
@@ -1604,19 +1604,12 @@ const TOOL_DEFINITIONS = [
           type: "array",
           items: {
             type: "string",
-            enum: ["claudecode", "claude", "codex", "cursor", "piagent", "opencode", "cli", "webhook"],
+            enum: ["cli", "webhook"],
           },
-          description: "loop only: adapters to deliver pending outbox sentinels to after the loop ends.",
+          description: "loop only: optional CLI or webhook delivery for pending outbox events after the loop ends.",
         },
         notify_limit: { type: "integer", default: 20 },
-        host_adapter_dir: { type: "string" },
         webhook_url: { type: "string" },
-        zero_llm_when_no_error: {
-          type: "boolean",
-          default: false,
-          description:
-            "loop only: when true, suppress LLM guidance on ticks with no actionable error. Defaults from OPENTRONS_ZERO_LLM_WHEN_NO_ERROR when omitted.",
-        },
       },
       required: ["mode", "run_id"],
     },
@@ -1624,7 +1617,7 @@ const TOOL_DEFINITIONS = [
   {
     name: "runtime_alerts",
     description:
-      "Runtime watch and monitor alerts. action=list reads alerts plus latest watch state (intended for hook/insurance paths and current-dialog notification checks; requires run_id or session_id); action=ack marks one alert handled after the operator has supplied the requested decision (requires run_id and alert_id).",
+      "Runtime watch and monitor alerts. action=list reads alerts plus latest watch state; action=ack marks one alert handled after the operator has supplied the requested decision (requires run_id and alert_id).",
     inputSchema: {
       type: "object",
       properties: {
@@ -1644,14 +1637,14 @@ const TOOL_DEFINITIONS = [
   {
     name: "runtime_outbox",
     description:
-      "Runtime notification outbox for host adapters. action=list reads pending events created from watcher/monitor alerts; action=ack marks one event handled after the operator or adapter acted on it (requires outbox_id); action=deliver pushes pending events to configured host adapters (claudecode, codex, cursor, piagent, opencode, cli, webhook).",
+      "Durable runtime event log for watcher/monitor alerts. action=list reads events; action=ack marks one event handled (requires outbox_id); action=deliver optionally sends pending events to stdout or a configured webhook.",
     inputSchema: {
       type: "object",
       properties: {
         action: {
           type: "string",
           enum: ["list", "ack", "deliver"],
-          description: "list = read pending events; ack = mark one handled; deliver = push to host adapters.",
+          description: "list = read events; ack = mark one handled; deliver = send to CLI or webhook.",
         },
         session_id: { type: "string" },
         run_id: { type: "string" },
@@ -1663,14 +1656,13 @@ const TOOL_DEFINITIONS = [
           description: "deliver only.",
           items: {
             type: "string",
-            enum: ["claudecode", "codex", "cursor", "piagent", "opencode", "cli", "webhook"],
+            enum: ["cli", "webhook"],
           },
         },
         limit: { type: "integer", default: 20 },
         include_acked: { type: "boolean", default: false },
         include_delivered: { type: "boolean", description: "Default true for list, false for deliver." },
         outbox_dir: { type: "string" },
-        host_adapter_dir: { type: "string" },
         webhook_url: { type: "string", description: "deliver only." },
       },
       required: ["action"],
@@ -1839,14 +1831,13 @@ const TOOL_DEFINITIONS = [
           type: "array",
           items: {
             type: "string",
-            enum: ["claudecode", "codex", "cursor", "piagent", "opencode", "cli", "webhook"],
+            enum: ["cli", "webhook"],
           },
           description:
-            "Optional host adapters to deliver newly pending outbox events after the monitor tick.",
+            "Optional CLI or webhook delivery for newly pending outbox events after the monitor tick.",
         },
         notify_limit: { type: "integer", default: 20 },
         outbox_dir: { type: "string" },
-        host_adapter_dir: { type: "string" },
         webhook_url: { type: "string" },
       },
     },
@@ -7727,13 +7718,8 @@ const TOOL_HANDLERS = {
   },
 
   async runtime_watch_loop(args) {
-    const zeroLlmWhenNoError =
-      args.zero_llm_when_no_error === true || process.env.OPENTRONS_ZERO_LLM_WHEN_NO_ERROR === "1";
     const result = await runtimeWatchLoop(
-      {
-        ...args,
-        zero_llm_when_no_error: zeroLlmWhenNoError,
-      },
+      args,
       {
       readSnapshot: async stepArgs =>
         collectRunExecutionSnapshot({
@@ -7822,7 +7808,6 @@ const TOOL_HANDLERS = {
         paths: runtimeOutboxPaths({
           sessionId,
           outboxDir: args.outbox_dir || null,
-          hostAdapterDir: args.host_adapter_dir || null,
         }),
         events: readRuntimeOutbox({
           sessionId,
@@ -7866,7 +7851,6 @@ const TOOL_HANDLERS = {
       limit: args.limit ?? 20,
       includeDelivered: args.include_delivered === true,
       outboxDir: args.outbox_dir || null,
-      hostAdapterDir: args.host_adapter_dir || null,
       webhookUrl: args.webhook_url || null,
     });
     return {
@@ -7875,7 +7859,6 @@ const TOOL_HANDLERS = {
         paths: runtimeOutboxPaths({
           sessionId,
           outboxDir: args.outbox_dir || null,
-          hostAdapterDir: args.host_adapter_dir || null,
         }),
       },
       runId: args.run_id || null,
@@ -8037,7 +8020,6 @@ const TOOL_HANDLERS = {
           adapters: args.notify_adapters,
           limit: args.notify_limit ?? 20,
           outboxDir: args.outbox_dir || null,
-          hostAdapterDir: args.host_adapter_dir || null,
           webhookUrl: args.webhook_url || null,
         });
       }

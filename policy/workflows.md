@@ -21,7 +21,7 @@ user intent / SOP
   →  return status: passed (subgates) | auto_fixable | needs_operator_physical_action | blocked
        | needs_confirmation (final go-live only — HumanConfirmBudget)
   →  run_protocol (robot_ip, file_path, session_id) only after that single confirmation — quiet execution, no vision during run
-  →  runtime_watch(mode=loop) (run_id) for unattended auto-wake until COMPLETE/BLOCKED
+  →  runtime_watch(mode=loop) (run_id) until COMPLETE/BLOCKED
 ```
 
 ## HumanConfirmBudget (go-live)
@@ -207,7 +207,7 @@ export-runtime-recovery-readiness.mjs
 
 The real-machine status exporter is deck-adjacent safety evidence from robot HTTP, not a permission to move. The readiness bundle is an artifact convenience layer over the latest live-liquid gate result and `safe_next_action`; it is not deck truth.
 
-## Goal-driven auto-wake loop
+## Goal-driven watch loop
 
 For unattended live runs ("keep going until done" / auto-recover), arm the loop instead of repeating manual polls:
 
@@ -215,15 +215,14 @@ For unattended live runs ("keep going until done" / auto-recover), arm the loop 
 run_protocol → (run_id)
   → runtime_watch(mode=loop) (run_id, session_id, goal_prompt,
                         max_turns, max_runtime_ms, interval_ms,
-                        self_fix_mode=observe,
-                        notify_adapters=[cursor|claudecode|codex|cli|webhook])
-  → each tick: runtime_watch(mode=poll) + append outbox sentinel + update goal-state.json
+                        self_fix_mode=observe)
+  → each tick: runtime_watch(mode=poll) + record outbox event + update goal-state.json
   → goal_status: COMPLETE | BLOCKED | BUDGET_LIMITED
   → on BLOCKED (needs_user/hard_stop): runtime_alerts(action=list) → operator decision → runtime_alerts(action=ack) → resume=true
   → on COMPLETE: query_history(scope=experiment_logs) to confirm
 ```
 
-`runtime_watch(mode=loop)` reuses `runtime_watch(mode=poll)` and inherits its safety model: only the L0 whitelist auto-executes; `needs_user`/`hard_stop` stop the loop. `COMPLETE` requires a `completed` tick or the verify callback. Default `self_fix_mode=observe` (no robot motion); guarded L0 self-fix requires both `allow_l4_execution=true` and `operator_opt_in=true`. The loop does not bypass `live_liquid_recovery_gate`, simulation gates, or liquid identity checks. State persists in `goal-state.json` so the goal survives IDE restart / operator rotation; resume with `resume=true` + `goal_id`.
+`runtime_watch(mode=loop)` reuses `runtime_watch(mode=poll)` and inherits its safety model: only the L0 whitelist auto-executes; `needs_user`/`hard_stop` stop the loop. `COMPLETE` requires a `completed` tick or the verify callback. Default `self_fix_mode=observe` (no robot motion); guarded L0 self-fix requires both `allow_l4_execution=true` and `operator_opt_in=true`. The loop does not bypass `live_liquid_recovery_gate`, simulation gates, or liquid identity checks. State persists in `goal-state.json`; resume with `resume=true` + `goal_id`. Outbox events can be reviewed with `runtime_outbox(action=list)` and acknowledged after handling.
 
 ## Check robot status (quick)
 

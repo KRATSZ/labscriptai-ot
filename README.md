@@ -18,7 +18,7 @@ Then enable the plugin in your client. **Start here:** [docs/GETTING_STARTED.md]
 
 ## What's included
 
-- MCP server (`servers/opentrons-mcp/`), seven agent skills, safety policy, curated protocol library
+- MCP server (`servers/opentrons-mcp/`), Opentrons agent skills, safety policy, curated protocol library
 - `automation/` — custom labware (e.g. third-party tip racks) and on-robot verification helpers; see [docs/custom-labware-guide.md](docs/custom-labware-guide.md)
 - `automation/flex3d/` — optional Flex 3D protocol preview (MuJoCo physics checks + Three.js viewer); see [Flex 3D preview](#flex-3d-preview-optional)
 - Live robot actions are **opt-in**; simulation **and LogicPass** gate unattended live use — see [docs/GETTING_STARTED.md#logicpass-gate](docs/GETTING_STARTED.md#logicpass-gate). Simulation runs on `opentrons>=9,<10` (pinned in `pyproject.toml`, install with `uv sync`)

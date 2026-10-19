@@ -22,7 +22,7 @@ Commercial use, paid hosted services, sublicensing, or removing the citation req
 ## What This Plugin Contains
 
 - `servers/opentrons-mcp/` — local MCP server for Opentrons simulation, robot status, preflight, recovery, optional vision, and live run control.
-- `skills/opentrons-*` — seven skills for experiment intent review, protocol authoring, protocol library search, verification, robot LAN fallback, and simulation repair.
+- `skills/opentrons-*` — focused skills for intent review, protocol authoring, library search, verification, robot LAN fallback, and simulation repair; the main run skill also covers monitoring and resume.
 - `policy/` and `rules/` — safety and workflow rules.
 - `bundled-library/` — small curated protocol library. Use `OPENTRONS_PROTOCOL_LIBRARY_PATH` for the full external catalog.
 

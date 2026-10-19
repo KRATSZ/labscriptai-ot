@@ -21,7 +21,7 @@
   "interface": {
     "displayName": "LabscriptAI OT",
     "shortDescription": "Opentrons simulation-first authoring and safe MCP runtime",
-    "longDescription": "LabscriptAI OT bundles seven Opentrons skills, a local MCP server, safety policy, and a small curated protocol library. Live robot actions stay opt-in and simulation remains the gate before unattended execution.",
+    "longDescription": "LabscriptAI OT bundles Opentrons skills, a local MCP server, safety policy, and a small curated protocol library. Live robot actions stay opt-in and simulation remains the gate before unattended execution.",
     "developerName": "gaoyuan",
     "category": "Coding",
     "capabilities": ["Read", "Write", "Interactive"],

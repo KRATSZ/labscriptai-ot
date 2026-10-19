@@ -167,7 +167,13 @@ Keep the simulation gate, hard-stops, and vision **observation-only**. Never tre
 - **Quiet execution contract:** while the run is active, do **not** call
   `capture_image(mode=preview)`, `deck_vision_check(mode=local)`, `analyze_image(provider=ark)`, `deck_vision_check`,
   or `probe_wells` unless Phase 5 recovery routing explicitly requires it.
-- **For unattended / "keep going until done" runs**, arm `runtime_watch(mode=loop)` instead of repeated manual polls (see `opentrons-experiment-goal`). It reuses `runtime_watch(mode=poll)` on a budgeted schedule, persists `goal-state.json`, and emits outbox sentinels so the host IDE can auto-wake. Default `self_test_mode=observe`; guarded L0 self-fix requires `allow_l4_execution=true` + `operator_opt_in=true`.
+- **For "keep going until done" runs**, arm `runtime_watch(mode=loop)` instead of repeated manual polls. Use it only when the operator asks for continued monitoring; one-shot checks use `runtime_watch(mode=poll)`. The loop has a finite turn/time budget, persists its goal state, and records events for MCP review. Default `self_fix_mode=observe`; guarded L0 self-fix requires `self_fix_mode="l0"`, `allow_l4_execution=true`, and `operator_opt_in=true`.
+
+#### Continuous monitoring and resume
+
+- `runtime_watch(mode=loop)` is the source of truth for a continued run. Stop and report `needs_user`, `hard_stop`, or `unreachable`; never auto-retry a hard stop.
+- Claim completion only after the loop reports complete and `query_history(scope=experiment_logs)` confirms success.
+- If the budget expires while the run is still active, report that and resume by `goal_id` with an explicit budget. After a human resolves a blocker, acknowledge the alert and reconcile state before resuming.
 - Before this phase, give the operator a short ready-state summary rather than a
   long internal trace.
 - Include the resolved `dry_run_on` value in that summary. If `True`, require

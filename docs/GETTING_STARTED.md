@@ -462,7 +462,7 @@ Call `list_recovery_playbooks` and confirm the intended recovery class is regist
 
 Before simulation or live recovery, call `validate_virtual_lab_state_steps` for the proposed bookkeeping changes. It is pure software: it checks tip state, source volume, dead volume, destination capacity, and unsupported steps without writing session state or moving the robot. Treat any violation as a stop sign before uploading or playing a live run. The same checks run inline as a pre-simulation gate when you pass `virtual_lab_steps` to `simulate_protocol` (Phase 1.5 gate); the simulation is blocked with `blocked_by: "virtual_lab_state_validation"` instead of spawning Python.
 
-For unattended live runs, arm `runtime_watch(mode=loop)` after `run_protocol` returns a `run_id`. It reuses `runtime_watch(mode=poll)` on a budgeted schedule, persists `goal-state.json` per run, and emits outbox sentinels so the host IDE can auto-wake. Default `self_fix_mode=observe`; guarded L0 self-fix requires `allow_l4_execution=true` and `operator_opt_in=true`.
+For monitored live runs, use `runtime_watch(mode=loop)` after `run_protocol` returns a `run_id`. It reuses `runtime_watch(mode=poll)` on a budgeted schedule, persists `goal-state.json` per run, and records events for MCP review. Default `self_fix_mode=observe`; guarded L0 self-fix requires `allow_l4_execution=true` and `operator_opt_in=true`.
 
 Default mode is observe-only:
 
@@ -475,7 +475,7 @@ node scripts/runtime-recovery-monitor.mjs \
   --markdown-out runs/self-recovery/artifacts/runtime-recovery-monitor-latest.md
 ```
 
-To keep watching for multiple ticks, add `--cycles` and `--interval-ms`. A typical low-noise monitor wakes only on meaningful status changes or required attention:
+To monitor multiple ticks, add `--cycles` and `--interval-ms`. A typical low-noise monitor reports meaningful status changes and required attention:
 
 ```bash
 node scripts/runtime-recovery-monitor.mjs \
@@ -502,23 +502,9 @@ node scripts/runtime-recovery-monitor.mjs \
 
 This still does not authorize liquid source changes, aspirate/dispense retries, deck relocation, or arbitrary resume. Liquid recovery remains gated by `live_liquid_recovery_gate` and operator opt-in. The monitor writes a `runtime_recovery_monitor` result-log entry with `notifications`, `recommended_next_tools`, `acceptance`, and `no_robot_motion`, so the agent can use `query_history(scope=experiment_logs)` to resume after restart.
 
-The monitor also publishes requires-attention and resolved-state notifications into a durable alert/outbox layer. `runtime_alerts(action=list)` reads watcher alerts plus monitor-derived alerts; `runtime_outbox(action=list)` reads host-delivery events; `runtime_alerts(action=ack)` and `runtime_outbox(action=ack)` mark handled items. This is the plugin-owned event trigger path. A Codex heartbeat can still consume it, but the message does not depend on heartbeat storage.
+The monitor also publishes requires-attention and resolved-state notifications into a durable alert/outbox layer. `runtime_alerts(action=list)` reads watcher and monitor alerts; `runtime_outbox(action=list)` reads the persisted event history; the corresponding `ack` actions mark handled items. You can optionally send pending events to the command line or a webhook with `runtime_outbox(action=deliver)`.
 
-Host delivery is adapter based:
-
-| Adapter | Behavior |
-|---|---|
-| `claudecode` | append JSONL events to a Claude Code mailbox under the host-adapter directory |
-| `codex` | append JSONL events to a Codex mailbox under the host-adapter directory |
-| `cursor` | append JSONL events to a Cursor mailbox under the host-adapter directory |
-| `piagent` | append JSONL events to a Pi Coding Agent mailbox (experimental; see [outbox-wake-pi-opencode.md](./outbox-wake-pi-opencode.md)) |
-| `opencode` | append JSONL events to an OpenCode mailbox (experimental; see [outbox-wake-pi-opencode.md](./outbox-wake-pi-opencode.md)) |
-| `cli` | return a short printable notification message in the delivery result |
-| `webhook` | POST the outbox event to `--webhook-url` or `OPENTRONS_RUNTIME_ALERT_WEBHOOK_URL` |
-
-MCP cannot force every host UI to open a new chat message by itself; each host must either expose a notification API or run a small hook/adapter that consumes the outbox. The plugin side is still self-contained: it owns event generation, dedupe, ack, and durable delivery state.
-
-Example low-noise monitor with host delivery:
+Example low-noise monitor:
 
 ```bash
 node scripts/runtime-recovery-monitor.mjs \
@@ -527,7 +513,6 @@ node scripts/runtime-recovery-monitor.mjs \
   --levels L1,L3,L4 \
   --source-plan c3_d3_liquid_recovery \
   --enable-liquid-gate \
-  --notify-adapters claudecode,codex,cursor,cli \
   --out runs/self-recovery/artifacts/runtime-recovery-monitor-latest.json \
   --markdown-out runs/self-recovery/artifacts/runtime-recovery-monitor-latest.md
 ```
@@ -551,68 +536,6 @@ node scripts/export-runtime-recovery-readiness.mjs \
 ```
 
 This is also read-only. The JSON/Markdown bundle reports `live_liquid_tests_allowed`, `next_tool`, `no_robot_motion`, the latest gate result-log id, whether a local `node ...opentrons-mcp/index.js` server process is running, the latest real-machine blockers, the latest liquid source-substitution validation bundle, the fixed recovery playbook bundle, and any wells still missing liquid identity. The process check intentionally ignores `node -e` / `--input-type=module` commands that merely import `opentrons-mcp/index.js` during tests or local scripts. Treat `live_liquid_tests_allowed=false` or `no_robot_motion=true` as a stop signal for live liquid watcher/probe tests. If `mcp_process.running=false`, reload the MCP client before trying MCP tools again; this usually corresponds to a `Transport closed` client error. If `real_machine.blockers` includes `attached_tip:left`, clear or confirm that physical state before any liquid motion. A source-substitution validation or recovery bundle may report `auto_resume_eligible=true` when a fixed playbook can automatically choose a same-liquid replacement after validation, but readiness still fails closed if the bundle claims `live_execution_allowed=true` or `live_protocol_run_allowed=true` before the live gate and operator opt-in. The result log uses `tool_name=runtime_recovery_readiness_cli` and `event_kind=readiness_bundle`.
-
----
-
-## Unattended wake (five-host self-watch)
-
-Arm once, then let **Cursor**, **Claude Code**, **Codex**, **Pi**, or **OpenCode** auto-continue when the runtime monitor posts a `wake:true` sentinel — no manual “continue” clicks between goal turns.
-
-### 5-minute enable
-
-1. **Install** (creates host-adapter mailboxes for all five hosts and optional Codex hooks):
-
-```bash
-cd /path/to/labscriptai-ot
-bash install-labscriptai-ot.sh
-export OPENTRONS_PLUGIN_ROOT="$PWD"
-export PLUGIN_DATA="$PWD/.plugin-data"
-export OPENTRONS_SESSION_ID="self-recovery-liquid"   # match your experiment session
-```
-
-2. **Arm background monitor** (delivers to all five adapters by default):
-
-```bash
-bash scripts/arm-runtime-watch.sh
-# prints PID, outbox path, adapter JSONL paths
-# override adapters: OPENTRONS_NOTIFY_ADAPTERS=cursor,claudecode,codex bash scripts/arm-runtime-watch.sh
-```
-
-3. **Wire each host** (one-time per machine):
-
-| Host | Steps |
-|------|-------|
-| **Claude Code CLI** | `/plugin install` this repo → hooks load from `hooks/claude/hooks.json` + Monitor on `opentrons-experiment-goal` → set `OPENTRONS_SESSION_ID` in shell |
-| **Cursor** | Enable plugin hooks (`hooks/cursor/hooks.json`) or symlink to project `.cursor/hooks.json`; set `OPENTRONS_SESSION_ID` |
-| **Codex** | Install merges `~/.codex/hooks.json` if missing → run `codex` → `/hooks` → trust |
-| **Pi** *(experimental)* | Merge `hooks/piagent/settings.fragment.json` into `.pi/settings.json` — see [outbox-wake-pi-opencode.md](outbox-wake-pi-opencode.md) |
-| **OpenCode** *(experimental)* | Merge `hooks/opencode/opencode.fragment.jsonc` into `opencode.jsonc` — see [outbox-wake-pi-opencode.md](outbox-wake-pi-opencode.md) |
-
-4. **Start the agent** — after a run is live, say:
-
-> 用 opentrons-experiment-goal 盯 session **self-recovery-liquid** 到 **BLOCKED** 或 **COMPLETE**
-
-The agent arms `runtime_watch(mode=loop)` (or the Claude Monitor ticks `runtime-recovery-monitor.mjs`). On each meaningful event, host **Stop** hooks call `scripts/consume-runtime-outbox.mjs`, which injects a continuation containing `GOAL_STATUS` / `GOAL_REASON` lines per the skill contract.
-
-### Smoke test (no robot)
-
-```bash
-mkdir -p .plugin-data/host-adapters/cursor
-cat >> .plugin-data/host-adapters/cursor/self-recovery-liquid.jsonl <<'EOF'
-{"delivered_at":"2026-07-01T12:00:00Z","adapter":"cursor","event":{"outbox_id":"test-wake-1","session_id":"self-recovery-liquid","kind":"needs_user","wake":true,"message":"test","created_at":"2026-07-01T12:00:00Z"}}
-EOF
-
-OPENTRONS_SESSION_ID=self-recovery-liquid \
-  node scripts/consume-runtime-outbox.mjs --host cursor --hook stop --no-ack --source adapter
-# expect stdout JSON with followup_message containing GOAL_STATUS
-```
-
-### Safety notes
-
-- Consume hooks **only inject continuation prompts** — they do not bypass simulation gate or execute robot motion.
-- `hard_stop` → agent must print `GOAL_STATUS: BLOCKED` and stop; no auto-retry.
-- Liquid recovery still requires `live_liquid_recovery_gate` + operator opt-in.
-- Cursor conversation UUID ≠ `OPENTRONS_SESSION_ID`; always set the experiment session via env or `--session-id`.
 
 ---
 

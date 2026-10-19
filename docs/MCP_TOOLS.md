@@ -140,7 +140,7 @@ Fetch the live hardware snapshot needed before physical actions: health, instrum
 
 ### `runtime_alerts` [L2]
 
-Runtime watch and monitor alerts. action=list reads alerts plus latest watch state (intended for hook/insurance paths and current-dialog notification checks; requires run_id or session_id); action=ack marks one alert handled after the operator has supplied the requested decision (requires run_id and alert_id).
+Runtime watch and monitor alerts. action=list reads alerts plus latest watch state; action=ack marks one alert handled after the operator has supplied the requested decision (requires run_id and alert_id).
 
 **Parameters:** `action`, `run_id` (optional), `session_id` (optional), `alert_id` (optional), `note` (optional), `selection` (optional), `limit` (optional), `include_acked` (optional), `watch_dir` (optional)
 
@@ -148,7 +148,7 @@ Runtime watch and monitor alerts. action=list reads alerts plus latest watch sta
 
 Active L1-L4 runtime recovery monitor tick. L1 checks runtime/robot/module health, L2 watches a run, L3 coordinates recovery gates and safe-next guidance, and L4 only delegates whitelisted L0 self-fixes when explicitly enabled.
 
-**Parameters:** `robot_ip` (optional), `session_id` (optional), `run_id` (optional), `levels` (optional), `self_fix_mode` (optional), `allow_l4_execution` (optional), `operator_opt_in` (optional), `source_plan` (optional), `required_sources` (optional), `enable_liquid_gate` (optional), `allow_observed_mismatch_reprobe` (optional), `max_block_ms` (optional), `poll_interval_ms` (optional), `timeout_ms` (optional), `page_length` (optional), `tiprack_slots` (optional), `tip_binding_mode` (optional), `protocol_source` (optional), `file_path` (optional), `protocol_path` (optional), `watch_dir` (optional), `record_result_log` (optional), `publish_notifications` (optional), `include_info_notifications` (optional), `notify_adapters` (optional), `notify_limit` (optional), `outbox_dir` (optional), `host_adapter_dir` (optional), `webhook_url` (optional)
+**Parameters:** `robot_ip` (optional), `session_id` (optional), `run_id` (optional), `levels` (optional), `self_fix_mode` (optional), `allow_l4_execution` (optional), `operator_opt_in` (optional), `source_plan` (optional), `required_sources` (optional), `enable_liquid_gate` (optional), `allow_observed_mismatch_reprobe` (optional), `max_block_ms` (optional), `poll_interval_ms` (optional), `timeout_ms` (optional), `page_length` (optional), `tiprack_slots` (optional), `tip_binding_mode` (optional), `protocol_source` (optional), `file_path` (optional), `protocol_path` (optional), `watch_dir` (optional), `record_result_log` (optional), `publish_notifications` (optional), `include_info_notifications` (optional), `notify_adapters` (optional), `notify_limit` (optional), `outbox_dir` (optional), `webhook_url` (optional)
 
 ### `safe_next_action` [L2]
 
@@ -262,15 +262,15 @@ Upload a protocol, create a run (auto-attaching stored labware offsets), optiona
 
 ### `runtime_outbox` [L3]
 
-Runtime notification outbox for host adapters. action=list reads pending events created from watcher/monitor alerts; action=ack marks one event handled after the operator or adapter acted on it (requires outbox_id); action=deliver pushes pending events to configured host adapters (claudecode, codex, cursor, piagent, opencode, cli, webhook).
+Durable runtime event log for watcher/monitor alerts. action=list reads events; action=ack marks one event handled (requires outbox_id); action=deliver optionally sends pending events to stdout or a configured webhook.
 
-**Parameters:** `action`, `session_id` (optional), `run_id` (optional), `outbox_id` (optional), `note` (optional), `selection` (optional), `adapters` (optional), `limit` (optional), `include_acked` (optional), `include_delivered` (optional), `outbox_dir` (optional), `host_adapter_dir` (optional), `webhook_url` (optional)
+**Parameters:** `action`, `session_id` (optional), `run_id` (optional), `outbox_id` (optional), `note` (optional), `selection` (optional), `adapters` (optional), `limit` (optional), `include_acked` (optional), `include_delivered` (optional), `outbox_dir` (optional), `webhook_url` (optional)
 
 ### `runtime_watch` [L3]
 
-Bounded runtime watch for a live protocol run. mode=poll runs one bounded poll (run status plus narrow L0 self-fix branches only; returns running/completed/needs_user/hard_stop/unreachable). mode=loop reuses those polls on a budgeted schedule (max_turns / max_runtime_ms / interval_ms), emits one outbox sentinel per tick for host-adapter wake (claudecode/cursor/codex/cli/webhook), and persists a goal-state.json per run (resume=true continues an active goal; goal status COMPLETE/BLOCKED/BUDGET_LIMITED). Safety model is shared: only L0 whitelist fixes auto-execute; needs_user/hard_stop stop the loop and emit a BLOCKED sentinel. Default self_fix_mode=observe (no robot motion).
+Bounded runtime watch for a live protocol run. mode=poll runs one bounded poll (run status plus narrow L0 self-fix branches only; returns running/completed/needs_user/hard_stop/unreachable). mode=loop reuses those polls on a budgeted schedule (max_turns / max_runtime_ms / interval_ms), records outbox events, and persists a goal-state.json per run (resume=true continues an active goal; goal status COMPLETE/BLOCKED/BUDGET_LIMITED). Safety model is shared: only L0 whitelist fixes auto-execute; needs_user/hard_stop stop the loop and record a BLOCKED event. Default self_fix_mode=observe (no robot motion).
 
-**Parameters:** `mode`, `robot_ip` (optional), `run_id`, `session_id` (optional), `goal_id` (optional), `goal_prompt` (optional), `max_turns` (optional), `max_runtime_ms` (optional), `interval_ms` (optional), `max_block_ms` (optional), `poll_interval_ms` (optional), `timeout_ms` (optional), `page_length` (optional), `tiprack_slots` (optional), `tip_binding_mode` (optional), `protocol_source` (optional), `file_path` (optional), `protocol_path` (optional), `module_wait_timeout_ms` (optional), `module_poll_interval_ms` (optional), `max_attempts_per_failed_command` (optional), `unreachable_threshold` (optional), `resume` (optional), `self_fix_mode` (optional), `allow_l4_execution` (optional), `operator_opt_in` (optional), `watch_dir` (optional), `outbox_dir` (optional), `notify_adapters` (optional), `notify_limit` (optional), `host_adapter_dir` (optional), `webhook_url` (optional), `zero_llm_when_no_error` (optional)
+**Parameters:** `mode`, `robot_ip` (optional), `run_id`, `session_id` (optional), `goal_id` (optional), `goal_prompt` (optional), `max_turns` (optional), `max_runtime_ms` (optional), `interval_ms` (optional), `max_block_ms` (optional), `poll_interval_ms` (optional), `timeout_ms` (optional), `page_length` (optional), `tiprack_slots` (optional), `tip_binding_mode` (optional), `protocol_source` (optional), `file_path` (optional), `protocol_path` (optional), `module_wait_timeout_ms` (optional), `module_poll_interval_ms` (optional), `max_attempts_per_failed_command` (optional), `unreachable_threshold` (optional), `resume` (optional), `self_fix_mode` (optional), `allow_l4_execution` (optional), `operator_opt_in` (optional), `watch_dir` (optional), `outbox_dir` (optional), `notify_adapters` (optional), `notify_limit` (optional), `webhook_url` (optional)
 
 ### `upload_protocol` [L3]
 

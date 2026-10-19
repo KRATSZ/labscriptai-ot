@@ -43,7 +43,6 @@ test("runtime-recovery-monitor CLI writes artifact, markdown, and result log", (
   const resultLogDir = fs.mkdtempSync(path.join(os.tmpdir(), "runtime-monitor-cli-log-"));
   const artifactDir = fs.mkdtempSync(path.join(os.tmpdir(), "runtime-monitor-cli-artifacts-"));
   const outboxDir = fs.mkdtempSync(path.join(os.tmpdir(), "runtime-monitor-cli-outbox-"));
-  const hostAdapterDir = fs.mkdtempSync(path.join(os.tmpdir(), "runtime-monitor-cli-host-"));
   const sessionId = "runtime-monitor-cli-test";
   const outPath = path.join(artifactDir, "monitor.json");
   const markdownPath = path.join(artifactDir, "monitor.md");
@@ -63,10 +62,8 @@ test("runtime-recovery-monitor CLI writes artifact, markdown, and result log", (
     markdownPath,
     "--outbox-dir",
     outboxDir,
-    "--host-adapter-dir",
-    hostAdapterDir,
     "--notify-adapters",
-    "claudecode,codex,cursor,cli",
+    "cli",
   ], env);
 
   assert.equal(result.status, 0, result.stderr || result.stdout);
@@ -83,14 +80,11 @@ test("runtime-recovery-monitor CLI writes artifact, markdown, and result log", (
   assert.equal(artifact.latest.notifications[0].requires_attention, true);
   assert.equal(artifact.latest.alert_publication.outbox_events.length, 1);
   assert.equal(artifact.latest.outbox_delivery.status, "delivered");
-  assert.equal(artifact.latest.outbox_delivery.delivered.length, 4);
+  assert.equal(artifact.latest.outbox_delivery.delivered.length, 1);
   const markdown = fs.readFileSync(markdownPath, "utf8");
   assert.match(markdown, /# Runtime Recovery Monitor/);
   assert.match(markdown, /受控执行被策略或当前状态阻止/);
   assert.match(markdown, /## 主动提醒/);
-  assert.ok(fs.existsSync(path.join(hostAdapterDir, "claudecode", `${sessionId}.jsonl`)));
-  assert.ok(fs.existsSync(path.join(hostAdapterDir, "codex", `${sessionId}.jsonl`)));
-  assert.ok(fs.existsSync(path.join(hostAdapterDir, "cursor", `${sessionId}.jsonl`)));
 
   runNodeSnippet(`
     import { TOOL_HANDLERS } from "./servers/opentrons-mcp/index.js";

@@ -3,6 +3,7 @@ node_modules/
 .venv/
 __pycache__/
 *.py[cod]
+.DS_Store
 automation/.env
 vision/runs/
 vision/data/deck_phase3/images/
@@ -11,6 +12,9 @@ yolo11n.pt
 yoloe-26s-seg.pt
 mobileclip2_b.ts
 automation/photo/
+
+# Local Flex3D exports (models, rendered views, and run snapshots)
+automation/flex3d/runs/
 
 # runtime artifacts live under PLUGIN_DATA (see lib/paths.js); never commit them
 runs/self-recovery/artifacts/
