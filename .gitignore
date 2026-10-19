@@ -1,8 +1,11 @@
 node_modules/
+dist/
+.agent-runs/
 .plugin-data/
 .venv/
 __pycache__/
 *.py[cod]
+.DS_Store
 automation/.env
 vision/runs/
 vision/data/deck_phase3/images/
@@ -12,6 +15,12 @@ yoloe-26s-seg.pt
 mobileclip2_b.ts
 automation/photo/
 
+# Local Flex3D exports (models, rendered views, and run snapshots)
+automation/flex3d/runs/
+
 # runtime artifacts live under PLUGIN_DATA (see lib/paths.js); never commit them
 runs/self-recovery/artifacts/
 servers/opentrons-mcp/test/fixtures/harness/*.analysis.json
+.DS_Store
+# legacy flex3d default output before .plugin-data/flex3d
+automation/flex3d/runs/

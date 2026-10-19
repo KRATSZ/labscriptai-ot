@@ -88,9 +88,7 @@ function baseDependencies(overrides = {}) {
 
 test("runtime outbox tools are registered", () => {
   const names = new Set(TOOL_DEFINITIONS.map(tool => tool.name));
-  assert.equal(names.has("runtime_get_outbox"), true);
-  assert.equal(names.has("runtime_ack_outbox"), true);
-  assert.equal(names.has("runtime_deliver_outbox"), true);
+  assert.equal(names.has("runtime_outbox"), true);
   assert.equal(typeof TOOL_HANDLERS.runtime_get_outbox, "function");
   assert.equal(typeof TOOL_HANDLERS.runtime_ack_outbox, "function");
   assert.equal(typeof TOOL_HANDLERS.runtime_deliver_outbox, "function");
@@ -169,10 +167,9 @@ test("monitor publication emits resolved event when robot API becomes reachable"
   assert.equal(events.find(event => event.type === "robot_api_reachable").no_robot_motion, true);
 });
 
-test("runtime outbox delivers to host adapter files and can be acked", async () => {
+test("runtime outbox delivers to CLI and can be acked", async () => {
   const root = tempRoot();
   const outboxDir = path.join(root, "outbox");
-  const hostAdapterDir = path.join(root, "host-adapters");
   const monitor = await runRuntimeRecoveryMonitor(
     {
       robot_ip: "10.0.0.2",
@@ -186,9 +183,8 @@ test("runtime outbox delivers to host adapter files and can be acked", async () 
 
   const delivery = await deliverRuntimeOutbox({
     sessionId: "delivery-session",
-    adapters: ["claudecode", "codex", "cursor", "cli"],
+    adapters: ["cli"],
     outboxDir,
-    hostAdapterDir,
   });
   const deliveredEvent = readRuntimeOutbox({
     sessionId: "delivery-session",
@@ -196,10 +192,7 @@ test("runtime outbox delivers to host adapter files and can be acked", async () 
   })[0];
 
   assert.equal(delivery.status, "delivered");
-  assert.equal(delivery.delivered.length, 4);
-  assert.ok(fs.existsSync(path.join(hostAdapterDir, "claudecode", "delivery-session.jsonl")));
-  assert.ok(fs.existsSync(path.join(hostAdapterDir, "codex", "delivery-session.jsonl")));
-  assert.ok(fs.existsSync(path.join(hostAdapterDir, "cursor", "delivery-session.jsonl")));
+  assert.equal(delivery.delivered.length, 1);
   assert.equal(deliveredEvent.delivery_status, "delivered");
   assert.match(deliveredEvent.deliveries.cli.message, /no_robot_motion=true/);
 
@@ -221,93 +214,24 @@ test("runtime outbox delivers to host adapter files and can be acked", async () 
   );
 });
 
-test("runtime outbox delivers to piagent and opencode host adapter files", async () => {
-  const root = tempRoot();
-  const outboxDir = path.join(root, "outbox");
-  const hostAdapterDir = path.join(root, "host-adapters");
-  const monitor = await runRuntimeRecoveryMonitor(
-    {
-      robot_ip: "10.0.0.2",
-      session_id: "pi-opencode-session",
-      run_id: "run-1",
-      levels: ["L2"],
-    },
-    baseDependencies(),
-  );
-  publishMonitorNotifications({ monitor, outboxDir });
-
-  const delivery = await deliverRuntimeOutbox({
-    sessionId: "pi-opencode-session",
-    adapters: ["piagent", "opencode"],
-    outboxDir,
-    hostAdapterDir,
-  });
-
-  assert.equal(delivery.status, "delivered");
-  assert.equal(delivery.delivered.length, 2);
-
-  const piagentPath = path.join(hostAdapterDir, "piagent", "pi-opencode-session.jsonl");
-  const opencodePath = path.join(hostAdapterDir, "opencode", "pi-opencode-session.jsonl");
-  assert.ok(fs.existsSync(piagentPath));
-  assert.ok(fs.existsSync(opencodePath));
-
-  const piagentLine = JSON.parse(fs.readFileSync(piagentPath, "utf8").trim().split("\n")[0]);
-  const opencodeLine = JSON.parse(fs.readFileSync(opencodePath, "utf8").trim().split("\n")[0]);
-  assert.equal(piagentLine.adapter, "piagent");
-  assert.equal(opencodeLine.adapter, "opencode");
-  assert.equal(piagentLine.event.session_id, "pi-opencode-session");
-  assert.equal(opencodeLine.event.requires_attention, true);
-});
-
-test("normalizeOutboxEvent preserves wake and kind fields", () => {
+test("normalizeOutboxEvent preserves event kind", () => {
   const root = tempRoot();
   const outboxDir = path.join(root, "outbox");
   const saved = appendRuntimeOutboxEvent(
     {
       session_id: "kind-session",
       kind: "needs_user",
-      wake: true,
       requires_attention: true,
-      message: "wake test",
+      message: "needs operator input",
     },
     { outboxDir },
   );
   assert.equal(saved.kind, "needs_user");
-  assert.equal(saved.wake, true);
   const [readBack] = readRuntimeOutbox({
     sessionId: "kind-session",
     outboxDir,
     includeAcked: true,
   });
   assert.equal(readBack.kind, "needs_user");
-  assert.equal(readBack.wake, true);
   assert.equal(readBack.data.kind, "needs_user");
-});
-
-test("deliverRuntimeOutbox preserves wake and kind in adapter mailbox", async () => {
-  const root = tempRoot();
-  const outboxDir = path.join(root, "outbox");
-  const hostAdapterDir = path.join(root, "host-adapters");
-  const saved = appendRuntimeOutboxEvent(
-    {
-      session_id: "mailbox-kind-session",
-      kind: "blocked",
-      wake: true,
-      requires_attention: true,
-      message: "blocked wake",
-    },
-    { outboxDir },
-  );
-  const delivery = await deliverRuntimeOutbox({
-    sessionId: "mailbox-kind-session",
-    adapters: ["cursor"],
-    outboxDir,
-    hostAdapterDir,
-  });
-  assert.equal(delivery.status, "delivered");
-  const mailboxPath = path.join(hostAdapterDir, "cursor", "mailbox-kind-session.jsonl");
-  const line = JSON.parse(fs.readFileSync(mailboxPath, "utf8").trim());
-  assert.equal(line.event.outbox_id, saved.outbox_id);
-  assert.equal(line.event.kind, "blocked");
-  assert.equal(line.event.wake, true);
 });

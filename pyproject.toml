@@ -1,6 +1,6 @@
 [project]
 name = "labscriptai-ot"
-version = "0.1.0"
+version = "0.1.1"
 description = "LabscriptAI OT plugin — local simulation runtime for Opentrons protocol authoring (Python side)."
 readme = "README.md"
 requires-python = ">=3.11,<3.14"
@@ -10,6 +10,10 @@ dependencies = [
     # (required by simulate_protocol / logicpass_check) and the shared
     # labware definitions used for real per-well capacity lookups.
     "opentrons>=9.0.0,<10",
+    # flex3d 3D replay: physics/render engine plus JPEG output for the
+    # stills, contact sheet and video. numpy comes with opentrons.
+    "mujoco>=3.2,<4",
+    "pillow>=10",
 ]
 
 [tool.uv]

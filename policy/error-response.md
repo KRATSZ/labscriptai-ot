@@ -4,7 +4,7 @@ This file is the **single source of truth** for the MCP error taxonomy, recovery
 
 ## Canonical taxonomy fields
 
-Every structured error emitted by `parse_simulation_output`, `parse_error`, `suggest_recovery_action`, blocked `run_protocol` payloads, and `preflight_run_setup` checks should use these fields:
+Every structured error emitted by `simulate_protocol`, `parse_error`, `suggest_recovery_action`, blocked `run_protocol` payloads, and `preflight_run_setup` checks should use these fields:
 
 - `phase`
 - `error_domain`
@@ -64,7 +64,7 @@ auto-resume.
 
 ### Runtime watch autonomy
 
-`runtime_watch_poll` is narrower than `execute_protocol_recovery`. It may auto-execute only L0 branches, in this order:
+`runtime_watch(mode=poll)` is narrower than `execute_protocol_recovery`. It may auto-execute only L0 branches, in this order:
 
 1. L4 hard stop: `hard_stop`, `HARDWARE_FAULT`, `DECK_COLLISION`, `ESTOP_ENGAGED`, `DOOR_OPEN`, or `UNKNOWN` -> write alert and stop.
 2. L3 human review: `escalate_to_human` or `requires_confirmation` -> write alert only.
@@ -73,7 +73,7 @@ auto-resume.
    - `wait_and_poll_module_status`
    - `reconcile_state_first` for module-blocker-only diffs
 
-`runtime_watch_poll` must not auto-execute `suggest_new_destination_slot`, even when candidates look high-confidence. Destination recovery remains human-reviewed.
+`runtime_watch(mode=poll)` must not auto-execute `suggest_new_destination_slot`, even when candidates look high-confidence. Destination recovery remains human-reviewed.
 
 Liquid source-map entries are operator-confirmed bookkeeping only. They may be included in
 `INSUFFICIENT_VOLUME` recovery guidance to preserve liquid/sample identity, but they do not
@@ -148,13 +148,13 @@ Channel routing selects tools; these gates select **FIX vs STOP** before any rec
 | Contamination | Sample/waste-wet tip would enter common stock | Drop tip → fresh tip → then stock; same-reagent continue only when explicitly allowed |
 | Precious mid-fault | Partial aliquot already in precious/quantitative well | Never blind top-up; escalate only |
 | Waste / discard clog | Cleanup collision / tip budget exhausted | Drop clogged tip safely → fresh tip → retry discard only |
-| Volume / primary empty | No same-identity reserve **or** reserve volume short | Propose `plan_liquid_source_substitution` candidate after operator confirm; never auto-swap |
+| Volume / primary empty | No same-identity reserve **or** reserve volume short | Propose `liquid_source_substitution(action=plan)` candidate after operator confirm; never auto-swap |
 
-**Tip recovery invariant:** Do not call `recover_tip_pickup` solely because the next candidate well looks free. Re-check tip budget against remaining protocol pickups first (`list_tip_candidates` / `estimate_tip_budget` / rack bookkeeping).
+**Tip recovery invariant:** Do not call `recover_tip_pickup` solely because the next candidate well looks free. Re-check tip budget against remaining protocol pickups first (`tip_wells(action=list)` / `estimate_tip_budget` / rack bookkeeping).
 
 **Resume invariant:** `control_run(play)` after pause is not automatic. Run the time-window and contamination gates; default STOP on strict timeout with explicit operator options (discard / re-prep / accepted-risk override).
 
-**Substitution invariant (unchanged):** Source-map entries and `plan_liquid_source_substitution` do **not** authorize automatic well changes or automatic resume. Agents must still present the FIX proposal and obtain confirmation. Short reserve → STOP.
+**Substitution invariant (unchanged):** Source-map entries and `liquid_source_substitution(action=plan)` do **not** authorize automatic well changes or automatic resume. Agents must still present the FIX proposal and obtain confirmation. Short reserve → STOP.
 
 **Cleanup invariant:** Maintenance `drop_attached_tip` defaults to trash-centered drop (`alternate_drop_location=false`). Stall/collision during cleanup remains a hard stop.
 
@@ -162,9 +162,9 @@ Channel routing selects tools; these gates select **FIX vs STOP** before any rec
 
 These rules are implemented in `servers/opentrons-mcp/` and covered by tests under `servers/opentrons-mcp/test/`.
 
-1. **Simulation gate is blocking.** Runtime execution must not bypass `doctor_local_runtime` → `simulate_protocol` → `parse_simulation_output`.
+1. **Simulation gate is blocking.** Runtime execution must not bypass `health_check(scope=local)` → `simulate_protocol` → `simulate_protocol`.
 2. **Reconciliation beats history.** When session state says `needs_reconciliation`, reconcile before autonomous motion even if historical logs show success.
-3. **Result logs stay audit-only.** `experiment_history` is narrative evidence, not live deck truth.
+3. **Result logs stay audit-only.** `query_history(scope=experiment_logs)` is narrative evidence, not live deck truth.
 
 ## See also
 

@@ -1,6 +1,6 @@
 {
   "name": "opentrons-lab-mcp",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Practical Opentrons MCP server for live robot control plus local simulation-first repair.",
   "type": "module",
   "main": "index.js",

@@ -247,7 +247,7 @@ function buildL1Heartbeat({ selfTestCall, healthCall, robotCall, moduleCall } = 
         message: "One or more modules are not ready.",
         messageZh: "有模块还没准备好，运行前需要等待或确认。",
         requiresAttention: true,
-        recommendedNextTool: "module_status",
+        recommendedNextTool: "robot_status",
         data: modules,
       }),
     );
@@ -317,7 +317,7 @@ function buildL2RunWatch({
           message: "Runtime watch could not read the run.",
           messageZh: "运行监控无法读取当前 run。",
           requiresAttention: true,
-          recommendedNextTool: "runtime_watch_poll",
+          recommendedNextTool: "runtime_watch",
           data: { error: watchCall?.error || null },
         }),
       );
@@ -330,7 +330,7 @@ function buildL2RunWatch({
           message: "Runtime watch applied an allowed L0 self-fix.",
           messageZh: "监控已执行一个允许的 L0 小修复，并继续观察。",
           requiresAttention: false,
-          recommendedNextTool: "runtime_watch_poll",
+          recommendedNextTool: "runtime_watch",
           data: watchData,
         }),
       );
@@ -343,7 +343,7 @@ function buildL2RunWatch({
           message: `Runtime watch returned ${status}.`,
           messageZh: `运行监控返回 ${status}，需要处理后再继续。`,
           requiresAttention: true,
-          recommendedNextTool: "runtime_get_alerts",
+          recommendedNextTool: "runtime_alerts",
           data: watchData,
         }),
       );
@@ -371,7 +371,7 @@ function buildL2RunWatch({
           message: "Run history could not be read.",
           messageZh: "无法读取 run 历史；没有执行自修。",
           requiresAttention: true,
-          recommendedNextTool: "run_history",
+          recommendedNextTool: "query_history",
           data: { error: runHistoryCall?.error || null },
         }),
       ],
@@ -397,7 +397,7 @@ function buildL2RunWatch({
         message: "Run reached a successful terminal state.",
         messageZh: "run 已成功结束。",
         requiresAttention: false,
-        recommendedNextTool: "experiment_history",
+        recommendedNextTool: "query_history",
         data: { run_status: runStatus },
       }),
     );
@@ -569,7 +569,7 @@ function buildL4GuardedExecution({ args, l1, l2, l3 } = {}) {
         message: "Guarded execution path applied an allowed L0 self-fix.",
         messageZh: "受控执行层已经通过 runtime_watch_poll 执行了允许的 L0 小修。",
         requiresAttention: false,
-        recommendedNextTool: "runtime_watch_poll",
+        recommendedNextTool: "runtime_watch",
         data: { watch_result: l2?.watch_result || null },
       })
     : buildNotification({
@@ -590,7 +590,7 @@ function buildL4GuardedExecution({ args, l1, l2, l3 } = {}) {
             ? "safe_next_action"
             : blockers.includes("live_liquid_recovery_gate_not_passed")
               ? "live_liquid_recovery_gate"
-              : "runtime_watch_poll",
+              : "runtime_watch",
         data: { blockers },
       });
 

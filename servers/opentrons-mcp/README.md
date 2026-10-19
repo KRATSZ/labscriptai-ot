@@ -17,15 +17,14 @@ Do not duplicate long policy text here; link the files above.
 
 The repository already includes Python-first skills for writing protocols, verifying locally, and LAN fallback. This server adds a tight tool loop for agents:
 
-1. `doctor_local_runtime`
-2. `simulate_protocol`
-3. `parse_simulation_output`
-4. edit protocol
-5. retry until pass
+1. `health_check` (scope=`local`)
+2. `simulate_protocol` (response already embeds `parsed_repair`)
+3. edit protocol
+4. retry until pass
 
 ## Tool surface (representative)
 
-Live and orchestration tools include: `robot_health`, `robot_status`, `module_status`, `get_slot_occupation`, `list_tip_candidates`, `suggest_next_tip_well`, `is_home_safe`, `preflight_run_setup`, `live_readiness_check`, `reconcile_state`, `parse_error`, `suggest_recovery_action`, `create_run_context`, command helpers (`load_pipette`, `load_labware`, `load_module`, module controls, `move_labware`, `cleanup_motion`), camera/file helpers, `get_protocols`, `upload_protocol`, `run_protocol`, `execute_protocol_recovery`, `recover_tip_pickup`, run control, `run_history`, `experiment_history`, `restart_review`, `safe_next_action`, `probe_wells`, `health_check`, plus simulation tools above. Optional: `vision_check`, `analyze_image_with_kimi`, `analyze_image_with_ark`, `deck_vision_check`, `list_critical_probe_targets`.
+Live and orchestration tools include: `robot_status` (module snapshot included), `deck_slots`, `tip_wells`, `is_home_safe`, `preflight_run_setup`, `live_readiness_check`, `reconcile_state`, `parse_error`, `suggest_recovery_action`, `create_run_context`, command helpers (`load_pipette`, `load_labware`, `load_module`, `control_module`, `move_labware`, `cleanup_motion`), camera/file helpers (`camera_settings`, `capture_image`, `data_files`), `get_protocols`, `upload_protocol`, `run_protocol`, `execute_protocol_recovery`, `recover_tip_pickup`, run control, `query_history` (scope=`robot_runs`/`run_commands`/`experiment_logs`), `safe_next_action` (detail=`summary`/`full`), `probe_wells`, `health_check` (scope=`full`/`robot`/`local`), plus simulation tools above. Optional: `deck_vision_check` (mode=`preflight`/`local`), `analyze_image` (provider=`kimi`/`ark`), `liquid_source_map` (action=`get`/`summarize`/`critical_targets`).
 
 See `index.js` for the authoritative tool list and schemas.
 
@@ -33,15 +32,15 @@ See `index.js` for the authoritative tool list and schemas.
 
 | Feature / tool | Status | Notes |
 |----------------|--------|--------|
-| Simulation gate inside `run_protocol` (`doctor_local_runtime` → `simulate_protocol` → `parse_simulation_output`) | **stable** | Blocks real **play** when simulation fails. |
+| Simulation gate inside `run_protocol` (`health_check(scope=local)` → `simulate_protocol`, whose response embeds `parsed_repair`) | **stable** | Blocks real **play** when simulation fails. |
 | `live_readiness_check` | **stable** | Read-only live go/no-go gate; combines local runtime health, restart guidance, live status, and optional preflight. |
 | `preflight_run_setup` | **stable** | After run creation: reconciliation, readiness, Flex-oriented declared deck vs live snapshot. Overrides: `skip_preflight`, `skip_preflight_deck_diff`. |
 | Core live tools (`robot_status`, `reconcile_state`, recovery chain) | **stable** | See tests under `test/`. |
-| `vision_check` | **beta** | Local inference; observation-only JSON. Install: `uv sync --extra vision`. Checklist: [`../../docs/runbooks/vision-acceptance.md`](../../docs/runbooks/vision-acceptance.md). |
-| `analyze_image_with_kimi` | **beta** | External chat API; deck-level hints, not liquid-volume truth. |
-| `analyze_image_with_ark` | **beta** | Volcengine Ark (Doubao VLM) second opinion; reads `ARK_API_KEY` from env or `automation/.env`. |
-| `deck_vision_check` | **beta** | Preflight orchestration: capture → YOLO → conditional Ark VLM. |
-| `list_critical_probe_targets` | **stable** | Read-only critical well list for Phase 3c LPD probing. |
+| `deck_vision_check` (mode=`local`) | **beta** | Local inference; observation-only JSON. Install: `uv sync --extra vision`. Checklist: [`../../docs/runbooks/vision-acceptance.md`](../../docs/runbooks/vision-acceptance.md). |
+| `analyze_image` (provider=`kimi`) | **beta** | External chat API; deck-level hints, not liquid-volume truth. |
+| `analyze_image` (provider=`ark`) | **beta** | Volcengine Ark (Doubao VLM) second opinion; reads `ARK_API_KEY` from env or `automation/.env`. |
+| `deck_vision_check` (mode=`preflight`) | **beta** | Preflight orchestration: capture → YOLO → conditional Ark VLM. |
+| `liquid_source_map` (action=`critical_targets`) | **stable** | Read-only critical well list for Phase 3c LPD probing. |
 | `probe_wells` | **stable (opt-in live)** | Default simulate-only; live motion requires `OPENTRONS_ENABLE_PROBE_WELLS=1` and operator sign-off ([`../../docs/runbooks/probe-wells-live-validation.md`](../../docs/runbooks/probe-wells-live-validation.md)). |
 | `apply_liquid_probe_results` | **stable** | Bookkeeping only; writes `observed_presence` / `observed_height_mm` from probe results. |
 
@@ -53,16 +52,16 @@ See `index.js` for the authoritative tool list and schemas.
 
 ## Implementation notes (MCP-specific)
 
-- **Breaking:** Older integrations that called `get_run_status` must use **`run_history`** (same inputs: `robot_ip`, `run_id`, optional `page_length`).
+- **Breaking:** Older integrations that called `get_run_status` must use **`query_history`** with scope=`run_commands` (same inputs: `robot_ip`, `run_id`, optional `page_length`).
 - This directory is the canonical `opentrons-lab-mcp` implementation. Community projects (e.g. `yerbymatey/opentrons-mcp`) are reference-only.
 - Pair with `opentrons-document-mcp-server` for Python API lookup.
 - Live-state tools return a common envelope: `success`, `data`, `error`, `hardware_snapshot`, `state_revision`, `run_id`, `session_id`, `timestamp`.
 - `run_protocol` gates real **play** with (1) the simulation chain above and (2) `preflight_run_setup` after run creation unless skipped via explicit flags.
 - `health_check` remains an environment/developer probe. Use `live_readiness_check` for operator-facing live gating before `create_run` or `play`.
 - Session `DeckState` lives under `data/session-state/` (override: `OPENTRONS_SESSION_STATE_DIR`). Append-only result logs under `data/result-logs/` (`OPENTRONS_RESULT_LOG_DIR`).
-- `experiment_history` filters: `session_id`, `run_id`, `tool_name`, `status`, `limit`, optional `event_kind`. **Logs are historical evidence**; committed deck truth is session state + live `reconcile_state` / `robot_status`.
+- `query_history` (scope=`experiment_logs`) filters: `session_id`, `run_id`, `tool_name`, `status`, `limit`, optional `event_kind`. **Logs are historical evidence**; committed deck truth is session state + live `reconcile_state` / `robot_status`.
 - Tests may set `OPENTRONS_RESULT_LOG_DIR` and `OPENTRONS_SESSION_STATE_DIR` (see `test/experiment-history.test.js`, `test/restart-reconcile.test.js`).
-- `capture_preview_image` writes a local file and returns the path (no binary in MCP payloads). `capture_run_image` uses the robot queue; some builds may not return a downloadable `fileId` immediately — use `list_data_files` / `download_data_file` when needed.
+- `capture_image` (mode=`preview`) writes a local file and returns the path (no binary in MCP payloads). mode=`run` uses the robot queue; some builds may not return a downloadable `fileId` immediately — use `data_files` (action=`list` / `download`) when needed.
 - Camera capability gaps (e.g. POST endpoints missing on some Flex builds) are reported explicitly instead of failing silently.
 
 ## Recovery policy (Phase 2 / Phase 4)
@@ -167,12 +166,12 @@ Policy mapping: [`../../docs/rules/error-response.md`](../../docs/rules/error-re
 | Safe-home / `is_home_safe` inputs | `test/decision.test.js` |
 | Hard stops (`DECK_COLLISION`, `UNKNOWN`, collision parse) | `test/decision.test.js` |
 | Simulation gate (`run_protocol`) | `test/run-protocol.test.js`, `test/experiment-history.test.js` |
-| Log query (`experiment_history`) | `test/experiment-history.test.js` |
+| Log query (`query_history`) | `test/experiment-history.test.js` |
 | Restart: reconcile flag vs historical log | `test/restart-reconcile.test.js` |
-| `restart_review` + `safe_next_action` | `test/restart-review.test.js` |
+| `safe_next_action` (detail=`summary`/`full`) | `test/restart-review.test.js` |
 | `preflight_run_setup` | `test/preflight-run-setup.test.js` |
 | Experimental `probe_wells` | `test/probe-wells.test.js` |
-| `vision_check` input validation | `test/vision-check.test.js` |
+| `deck_vision_check` (mode=`local`) input validation | `test/vision-check.test.js` |
 
 ## Example MCP config
 

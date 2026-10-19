@@ -131,9 +131,8 @@ function guidance({
 
 test("runtime watch MCP tools are registered", () => {
   const names = new Set(TOOL_DEFINITIONS.map(tool => tool.name));
-  assert.equal(names.has("runtime_watch_poll"), true);
-  assert.equal(names.has("runtime_get_alerts"), true);
-  assert.equal(names.has("runtime_ack_alert"), true);
+  assert.equal(names.has("runtime_watch"), true);
+  assert.equal(names.has("runtime_alerts"), true);
   assert.equal(typeof TOOL_HANDLERS.runtime_watch_poll, "function");
   assert.equal(typeof TOOL_HANDLERS.runtime_get_alerts, "function");
   assert.equal(typeof TOOL_HANDLERS.runtime_ack_alert, "function");
@@ -643,71 +642,15 @@ function makeLoopPoll(sequence) {
   };
 }
 
-test("runtime_watch_loop zero_llm_when_no_error emits heartbeat without wake on clean running ticks", async () => {
-  const watchDir = tempWatchDir();
-  const outboxDir = tempWatchDir();
-  const poll = makeLoopPoll([loopTick("running"), loopTick("running")]);
-
-  const result = await runtimeWatchLoop(
-    {
-      run_id: "run-zero-llm-clean",
-      session_id: "zero-llm-clean",
-      watch_dir: watchDir,
-      outbox_dir: outboxDir,
-      max_turns: 2,
-      interval_ms: 1,
-      zero_llm_when_no_error: true,
-    },
-    { runtimeWatchPoll: poll, sleep: () => Promise.resolve() },
-  );
-
-  assert.equal(result.goal_status, "BUDGET_LIMITED");
-  const events = readRuntimeOutbox({ sessionId: "zero-llm-clean", outboxDir, includeAcked: true, limit: 50 });
-  assert.equal(events.length, 2);
-  assert.ok(events.every(event => event.kind === "heartbeat"));
-  assert.ok(events.every(event => event.wake === false));
-  assert.ok(events.every(event => event.data?.no_error === true));
-  assert.equal(events.some(event => event.wake === true), false);
-});
-
-test("runtime_watch_loop zero_llm_when_no_error emits wake sentinel on needs_user", async () => {
-  const watchDir = tempWatchDir();
-  const outboxDir = tempWatchDir();
-  const poll = makeLoopPoll([loopTick("running"), loopTick("needs_user", "manual_confirmation_required")]);
-
-  const result = await runtimeWatchLoop(
-    {
-      run_id: "run-zero-llm-blocked",
-      session_id: "zero-llm-blocked",
-      watch_dir: watchDir,
-      outbox_dir: outboxDir,
-      max_turns: 10,
-      interval_ms: 1,
-      zero_llm_when_no_error: true,
-    },
-    { runtimeWatchPoll: poll, sleep: () => Promise.resolve() },
-  );
-
-  assert.equal(result.goal_status, "BLOCKED");
-  const events = readRuntimeOutbox({ sessionId: "zero-llm-blocked", outboxDir, includeAcked: true, limit: 50 });
-  const heartbeat = events.find(event => event.kind === "heartbeat");
-  const wakeEvent = events.find(event => event.wake === true);
-  assert.ok(heartbeat);
-  assert.equal(heartbeat.wake, false);
-  assert.ok(wakeEvent);
-  assert.equal(wakeEvent.kind, "needs_user");
-  assert.equal(wakeEvent.type, "runtime_watch_loop_tick");
-});
-
-test("runtime_watch_loop default mode keeps wake sentinel every tick", async () => {
+test("runtime_watch_loop records one event per tick with status kind", async () => {
   const watchDir = tempWatchDir();
   const outboxDir = tempWatchDir();
   const poll = makeLoopPoll([loopTick("running"), loopTick("completed", "run_succeeded")]);
 
   const result = await runtimeWatchLoop(
     {
-      run_id: "run-zero-llm-legacy",
-      session_id: "zero-llm-legacy",
+      run_id: "run-watch-events",
+      session_id: "watch-events",
       watch_dir: watchDir,
       outbox_dir: outboxDir,
       max_turns: 10,
@@ -717,13 +660,44 @@ test("runtime_watch_loop default mode keeps wake sentinel every tick", async () 
   );
 
   assert.equal(result.goal_status, "COMPLETE");
-  const events = readRuntimeOutbox({ sessionId: "zero-llm-legacy", outboxDir, includeAcked: true, limit: 50 });
+  const events = readRuntimeOutbox({ sessionId: "watch-events", outboxDir, includeAcked: true, limit: 50 });
   assert.equal(events.length, 2);
   assert.ok(events.every(event => event.type === "runtime_watch_loop_tick"));
-  assert.ok(events.every(event => event.wake === true));
   const completedEvent = events.find(event => event.status === "completed");
   assert.equal(completedEvent?.kind, "completed");
   const runningEvent = events.find(event => event.status === "running");
   assert.equal(runningEvent?.kind, "heartbeat");
-  assert.equal(runningEvent?.wake, true);
+});
+
+test("watch events recommend public tools with the required selector", async t => {
+  const dir = tempWatchDir();
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const names = new Set(TOOL_DEFINITIONS.map(tool => tool.name));
+  for (const [status, selector] of [["running", "mode"], ["completed", "scope"], ["needs_user", "action"]]) {
+    const events = [];
+    await runtimeWatchLoop({ run_id: status, watch_dir: dir, max_turns: 1 }, {
+      runtimeWatchPoll: async () => loopTick(status),
+      emitSentinel: ({ event }) => events.push(event), sleep: async () => {},
+    });
+    assert.equal(names.has(events[0].recommended_next_tool), true);
+    assert.ok(events[0].recommended_next_args[selector]);
+  }
+});
+
+test("resuming an exhausted watch grants a fresh budget and keeps its history", async t => {
+  const dir = tempWatchDir();
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const args = { run_id: "resume-budget", watch_dir: dir, max_turns: 1, max_runtime_ms: 1000 };
+  const deps = { runtimeWatchPoll: async () => loopTick("running"), emitSentinel: () => {}, sleep: async () => {} };
+  const first = await runtimeWatchLoop(args, deps);
+  const saved = JSON.parse(fs.readFileSync(first.goal_state_path, "utf8"));
+  saved.started_at = "2000-01-01T00:00:00.000Z";
+  fs.writeFileSync(first.goal_state_path, JSON.stringify(saved));
+  const resumed = await runtimeWatchLoop({ ...args, resume: true }, {
+    ...deps, runtimeWatchPoll: async () => loopTick("completed"),
+  });
+  assert.equal(resumed.goal_id, first.goal_id);
+  assert.equal(resumed.turns_completed, 2);
+  assert.equal(resumed.ticks.length, 2);
+  assert.equal(resumed.goal_status, "COMPLETE");
 });

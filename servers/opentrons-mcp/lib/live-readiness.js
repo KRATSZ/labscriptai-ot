@@ -278,10 +278,10 @@ function resolveRecommendedNextTools({
   const byName = Object.fromEntries(checks.map(check => [check.name, check]));
 
   if (byName.local_runtime?.status === "fail") {
-    return ["doctor_local_runtime"];
+    return ["health_check"];
   }
   if (byName.robot_connectivity?.status === "fail") {
-    return ["robot_health"];
+    return ["health_check"];
   }
   if (byName.session_state?.status === "fail" && safeNextAction) {
     return uniqueOrdered([
@@ -293,7 +293,7 @@ function resolveRecommendedNextTools({
   if (byName.session_state?.status === "warn" && safeNextAction) {
     return uniqueOrdered([
       "safe_next_action",
-      "run_history",
+      "query_history",
       "parse_error",
       ...(safeNextAction.tool_sequence || []).map(item => item.tool),
     ]);
@@ -302,7 +302,7 @@ function resolveRecommendedNextTools({
     return ["robot_status"];
   }
   if (byName.module_status?.status === "warn") {
-    return ["module_status"];
+    return ["robot_status"];
   }
   if (byName.home_safety?.status === "warn") {
     return ["is_home_safe"];

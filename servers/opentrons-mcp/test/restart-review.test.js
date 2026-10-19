@@ -31,9 +31,9 @@ test("buildRestartReview includes run_history and parse_error when last_run_id i
 
   const order = data.guidance.suggested_tool_order;
   assert.ok(order.indexOf("reconcile_state") === -1);
-  assert.ok(order.indexOf("robot_status") < order.indexOf("run_history"));
-  assert.ok(order.indexOf("run_history") < order.indexOf("parse_error"));
-  assert.ok(order.includes("experiment_history"));
+  assert.ok(order.indexOf("robot_status") < order.indexOf("query_history"));
+  assert.ok(order.indexOf("query_history") < order.indexOf("parse_error"));
+  assert.ok(order.includes("query_history"));
   assert.ok(order.includes("is_home_safe"));
 });
 
@@ -187,10 +187,10 @@ test("restart_review handler includes run_history and parse_error when last_run_
     });
 
     const order = result.data.guidance.suggested_tool_order;
-    assert.ok(order.includes("run_history"));
+    assert.ok(order.includes("query_history"));
     assert.ok(order.includes("parse_error"));
-    assert.ok(order.indexOf("robot_status") < order.indexOf("run_history"));
-    assert.ok(order.indexOf("run_history") < order.indexOf("parse_error"));
+    assert.ok(order.indexOf("robot_status") < order.indexOf("query_history"));
+    assert.ok(order.indexOf("query_history") < order.indexOf("parse_error"));
     assert.equal(result.data.guidance.reconcile_first, false);
   } finally {
     if (originalSessionDir === undefined) {
@@ -874,5 +874,19 @@ test("restart_review with robot_ip includes home_safety_preview", async () => {
     } else {
       process.env.OPENTRONS_RESULT_LOG_DIR = originalLogDir;
     }
+  }
+});
+
+test("safe next action uses public history tools and selectors after restart", () => {
+  for (const lastRunId of [null, "run-current"]) {
+    const review = buildRestartReview({ sessionState: {
+      session_id: "public-guidance", state_revision: 0, last_run_id: lastRunId,
+      needs_reconciliation: false, cleanup: { pending_actions: [] },
+    }, logEntries: [] });
+    const guidance = buildSafeNextAction(review);
+    assert.doesNotMatch(JSON.stringify(guidance), /module_status|run_history|experiment_history/);
+    const history = guidance.tool_sequence.find(step => step.tool === "query_history");
+    assert.equal(history.args.scope, lastRunId ? "run_commands" : "experiment_logs");
+    if (lastRunId) assert.equal(history.args.run_id, lastRunId);
   }
 });

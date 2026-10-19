@@ -17,21 +17,18 @@ const REQUIRED_RUNTIME_TOOLS = [
   "health_check",
   "runtime_recovery_self_test",
   "runtime_recovery_monitor",
+  "runtime_outbox",
+  "runtime_watch",
   "safe_next_action",
-  "restart_review",
   "validate_virtual_lab_state_steps",
   "list_recovery_playbooks",
   "live_liquid_recovery_gate",
   "robot_status",
-  "module_status",
   "is_home_safe",
-  "experiment_history",
+  "query_history",
   "record_liquid_source_map",
-  "get_liquid_source_map",
-  "summarize_liquid_source_map",
-  "plan_liquid_source_substitution",
-  "generate_liquid_source_substitution_protocol",
-  "prepare_liquid_source_substitution_recovery",
+  "liquid_source_map",
+  "liquid_source_substitution",
 ];
 
 const checks = [];
@@ -135,48 +132,6 @@ function extractTomlArrayFirstString(text, key) {
   return match ? match[1] : null;
 }
 
-function checkClaudePluginMonitors() {
-  const pluginManifest = readJsonFile(".claude-plugin/plugin.json");
-  if (!pluginManifest) return;
-
-  const monitorsRel = pluginManifest.experimental?.monitors;
-  if (!monitorsRel) return;
-
-  const monitorsPath = path.join(PLUGIN_ROOT, monitorsRel.replace(/^\.\//, ""));
-  const sourcePath = path.join(PLUGIN_ROOT, "hooks/claude/monitors.json");
-
-  if (!fs.existsSync(monitorsPath)) {
-    fail(
-      "Claude Code monitors",
-      `Missing ${monitorsRel} (declared in .claude-plugin/plugin.json)`,
-      "Run: bash install-labscriptai-ot.sh  OR  ln -sf ../hooks/claude/monitors.json monitors/monitors.json"
-    );
-    return;
-  }
-
-  try {
-    JSON.parse(fs.readFileSync(monitorsPath, "utf8"));
-  } catch (err) {
-    fail(
-      "Claude Code monitors",
-      `${monitorsRel}: ${err.message}`,
-      "Ensure monitors/monitors.json points at hooks/claude/monitors.json and contains valid JSON."
-    );
-    return;
-  }
-
-  if (!fs.existsSync(sourcePath)) {
-    fail(
-      "Claude Code monitors",
-      "Missing hooks/claude/monitors.json source",
-      "Restore hooks/claude/monitors.json in the plugin clone."
-    );
-    return;
-  }
-
-  pass("Claude Code monitors", monitorsRel);
-}
-
 function checkMcpManifestPaths() {
   const expectedIndex = "${PLUGIN_ROOT}/servers/opentrons-mcp/index.js";
   const expectedRoot = "${PLUGIN_ROOT}";
@@ -186,6 +141,18 @@ function checkMcpManifestPaths() {
   const expectedAbsoluteData = path.join(PLUGIN_ROOT, ".plugin-data");
 
   const codexMcp = readJsonFile(".mcp.json");
+  const cursorMcp = readJsonFile("mcp.json");
+  if (codexMcp && cursorMcp) {
+    if (JSON.stringify(codexMcp) === JSON.stringify(cursorMcp)) {
+      pass("Manifest: Cursor/Codex MCP config", "mcp.json and .mcp.json contain the same config");
+    } else {
+      fail(
+        "Manifest: Cursor/Codex MCP config",
+        "mcp.json and .mcp.json differ",
+        "Keep both platform entry files aligned; Cursor reads mcp.json and Codex reads .mcp.json."
+      );
+    }
+  }
   const codexServer = codexMcp?.mcpServers?.["opentrons-lab"];
   if (
     codexServer?.args?.[0] === expectedIndex &&
@@ -224,7 +191,8 @@ function checkMcpManifestPaths() {
     );
   }
 
-  const codexLocalConfig = readTextFile(".codex/config.toml");
+  const codexLocalConfig = fs.existsSync(path.join(PLUGIN_ROOT, ".codex/config.toml"))
+    ? readTextFile(".codex/config.toml") : null;
   if (codexLocalConfig) {
     const args0 = extractTomlArrayFirstString(codexLocalConfig, "args");
     const configuredRoot = extractTomlString(codexLocalConfig, "OPENTRONS_PLUGIN_ROOT");
@@ -271,10 +239,10 @@ function checkPython() {
   }
 
   if (!found) {
-    warn(
+    fail(
       "Python",
       "No working Python interpreter found",
-      "Install Python 3.10+ and set OPENTRONS_PYTHON, or create .venv with Opentrons simulation deps (uv sync --extra protocol)."
+      "Install Python 3.11–3.13 and set OPENTRONS_PYTHON, or create .venv with Opentrons simulation deps (uv sync --frozen)."
     );
     return null;
   }
@@ -290,10 +258,10 @@ function checkPython() {
   if (otCheck.status === 0) {
     pass("Opentrons package", `opentrons ${(otCheck.stdout || "").trim()}`);
   } else {
-    warn(
+    fail(
       "Opentrons package",
       "opentrons not importable in detected Python",
-      "Install simulation deps: uv venv .venv && uv sync --extra protocol  (then set OPENTRONS_PYTHON)"
+      "Install simulation deps: uv sync --frozen  (then set OPENTRONS_PYTHON)"
     );
   }
 
@@ -301,6 +269,10 @@ function checkPython() {
 }
 
 function checkVision(pythonExe) {
+  if (!["on", "1"].includes(process.env.OPENTRONS_PREFLIGHT_VISION)) {
+    checks.push({ name: "Optional deck vision", status: "skip", detail: "Not enabled; see docs/deck-vision.md to configure." });
+    return;
+  }
   const policyPath = path.join(PLUGIN_ROOT, "automation", "deck_layout_policy.json");
   const calibrationPath = path.join(PLUGIN_ROOT, "automation", "photo", "deck_calibration.json");
   const weightsPath = path.join(PLUGIN_ROOT, "vision", "models", "weights", "deck_v2_best.pt");
@@ -377,7 +349,7 @@ function checkFlex3d(pythonExe) {
     warn(
       "Flex 3D preview",
       "Skipped (no Python interpreter)",
-      "3D preview is optional; mujoco installs into OPENTRONS_PYTHON: pip install mujoco pillow"
+      "3D preview is optional; mujoco/pillow are pinned in pyproject.toml: run `uv sync` in the repo root"
     );
     return;
   }
@@ -394,12 +366,13 @@ function checkFlex3d(pythonExe) {
     warn(
       "Flex 3D preview",
       "mujoco not importable — 3D checks and viewer will degrade (optional feature)",
-      `${pythonExe} -m pip install mujoco pillow`
+      "Run `uv sync` in the repo root (mujoco/pillow are pinned in pyproject.toml)"
     );
   }
 }
 
 function checkArkVlm() {
+  if (!["on", "1"].includes(process.env.OPENTRONS_PREFLIGHT_VISION)) return;
   const envPath = path.join(PLUGIN_ROOT, "automation", ".env");
   let arkKey = process.env.ARK_API_KEY || null;
   if (!arkKey && fs.existsSync(envPath)) {
@@ -557,7 +530,7 @@ async function checkRuntimeRecoverySelfTest() {
 }
 
 function printReport() {
-  const icons = { pass: "✓", fail: "✗", warn: "!" };
+  const icons = { pass: "✓", fail: "✗", warn: "!", skip: "–" };
   console.log("");
   console.log("LabscriptAI OT setup verification");
   console.log(`Plugin root: ${PLUGIN_ROOT}`);
@@ -590,7 +563,6 @@ async function main() {
   checkNode();
   checkMcpDependencies();
   checkPluginPaths();
-  checkClaudePluginMonitors();
   checkMcpManifestPaths();
   const pythonExe = checkPython();
   checkVision(pythonExe);

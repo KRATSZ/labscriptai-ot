@@ -10,6 +10,5 @@
         "PLUGIN_DATA": "<PLUGIN_DATA>"
       }
     }
-  },
-  "plugin": ["<OPENTRONS_PLUGIN_ROOT>/hooks/opencode/labscriptai-outbox-wake.ts"]
+  }
 }

@@ -26,7 +26,7 @@ const PLAYBOOKS = Object.freeze({
     allowed_watch_mode: true,
     can_move_robot: false,
     requires_operator_opt_in: false,
-    required_gates: ["module_status", "run_status_awaiting_recovery"],
+    required_gates: ["robot_status", "run_status_awaiting_recovery"],
     semantic_invariants: ["same_protocol_run", "module_target_unchanged"],
   }),
   reconcile_state_first: Object.freeze({
@@ -63,7 +63,7 @@ const PLAYBOOKS = Object.freeze({
     error_leaves: ["INSUFFICIENT_VOLUME"],
     recovery_type: "alternative_resource",
     resource_type: "liquid_source",
-    executor_tool: "prepare_liquid_source_substitution_recovery",
+    executor_tool: "liquid_source_substitution",
     live_executor_tool: "run_protocol",
     allowed_watch_mode: false,
     can_move_robot: false,

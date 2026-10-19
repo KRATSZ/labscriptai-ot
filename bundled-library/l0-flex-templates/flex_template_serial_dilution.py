@@ -1,8 +1,7 @@
 """Template: serial dilution along row A (A1 = stock / high concentration, A2+ = dilution chain).
 
-`A1` holds the source material (e.g. stock). `A2` is primed with diluent buffer (2× transfer
-volume) so the first xfer from A1→A2 lands in buffer, not an empty well. Subsequent steps
-move along the row: A2→A3, A3→A4, …
+A1 holds twice the transfer volume of stock. Every destination A2 onward is
+primed with one transfer volume of buffer. Each transfer and mix halves concentration.
 
 Adjust diluent volume, transfer volume, and number of steps to match your SOP.
 """
@@ -12,7 +11,7 @@ from opentrons import protocol_api
 metadata = {
     "protocolName": "Flex — serial dilution (row) template",
     "author": "Replace",
-    "description": "Row A: A1 stock, A2 primed, serial transfer along A — parameterize counts.",
+    "description": "Row A: A1 stock, A2 onward primed, serial transfer along A — parameterize counts.",
 }
 
 requirements = {"robotType": "Flex", "apiLevel": "2.24"}
@@ -70,12 +69,18 @@ def run(protocol: protocol_api.ProtocolContext) -> None:
     row = "A"
     wells = [f"{row}{i}" for i in range(1, 2 + steps)]
 
-    # Prime A2 (not A1): A1 stays stock-only; buffer headroom for first serial step.
-    prime_vol = min(pipette.max_volume, xfer * 2)
-    pipette.pick_up_tip()
-    pipette.aspirate(prime_vol, diluent["A1"])
-    pipette.dispense(prime_vol, plate[wells[1]])
-    finish_tip(pipette, trash, dry_run_on)
+    if not dry_run_on:
+        stock = protocol.define_liquid(name="Stock", description="Starting sample", display_color="#ee5555")
+        buffer = protocol.define_liquid(name="Diluent", description="Dilution buffer", display_color="#55aaff")
+        plate["A1"].load_liquid(liquid=stock, volume=2 * xfer)
+        diluent["A1"].load_liquid(liquid=buffer, volume=2000)
+
+    # Equal buffer and transferred sample volumes give a two-fold dilution at every step.
+    for well in wells[1:]:
+        pipette.pick_up_tip()
+        pipette.aspirate(xfer, diluent["A1"])
+        pipette.dispense(xfer, plate[well])
+        finish_tip(pipette, trash, dry_run_on)
 
     for i in range(steps):
         src = plate[wells[i]]

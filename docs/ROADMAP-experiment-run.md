@@ -70,6 +70,7 @@
 - **`policy/workflows.md` 已定义完整 phase machine**（intent → virtual lab gate → simulate → 3a 现场核对 → 3b 视觉 → 3c 探针 → 单次 go-live 确认 → run → watch loop），即文档层的"统一验证流程"已经存在，缺的是数据层把它串起来。
 - **`policy/output-contract.md` + `lib/error-taxonomy.js`**：统一状态 JSON 与错误分类已有基础。
 - **`lib/state.js` 的液体信任级别**（declared / simulated / observed / reconciled）就是"物理属性及数据来源"的现成实现。
+- **Virtual Lab 与运行监控的关键闭环已具备**：探针结果写回、写回缺失时阻断恢复、suffix 充分性检查，以及可续接的 `runtime_watch(mode=loop)`。整条链仍缺一份真实设备回归记录。
 - **工具已按 L0–L4 分层**（共 77 个，见 `docs/MCP_TOOLS.md`），skills 已按任务路由（`opentrons-experiment-run` 为编排入口）。
 - **安全门禁已实装**：`OPENTRONS_ENABLE_PROBE_WELLS=1` 硬门禁、HumanConfirmBudget 单次确认、simulation + LogicPass 双门槛。
 - **测试基础比预期好**：`servers/opentrons-mcp/test/` 下已有 58 个测试文件（367 用例全绿）。
@@ -145,6 +146,13 @@
 - 整理文档、收紧工具暴露面；视觉识别、外部多模态模型、复杂恢复、通知系统保持为可选扩展，不阻塞核心安装与主流程。
 
 **验收**：同一实验能改参数后再次生成并验证协议；历史实验可追溯；核心功能不依赖视觉云服务等非必要扩展。
+
+## 次要技术债（不阻塞主路线）
+
+- **真实设备回归记录**：补一份完整链路记录，覆盖探针写回、suffix 检查和 `runtime_watch(mode=loop)`；需要单独安排硬件验证。
+- **协议步骤转换**：目前 Virtual Lab State 消费通用步骤 JSON，还没有从 `protocol.py` 自动转换步骤的层；先用协议库往返验证证明有必要再做。
+- **仿真细节**：温控、震荡等模块动作目前不更新虚拟状态；只在这些动作影响目标实验时补足。
+- **长会话历史**：`state_history` 目前保留最新 2000 条；只有出现实际丢失关键追踪信息时再增加采样或归档机制。
 
 ## 工具入口收敛
 

@@ -6,7 +6,6 @@ import { runtimeWatchPoll } from "./sentry-step.js";
 import { deliverRuntimeOutbox } from "../runtime-outbox.js";
 import {
   appendWatchLoopOutboxEntry,
-  shouldWakeOnTick,
   tickOutboxKind,
 } from "./outbox-tick.js";
 
@@ -76,15 +75,15 @@ function recommendedNextTool(status, tickData = {}) {
     return tickData.recommended_next_tool;
   }
   if (status === "completed") {
-    return "experiment_history";
+    return "query_history";
   }
   if (status === "needs_user" || status === "hard_stop") {
-    return "runtime_get_alerts";
+    return "runtime_alerts";
   }
   if (status === "unreachable") {
     return "robot_status";
   }
-  return "runtime_watch_poll";
+  return "runtime_watch";
 }
 
 function severityForStatus(status) {
@@ -110,48 +109,18 @@ function levelForStatus(status) {
   return "L2";
 }
 
-function buildHeartbeatEvent({ goal, turn, goalStatus }) {
-  const ts = new Date().toISOString();
-  return {
-    kind: "heartbeat",
-    wake: false,
-    session_id: goal.session_id,
-    run_id: goal.run_id,
-    source: "runtime_watch_loop",
-    level: "L2",
-    type: "runtime_watch_loop_heartbeat",
-    severity: "info",
-    status: "running",
-    title: `runtime_watch_loop turn ${turn}: heartbeat`,
-    message: `Goal ${goal.goal_id} turn ${turn} heartbeat; no_error=true.`,
-    message_zh: `目标 ${goal.goal_id} 第 ${turn} 轮心跳；no_error=true。`,
-    requires_attention: false,
-    requires_ack: false,
-    recommended_next_tool: "runtime_watch_poll",
-    no_robot_motion: true,
-    dedupe_key: `${goal.goal_id}:heartbeat:${turn}`,
-    created_at: ts,
-    data: {
-      kind: "heartbeat",
-      wake: false,
-      ts,
-      goal_status: goalStatus,
-      no_error: true,
-      goal_id: goal.goal_id,
-      turn,
-    },
-  };
-}
-
-function buildTickSentinelEvent({ goal, turn, status, goalStatus, tick, zeroLlmWhenNoError }) {
+function buildTickSentinelEvent({ goal, turn, status, goalStatus, tick }) {
   const tickData = tick?.data || {};
   const recommended = recommendedNextTool(status, tickData);
+  const recommendedArgs = {
+    ...({ query_history: { scope: "experiment_logs" }, runtime_alerts: { action: "list" }, runtime_watch: { mode: "poll" } }[recommended] || {}),
+    run_id: goal.run_id,
+    session_id: goal.session_id,
+  };
   const requiresAttention = goalStatus === "blocked";
   const kind = tickOutboxKind(status, goalStatus);
-  const wake = shouldWakeOnTick(status, goalStatus, zeroLlmWhenNoError);
   return {
     kind,
-    wake,
     session_id: goal.session_id,
     run_id: goal.run_id,
     source: "runtime_watch_loop",
@@ -165,17 +134,18 @@ function buildTickSentinelEvent({ goal, turn, status, goalStatus, tick, zeroLlmW
     requires_attention: requiresAttention,
     requires_ack: requiresAttention,
     recommended_next_tool: recommended,
+    recommended_next_args: recommendedArgs,
     no_robot_motion: true,
     dedupe_key: `${goal.goal_id}:turn:${turn}:${status}`,
     data: {
       kind,
-      wake,
       goal_id: goal.goal_id,
       turn,
       goal_status: goalStatus,
       tick_reason: tickData.reason || null,
       last_event: tickData.last_event || null,
       recommended_next_tool: recommended,
+      recommended_next_args: recommendedArgs,
       run_status: tickData.run_status || null,
       error: tickData.error || null,
     },
@@ -201,7 +171,6 @@ export async function runtimeWatchLoop(args = {}, deps = {}) {
 
   const sessionId = args.session_id || "default";
   const goalPrompt = args.goal_prompt || null;
-  const zeroLlmWhenNoError = args.zero_llm_when_no_error === true;
   const verify = typeof deps.verify === "function" ? deps.verify : null;
   const poll = typeof deps.runtimeWatchPoll === "function" ? deps.runtimeWatchPoll : runtimeWatchPoll;
   const emitSentinel = typeof deps.emitSentinel === "function" ? deps.emitSentinel : defaultEmitSentinel;
@@ -231,9 +200,11 @@ export async function runtimeWatchLoop(args = {}, deps = {}) {
       };
 
   if (resumable) {
-    goal.max_turns = maxTurns;
+    goal.max_turns = goal.turns_completed + maxTurns;
     goal.max_runtime_ms = maxRuntimeMs;
     goal.interval_ms = intervalMs;
+    goal.started_at = new Date().toISOString();
+    goal.ended_at = null;
     goal.updated_at = now;
   }
 
@@ -287,16 +258,7 @@ export async function runtimeWatchLoop(args = {}, deps = {}) {
     goal.status = goalStatus;
     goal.updated_at = new Date().toISOString();
 
-    const outboxEvent = shouldWakeOnTick(status, goalStatus, zeroLlmWhenNoError)
-      ? buildTickSentinelEvent({
-          goal,
-          turn,
-          status,
-          goalStatus,
-          tick,
-          zeroLlmWhenNoError,
-        })
-      : buildHeartbeatEvent({ goal, turn, goalStatus });
+    const outboxEvent = buildTickSentinelEvent({ goal, turn, status, goalStatus, tick });
     try {
       emitSentinel({ event: outboxEvent, outboxDir });
     } catch {
@@ -370,7 +332,6 @@ export async function runtimeWatchLoop(args = {}, deps = {}) {
         adapters: args.notify_adapters,
         limit: args.notify_limit ?? 20,
         outboxDir,
-        hostAdapterDir: args.host_adapter_dir || null,
         webhookUrl: args.webhook_url || null,
       });
     } catch (error) {

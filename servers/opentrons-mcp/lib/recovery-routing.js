@@ -34,34 +34,32 @@ const TIP_LEAVES = new Set(["TIP_PHYSICALLY_MISSING"]);
 const CHANNEL_TOOLS = Object.freeze({
   dashboard: [
     "robot_status",
-    "module_status",
     "live_readiness_check",
     "safe_next_action",
     "is_home_safe",
   ],
   vision: [
-    "camera_status",
-    "capture_preview_image",
+    "camera_settings",
+    "capture_image",
     "deck_vision_check",
-    "vision_check",
-    "analyze_image_with_ark",
+    "analyze_image",
     "reconcile_state",
   ],
-  reconcile: ["reconcile_state", "robot_status", "get_slot_occupation", "safe_next_action"],
+  reconcile: ["reconcile_state", "robot_status", "deck_slots", "safe_next_action"],
   probe: [
     "live_liquid_recovery_gate",
-    "list_critical_probe_targets",
+    "liquid_source_map",
     "probe_wells",
     "apply_liquid_probe_results",
-    "get_liquid_source_map",
+    "liquid_source_map",
   ],
-  tip: ["recover_tip_pickup", "suggest_next_tip_well", "list_tip_candidates"],
+  tip: ["recover_tip_pickup", "tip_wells"],
   // live_readiness_check included so DECK_COLLISION / hard-stop operator_steps
   // ("re-run live_readiness_check") match recommended_next_tools.
-  manual: ["safe_next_action", "parse_error", "experiment_history", "live_readiness_check"],
+  manual: ["safe_next_action", "parse_error", "query_history", "live_readiness_check"],
   slot_confirm: [
     "suggest_recovery_action",
-    "get_slot_occupation",
+    "deck_slots",
     "safe_next_action",
     "parse_error",
   ],
@@ -103,7 +101,7 @@ export function buildRecoveryRoutingGuidance({
     .trim()
     .toUpperCase();
   const channel = resolveRecoveryChannel(leaf);
-  const recommendedNextTools = [...(CHANNEL_TOOLS[channel] || CHANNEL_TOOLS.manual)];
+  const recommendedNextTools = [...new Set(CHANNEL_TOOLS[channel] || CHANNEL_TOOLS.manual)];
 
   const guidance = {
     recovery_channel: channel,
@@ -122,6 +120,14 @@ export function buildRecoveryRoutingGuidance({
                   ? "人工换槽"
                   : "人工",
     recommended_next_tools: recommendedNextTools,
+    recommended_tool_calls: recommendedNextTools.map(tool => ({
+      tool,
+      args: ({ robot_status: { include_modules: true }, camera_settings: { action: "status" },
+        capture_image: { mode: "preview" }, deck_vision_check: { mode: "preflight" },
+        analyze_image: { provider: "ark" }, deck_slots: { action: "occupation" },
+        liquid_source_map: { action: "critical_targets" }, tip_wells: { action: "suggest_next" },
+        query_history: { scope: "run_commands" } })[tool] || {},
+    })),
     channel_rationale:
       channel === "dashboard"
         ? "门/急停/模块/锁状态先用 HTTP 仪表盘确认，不用相机。"

@@ -9,19 +9,19 @@ user intent / SOP
   →  (optional) one blocking clarification round
   →  protocol-author draft (+ critical_sources in liquid source map)
   →  validate_virtual_lab_state_steps (session_id/initial_state, steps) — pure software gate
-  →  doctor_local_runtime → simulate_protocol (virtual_lab_steps) → parse_simulation_output
+  →  health_check(scope=local) → simulate_protocol (virtual_lab_steps) → simulate_protocol
   →  (fix loop if failed)
-  →  Phase 3a dashboard: health_check → live_readiness_check → robot_status → module_status → reconcile_state (if needed)
+  →  Phase 3a dashboard: health_check → live_readiness_check → robot_status → robot_status → reconcile_state (if needed)
        → machine-judged: passed | blocked | needs_operator_physical_action (no verbal re-confirm)
-  →  Phase 3b deck vision: deck_vision_check (YOLO → optional Ark VLM) OR capture_preview_image → vision_check → analyze_image_with_ark
+  →  Phase 3b deck vision: deck_vision_check (YOLO → optional Ark VLM) OR capture_image(mode=preview) → deck_vision_check(mode=local) → analyze_image(provider=ark)
        → sensor-aligned (e.g. VLM agrees) → passed; uncertainty → auto_fixable (reconcile first); mismatch needing hands → needs_operator_physical_action
-  →  Phase 3c critical probe: list_critical_probe_targets → probe_wells simulate
+  →  Phase 3c critical probe: liquid_source_map(action=critical_targets) → probe_wells simulate
        → OPENTRONS_ENABLE_PROBE_WELLS=1 hard gate (blocked if unset; not a verbal subgate confirm)
        → probe_wells execute_on_robot → apply_liquid_probe_results → live_liquid_recovery_gate
   →  return status: passed (subgates) | auto_fixable | needs_operator_physical_action | blocked
        | needs_confirmation (final go-live only — HumanConfirmBudget)
   →  run_protocol (robot_ip, file_path, session_id) only after that single confirmation — quiet execution, no vision during run
-  →  runtime_watch_loop (run_id) for unattended auto-wake until COMPLETE/BLOCKED
+  →  runtime_watch(mode=loop) (run_id) until COMPLETE/BLOCKED
 ```
 
 ## HumanConfirmBudget (go-live)
@@ -36,11 +36,11 @@ Escalate vs auto-fix: `auto_fixable` (agent tools, prefer reconcile) → `needs_
 ## Protocol validation only (no live robot)
 
 ```
-doctor_local_runtime → simulate_protocol → parse_simulation_output
+health_check(scope=local) → simulate_protocol → simulate_protocol
 ```
 Script equivalent: `verify_protocol.py doctor` then `verify_protocol.py analyze <file>`.
 
-Before simulating a new draft, it is worth calling `validate_labware_name` on unfamiliar load names, `inspect_labware_definition` when geometry or dead volume matters, and `estimate_tip_budget` on the draft protocol source. Those checks catch the highest-frequency authoring mistakes before the slower sim step.
+Before simulating a new draft, it is worth calling `labware_lookup(action=validate)` on unfamiliar load names, `labware_lookup(action=inspect)` when geometry or dead volume matters, and `estimate_tip_budget` on the draft protocol source. Those checks catch the highest-frequency authoring mistakes before the slower sim step.
 If the user only wants validation or labware inspection, stop after the check and report findings; do not fabricate a full `protocol.py`.
 
 ## User-facing defaults
@@ -65,7 +65,7 @@ parse_error (robot_ip, run_id) → suggest_recovery_action (error_category, targ
 ```
 health_check
   → live_readiness_check (robot_ip, session_id?, file_path?, run_id?)
-  → robot_status → module_status
+  → robot_status → robot_status
   → reconcile_state (if guidance.reconcile_first or deck drift)
   → if fail: stop and follow recommended_next_tools
   → if pass/warn: continue to Phase 3b deck vision
@@ -83,8 +83,8 @@ Default pre-run visual check (observation-only). Never deck truth — compare wi
 
 ```
 deck_vision_check (robot_ip, session_id?, expected_layout?)
-  → internally: capture_preview_image → vision_check
-  → if uncertain/mismatched: analyze_image_with_ark (Doubao; ARK_API_KEY in automation/.env)
+  → internally: capture_image(mode=preview) → deck_vision_check(mode=local)
+  → if uncertain/mismatched: analyze_image(provider=ark) (Doubao; ARK_API_KEY in automation/.env)
   → if VLM/sensors align with expected layout: status=passed (continue; no human re-confirm)
   → if still uncertain vs session: status=auto_fixable → reconcile_state first
   → if physical rearrange/refill needed: status=needs_operator_physical_action
@@ -93,8 +93,8 @@ deck_vision_check (robot_ip, session_id?, expected_layout?)
 **Manual chain (equivalent):**
 
 ```
-camera_status → capture_preview_image → vision_check
-  → if escalate: analyze_image_with_ark (or analyze_image_with_kimi when OPENTRONS_VLM_PROVIDER=kimi)
+camera_settings(action=status) → capture_image(mode=preview) → deck_vision_check(mode=local)
+  → if escalate: analyze_image(provider=ark) (or analyze_image(provider=kimi) when OPENTRONS_VLM_PROVIDER=kimi)
 ```
 
 Escalate to VLM when YOLO reports low confidence, ambiguity, or layout mismatches. Sensor-aligned agreement (e.g. VLM agrees) is a **pass**, not `needs_confirmation`. Skip entire step with `OPENTRONS_PREFLIGHT_VISION=off`. Camera API failure is a surfaced error — do not silently skip.
@@ -104,7 +104,7 @@ Escalate to VLM when YOLO reports low confidence, ambiguity, or layout mismatche
 Probe only critical source wells (wash buffer, enzyme, etc.) — not full-plate scan. Machine-judged; do not add a separate verbal “confirm probe?” before the final go-live confirm.
 
 ```
-list_critical_probe_targets (session_id, critical_sources?)
+liquid_source_map(action=critical_targets) (session_id, critical_sources?)
   → probe_wells (execute_on_robot=false, wells=[...]) → parse simulation
   → require OPENTRONS_ENABLE_PROBE_WELLS=1 (hard gate; blocked if unset)
   → probe_wells (execute_on_robot=true) → apply_liquid_probe_results
@@ -116,9 +116,9 @@ Bookkeeping only until `execute_on_robot=true`. See [probe-wells-live-validation
 
 ## Quiet execution — Phase 4
 
-While `run_protocol` / `runtime_watch_poll` / `runtime_watch_loop` is active:
+While `run_protocol` / `runtime_watch(mode=poll)` / `runtime_watch(mode=loop)` is active:
 
-- Do **not** call `capture_preview_image`, `vision_check`, `analyze_image_with_ark`, `deck_vision_check`, or `probe_wells` unless Phase 5 recovery routing requires it.
+- Do **not** call `capture_image(mode=preview)`, `deck_vision_check(mode=local)`, `analyze_image(provider=ark)`, `deck_vision_check`, or `probe_wells` unless Phase 5 recovery routing requires it.
 - Rely on error codes, `parse_error`, `suggest_recovery_action`, and registered playbooks.
 
 ## Recovery trigger routing — Phase 5
@@ -127,18 +127,18 @@ After `parse_error` → `suggest_recovery_action`, follow `recovery_channel`:
 
 | Channel | Error leaves (examples) | Next tools |
 |---------|-------------------------|------------|
-| dashboard | DOOR_OPEN, ESTOP_ENGAGED, MODULE_NOT_READY, ROBOT_UNREACHABLE | robot_status, module_status, live_readiness_check |
+| dashboard | DOOR_OPEN, ESTOP_ENGAGED, MODULE_NOT_READY, ROBOT_UNREACHABLE | robot_status, robot_status, live_readiness_check |
 | vision | LABWARE_MISMATCH, DESTINATION_UNAVAILABLE, SLOT_NOT_ADDRESSABLE | deck_vision_check, reconcile_state |
 | reconcile | SESSION_NEEDS_RECONCILIATION, STATE_MISMATCH | reconcile_state first (not camera/VLM-first) |
 | manual | DECK_COLLISION (hard-stop) | stop; physical check; re-run live_readiness_check — does **not** enter vision channel |
-| probe | INSUFFICIENT_VOLUME, AIR_BUBBLE, LIQUID_PROPERTY_ERROR | live_liquid_recovery_gate, list_critical_probe_targets, targeted probe_wells |
+| probe | INSUFFICIENT_VOLUME, AIR_BUBBLE, LIQUID_PROPERTY_ERROR | live_liquid_recovery_gate, liquid_source_map(action=critical_targets), targeted probe_wells |
 | tip | TIP_PHYSICALLY_MISSING | tip-budget gate → `recover_tip_pickup` only if remaining tips ≥ remaining pickups; else STOP |
 
 After door/module recovery, re-run Phase 3a before resume. Deck appearance doubt → vision channel. Session/state mismatch → reconcile-first. `DECK_COLLISION` is hard-stop/manual (no vision auto-recovery). Liquid doubt → targeted probe only.
 
 **FIX/STOP gates** (tip budget, time window, contamination, precious mid-fault, waste-path retry, same-identity reserve proposal) are defined in [error-response.md](error-response.md) § Agent FIX/STOP decision gates and mirrored in `skills/opentrons-experiment-run/SKILL.md` Phase 5. Channel routing alone is not enough.
 
-On probe-channel `INSUFFICIENT_VOLUME` / `liquidNotFound`: call `live_liquid_recovery_gate`, then `plan_liquid_source_substitution` when a same-identity reserve may exist; present the FIX proposal for operator confirmation — never silent swap. Short reserve → STOP.
+On probe-channel `INSUFFICIENT_VOLUME` / `liquidNotFound`: call `live_liquid_recovery_gate`, then `liquid_source_substitution(action=plan)` when a same-identity reserve may exist; present the FIX proposal for operator confirmation — never silent swap. Short reserve → STOP.
 
 ## Optional Flex liquid probe (recovery / re-probe)
 
@@ -157,37 +157,37 @@ Bookkeeping only until `execute_on_robot=true`: `apply_liquid_probe_results` nev
 
 ## Legacy optional deck vision (ad-hoc outside default preflight)
 
-Default Phase 3b already runs observation-only vision during preflight. For ad-hoc visual checks outside that sequence, the same tool chain applies:
+Optional Phase 3b runs observation-only vision when configured or requested. For ad-hoc visual checks outside that sequence, the same tool chain applies:
 
 ```
-camera_status → capture_preview_image → vision_check (image_path = path returned by capture)
+camera_settings(action=status) → capture_image(mode=preview) → deck_vision_check(mode=local) (image_path = path returned by capture)
 ```
 
-- If the camera API is unavailable on a given Flex build, `camera_status` / capture may fail — surface the error; do not silently skip.
-- For offline validation without a robot, call `vision_check` with a local image path only (see [docs/deck-vision.md](../docs/deck-vision.md)).
+- If the camera API is unavailable on a given Flex build, `camera_settings(action=status)` / capture may fail — surface the error; do not silently skip.
+- For offline validation without a robot, call `deck_vision_check(mode=local)` with a local image path only (see [docs/deck-vision.md](../docs/deck-vision.md)).
 
 ## After MCP restart or host reboot
 
 ```
-safe_next_action (session_id, robot_ip?)   # same data as restart_review + recommended_next_tool / operator_steps
-  OR restart_review (session_id, robot_ip?)
+safe_next_action (session_id, robot_ip?)   # same data as safe_next_action(detail=full) + recommended_next_tool / operator_steps
+  OR safe_next_action(detail=full) (session_id, robot_ip?)
   → reconcile_state (if reconcile_first)
-  → robot_status → module_status → is_home_safe (before any home)
+  → robot_status → robot_status → is_home_safe (before any home)
 ```
 
-`safe_next_action` is a thin wrapper: one call returns full `restart_review` data plus `safe_next_action.recommended_next_tool` (usually `reconcile_state` or `robot_status`) and numbered `operator_steps`. Atomic tools are unchanged.
+`safe_next_action` is a thin wrapper: one call returns full `safe_next_action(detail=full)` data plus `safe_next_action.recommended_next_tool` (usually `reconcile_state` or `robot_status`) and numbered `operator_steps`. Atomic tools are unchanged.
 
 ## Active runtime recovery monitor
 
 ```
 runtime_recovery_monitor (session_id, robot_ip?, run_id?, self_fix_mode=observe)
-  → L1: self-test + health_check + robot_status + module_status
-  → L2: run observer; use self_fix_mode=l0 only for runtime_watch_poll whitelist fixes
+  → L1: self-test + health_check + robot_status + robot_status
+  → L2: run observer; use self_fix_mode=l0 only for runtime_watch(mode=poll) whitelist fixes
   → L3: safe_next_action + optional live_liquid_recovery_gate + prepared recovery bundle summary
   → L4: report whether guarded L0 execution is blocked, ready, or already applied
 ```
 
-Default `self_fix_mode=observe` is read-only for run watching. `self_fix_mode=l0` may execute only the existing `runtime_watch_poll` L0 whitelist and now gates before delegation: without both `allow_l4_execution=true` and `operator_opt_in=true`, the monitor must not call `runtime_watch_poll` for self-fix execution. Do not use monitor output to bypass `live_liquid_recovery_gate`, simulation gates, liquid identity checks, or operator opt-in.
+Default `self_fix_mode=observe` is read-only for run watching. `self_fix_mode=l0` may execute only the existing `runtime_watch(mode=poll)` L0 whitelist and now gates before delegation: without both `allow_l4_execution=true` and `operator_opt_in=true`, the monitor must not call `runtime_watch(mode=poll)` for self-fix execution. Do not use monitor output to bypass `live_liquid_recovery_gate`, simulation gates, liquid identity checks, or operator opt-in.
 
 Use `list_recovery_playbooks` when an agent needs to know which fixed recovery scripts exist. The registry is the runtime contract: it lists the executor tool, whether watch mode may call it, whether robot motion is possible, required gates, and semantic invariants. If an error class is not covered by a registered playbook, stop at `safe_next_action` / human review instead of inventing a new action.
 
@@ -207,28 +207,27 @@ export-runtime-recovery-readiness.mjs
 
 The real-machine status exporter is deck-adjacent safety evidence from robot HTTP, not a permission to move. The readiness bundle is an artifact convenience layer over the latest live-liquid gate result and `safe_next_action`; it is not deck truth.
 
-## Goal-driven auto-wake loop
+## Goal-driven watch loop
 
 For unattended live runs ("keep going until done" / auto-recover), arm the loop instead of repeating manual polls:
 
 ```
 run_protocol → (run_id)
-  → runtime_watch_loop (run_id, session_id, goal_prompt,
+  → runtime_watch(mode=loop) (run_id, session_id, goal_prompt,
                         max_turns, max_runtime_ms, interval_ms,
-                        self_fix_mode=observe,
-                        notify_adapters=[cursor|claudecode|codex|cli|webhook])
-  → each tick: runtime_watch_poll + append outbox sentinel + update goal-state.json
+                        self_fix_mode=observe)
+  → each tick: runtime_watch(mode=poll) + record outbox event + update goal-state.json
   → goal_status: COMPLETE | BLOCKED | BUDGET_LIMITED
-  → on BLOCKED (needs_user/hard_stop): runtime_get_alerts → operator decision → runtime_ack_alert → resume=true
-  → on COMPLETE: experiment_history to confirm
+  → on BLOCKED (needs_user/hard_stop): runtime_alerts(action=list) → operator decision → runtime_alerts(action=ack) → resume=true
+  → on COMPLETE: query_history(scope=experiment_logs) to confirm
 ```
 
-`runtime_watch_loop` reuses `runtime_watch_poll` and inherits its safety model: only the L0 whitelist auto-executes; `needs_user`/`hard_stop` stop the loop. `COMPLETE` requires a `completed` tick or the verify callback. Default `self_fix_mode=observe` (no robot motion); guarded L0 self-fix requires both `allow_l4_execution=true` and `operator_opt_in=true`. The loop does not bypass `live_liquid_recovery_gate`, simulation gates, or liquid identity checks. State persists in `goal-state.json` so the goal survives IDE restart / operator rotation; resume with `resume=true` + `goal_id`.
+`runtime_watch(mode=loop)` reuses `runtime_watch(mode=poll)` and inherits its safety model: only the L0 whitelist auto-executes; `needs_user`/`hard_stop` stop the loop. `COMPLETE` requires a `completed` tick or the verify callback. Default `self_fix_mode=observe` (no robot motion); guarded L0 self-fix requires both `allow_l4_execution=true` and `operator_opt_in=true`. The loop does not bypass `live_liquid_recovery_gate`, simulation gates, or liquid identity checks. State persists in `goal-state.json`; resume with `resume=true` + `goal_id`. Outbox events can be reviewed with `runtime_outbox(action=list)` and acknowledged after handling.
 
 ## Check robot status (quick)
 
 ```
-robot_status → module_status → reconcile_state (if anything looks wrong)
+robot_status → robot_status → reconcile_state (if anything looks wrong)
 ```
 
 ## Protocol Reference Library

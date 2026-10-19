@@ -10,7 +10,7 @@ const UI = {
     time: "时间",
     empty: "还没有命令。",
     fail: "打不开",
-    noKey: "地址里没有 key。",
+    noKey: "地址里没有 key，服务上也没有已加载的协议。",
     linked: (n, c, type) => `步骤 ${n} → 命令 ${c} ${type}`,
     matched: "与分析 JSON 对得上",
     mismatched: "commandId 对不上",
@@ -37,7 +37,7 @@ const UI = {
     time: "Time",
     empty: "No command yet.",
     fail: "Could not open",
-    noKey: "The address has no key.",
+    noKey: "The address has no key and the server has no loaded protocol.",
     linked: (n, c, type) => `Step ${n} → command ${c} ${type}`,
     matched: "Matches the analysis JSON",
     mismatched: "commandId does not match",
@@ -59,7 +59,9 @@ const UI = {
 };
 
 const params = new URLSearchParams(location.search);
-const key = params.get("key");
+// Reassignable: when the address arrives without ?key= the page adopts the
+// model the server has loaded (see adoptRegisteredKey) instead of failing.
+let key = params.get("key");
 const stepsEl = document.getElementById("steps");
 const commandEl = document.getElementById("command");
 const timeEl = document.getElementById("time");
@@ -113,9 +115,10 @@ function renderChrome() {
 function stepVerb(step) {
   const text = ui();
   const raw = step.text || "";
-  if (step.kind === "aspirate") return raw.includes("混匀") ? text.mixAspirate : text.aspirate;
-  if (step.kind === "dispense") return raw.includes("混匀") ? text.mixDispense : text.dispense;
-  if (step.kind === "moveLabware") return raw.includes("夹爪") ? text.moveGrip : text.moveHand;
+  const mixing = raw.includes("混匀") || raw.includes("Mix");
+  if (step.kind === "aspirate") return mixing ? text.mixAspirate : text.aspirate;
+  if (step.kind === "dispense") return mixing ? text.mixDispense : text.dispense;
+  if (step.kind === "moveLabware") return raw.includes("夹爪") || raw.includes("Gripper") ? text.moveGrip : text.moveHand;
   if (step.kind === "dropTip" || step.kind === "dropTipInPlace") return text.dropTip;
   return text[step.kind] || step.kind;
 }
@@ -123,16 +126,16 @@ function stepVerb(step) {
 function stepTail(step) {
   const raw = (step.text || "").trim();
   const cut = {
-    home: /^回原点(?:\s*\(home\))?/,
-    pickUpTip: /^取枪头/,
-    aspirate: /^(?:混匀·吸|吸液)/,
-    dispense: /^(?:混匀·打|分液)/,
-    moveToAddressableAreaForDropTip: /^移到垃圾桶/,
-    moveToAddressableArea: /^移到/,
-    dropTipInPlace: /^弃枪头/,
-    dropTip: /^弃枪头/,
-    moveLabware: /^(?:夹爪搬运|手动移动)/,
-    loadLiquid: /^加载液体/,
+    home: /^(?:Home|回原点(?:\s*\(home\))?)/,
+    pickUpTip: /^(?:Pick up tip|取枪头)/,
+    aspirate: /^(?:Mix asp|Aspirate|混匀·吸|吸液)/,
+    dispense: /^(?:Mix dis|Dispense|混匀·打|分液)/,
+    moveToAddressableAreaForDropTip: /^(?:Move to trash bin|Move to waste chute|移到垃圾桶)/,
+    moveToAddressableArea: /^(?:Move to|移到)/,
+    dropTipInPlace: /^(?:Drop tip|弃枪头)/,
+    dropTip: /^(?:Drop tip|弃枪头)/,
+    moveLabware: /^(?:Gripper carry|Manual move|夹爪搬运|手动移动)/,
+    loadLiquid: /^(?:Load liquid|加载液体)/,
   }[step.kind];
   // The captions double-space around arrows for the JPEG title card; the list shows single spaces.
   return (cut ? raw.replace(cut, "") : raw).replace(/\s+/g, " ").trim();
@@ -418,8 +421,27 @@ function mount(payload) {
   window.__flex = { camera, controls, scene, renderer };
 }
 
+async function adoptRegisteredKey() {
+  // The address is easy to hand over without ?key=. Ask which model is loaded
+  // and adopt it, so a bare /viewer.html (or an old bookmark) still works.
+  try {
+    const res = await fetch("/flex3d/health");
+    if (!res.ok) return false;
+    const health = await res.json();
+    const models = Array.isArray(health.models) ? health.models : [];
+    if (!models.length) return false;
+    key = models[models.length - 1];
+    const url = new URL(location.href);
+    url.searchParams.set("key", key);
+    history.replaceState(null, "", url);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function boot() {
-  if (!key) {
+  if (!key && !(await adoptRegisteredKey())) {
     broken = "nokey";
     renderChrome();
     return;

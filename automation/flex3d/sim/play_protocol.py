@@ -5,8 +5,8 @@
     PYTHONPATH=. ~/Library/Python/3.9/bin/mjpython -m sim.play_protocol <protocol> --view
 
 A ``.py`` is analyzed first with the Opentrons package found through
-``OPENTRONS_PYTHON`` (default: the Flexagent ``labscriptai`` venv next to this
-folder), which writes ``<name>.analysis.json`` beside it.
+``OPENTRONS_PYTHON`` (or the current interpreter). Analysis files stay under
+``PLUGIN_DATA/flex3d/analyses``.
 
 Checks, all against the analysis JSON, before anything is rendered:
 
@@ -20,14 +20,21 @@ Checks, all against the analysis JSON, before anything is rendered:
   trash bin, the enclosure or another tool;
 * liquid: volumes never go negative and the final plate is reported.
 
-Outputs go to ``exports/mujoco/protocols/<name>/``: ``flex.xml``, an MP4, key
-stills, a contact sheet and ``<name>_trace.json`` (per command: position from
-the JSON, position in MuJoCo, error, wells under each nozzle, video time).
+Outputs go to ``runs/protocols/<name>/`` (or ``FLEX3D_EXPORT`` when set): the
+``flex.xml`` model and its scene assets, which are needed to build the scene at
+all, plus ``<name>_trace.json`` (per command: position from the JSON, position in
+MuJoCo, error, wells under each nozzle, video time).
+
+Rendering is opt-in and off by default, so a plain run leaves no images behind:
+``--stills`` writes the key stills and the contact sheet, ``--video`` writes an
+MP4, and ``--frame T`` writes single frames at specific times. Use ``--view`` to
+open the interactive MuJoCo window instead of rendering anything.
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import os
@@ -59,7 +66,7 @@ from sim.flex_scene import EXPORT, MM, ROOT, camera_axes, deck_camera_pose, liqu
 
 OUT_ROOT = EXPORT / "protocols"
 NOZZLE_ROWS = flex_shell.NOZZLE_ROWS
-DEFAULT_OPENTRONS_PYTHON = os.environ.get("OPENTRONS_PYTHON", "python3")
+DEFAULT_OPENTRONS_PYTHON = os.environ.get("OPENTRONS_PYTHON", sys.executable)
 
 FRAME_W, FRAME_H = 1440, 810
 MAIN_W = 1000
@@ -99,7 +106,8 @@ def find_font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont:
 
 def analyze(protocol: Path) -> Path:
     python = os.environ.get("OPENTRONS_PYTHON", DEFAULT_OPENTRONS_PYTHON)
-    out = protocol.with_suffix(".analysis.json")
+    out = EXPORT / "analyses" / f"{protocol.stem}-{hashlib.sha256(protocol.read_bytes()).hexdigest()[:12]}.analysis.json"
+    out.parent.mkdir(parents=True, exist_ok=True)
     done = subprocess.run(
         [str(python), "-m", "opentrons.cli", "analyze", "--json-output", str(out), str(protocol)],
         capture_output=True,
@@ -162,7 +170,10 @@ class Scene:
                 names = [f"{eight_tip[pip.tool]}_{r}" for r in NOZZLE_ROWS]
             self.tips[pip.tool] = [(_id(model, G, n), _id(model, G, f"{n}_liquid"), model.geom_pos[_id(model, G, n)].copy()) for n in names]
             self.tip_table[pip.tool] = self._tip_volume_table(pip.tip)
-        self.lids = {m.key: _id(model, G, f"{m.key}_lid") for m in run.modules.values() if m.lid_mm}
+        self.lids = {m.key: _id(model, G, f"{m.key}_lid") for m in run.modules.values()
+                     if m.lid_mm and mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, f'{m.key}_detail_lid') < 0}
+        from sim.flex_module_assets import ModuleMotion
+        self.module_motion = ModuleMotion(model, run)
         # The model builds one pipette body per mount the run loads (an empty
         # mount stays empty), so there is no unused tool left to hide.
         self.base_rgba = model.geom_rgba.copy()
@@ -205,6 +216,7 @@ class Scene:
         for key, gid in self.lids.items():
             if key not in state.lid_closed:
                 m.geom_rgba[gid, 3] = 0.0
+        self.module_motion.apply(state)
         for key, wells in self.rack.items():
             present = state.rack.get(key, set())
             for well, gid in wells.items():
@@ -269,7 +281,7 @@ def expected_position(plan: Plan, arrival, state: State) -> tuple[float, float, 
         # The trash center is not that point, so comparing them is a false miss.
         if params.get("alternateDropLocation"):
             return tuple(arrival.position_mm)
-        area = run.trash[params["addressableAreaName"]]
+        area = run.trash.get(params["addressableAreaName"]) or run.chutes[params["addressableAreaName"]]
         off = params.get("offset") or {"x": 0, "y": 0, "z": 0}
         o, s = area.origin_mm, area.size_mm
         return (o[0] + s[0] / 2 + off["x"], o[1] + s[1] / 2 + off["y"], o[2] + s[2] + off["z"])
@@ -279,6 +291,11 @@ def expected_position(plan: Plan, arrival, state: State) -> tuple[float, float, 
     o = state.origin[key]
     loc = params.get("wellLocation") or {"origin": "top", "offset": {"x": 0, "y": 0, "z": 0}}
     off = loc.get("offset") or {"x": 0, "y": 0, "z": 0}
+    if loc.get('origin') == 'default' and cmd['commandType'] == 'dropTip':
+        # Modern analyses leave return-tip height hardware-dependent. It is
+        # resolved in result.position, not derivable from the labware alone.
+        # Still check x/y independently and check MuJoCo z against that result.
+        return (o[0] + well.x + off['x'], o[1] + well.y + off['y'], arrival.position_mm[2])
     base = {"top": well.z + well.depth, "bottom": well.z, "center": well.z + well.depth / 2}[loc.get("origin", "top")]
     return (o[0] + well.x + off["x"], o[1] + well.y + off["y"], o[2] + base + off["z"])
 
@@ -388,6 +405,8 @@ def _subtree(model, root: str) -> list[int]:
 def check_clearance(plan: Plan, scene: Scene) -> tuple[float, str, int]:
     """Sweep the path: tools and carried labware against labware, trash, enclosure and each other."""
 
+    if all(key.q == plan.keys[0].q for key in plan.keys):
+        return 0.0, "no gantry or labware movement", 0
     model, data, run = scene.model, scene.data, plan.run
     layout = flex_shell.Layout.for_deck(run.deck)
     inner_lo = np.array([layout.ix0, layout.iy0, 0.0])
@@ -415,8 +434,9 @@ def check_clearance(plan: Plan, scene: Scene) -> tuple[float, str, int]:
         if n.startswith("body_"):
             key = n[5:]
         if key in mod_keys:
-            obstacle.append(g)
-            obstacle_key.append(key)
+            if '_visual_' not in n:
+                obstacle.append(g)
+                obstacle_key.append(key)
         elif key in lw_keys and "_liquid_" not in n:
             obstacle.append(g)
             obstacle_key.append(key)
@@ -426,7 +446,7 @@ def check_clearance(plan: Plan, scene: Scene) -> tuple[float, str, int]:
                 well_of[g] = (key, lw.wells[rest], lw.is_tiprack)
             if n.startswith("body_"):
                 rack_body[g] = key
-        elif n.startswith("trash_"):
+        elif n.startswith(("trash_", "waste_chute_")):
             obstacle.append(g)
             obstacle_key.append("trash")
     obstacle = np.array(obstacle)
@@ -567,6 +587,8 @@ def draw_deck_map(plan: Plan, state: State, step, fonts: Fonts, size=(PANEL_W, M
     draw = ImageDraw.Draw(img)
     sw, sd = deck.slot_size
     xs = [p[0] for p in deck.slots.values()] + [b.origin_mm[0] + b.size_mm[0] for b in run.trash.values()]
+    if run.chute is not None:
+        xs += [run.chute.origin_mm[0] + run.chute.size_mm[0]]
     x_lo, x_hi = -6.0, max(max(xs) + 6.0, max(p[0] for p in deck.slots.values()) + sw + 6.0)
     y_lo, y_hi = -6.0, max(p[1] for p in deck.slots.values()) + sd + 6.0
     pad_top = 22
@@ -576,7 +598,7 @@ def draw_deck_map(plan: Plan, state: State, step, fonts: Fonts, size=(PANEL_W, M
     def px(x: float, y: float) -> tuple[float, float]:
         return (ox + (x - x_lo) * scale, size[1] - 8 - (y - y_lo) * scale)
 
-    draw.text((10, 4), "甲板俯视 (实时)", font=fonts.small, fill=(170, 176, 184))
+    draw.text((10, 4), "Deck top view (live)", font=fonts.small, fill=(170, 176, 184))
     hot = set(step.slots) if step else set()
     for name, pos in deck.slots.items():
         a, b = px(pos[0], pos[1] + sd), px(pos[0] + sw, pos[1])
@@ -587,13 +609,19 @@ def draw_deck_map(plan: Plan, state: State, step, fonts: Fonts, size=(PANEL_W, M
         a, b = px(o[0], o[1] + s[1]), px(o[0] + s[0], o[1])
         slot = bin_.name.replace("movableTrash", "")
         draw.rectangle((a, b), fill=(16, 17, 19), outline=(255, 160, 40) if slot in hot else (96, 100, 106), width=3 if slot in hot else 1)
-        draw.text(((a[0] + b[0]) / 2 - 20, (a[1] + b[1]) / 2 - 7), "垃圾桶", font=fonts.tiny, fill=(190, 194, 200))
+        draw.text(((a[0] + b[0]) / 2 - 20, (a[1] + b[1]) / 2 - 7), "Trash", font=fonts.tiny, fill=(190, 194, 200))
     for mod in run.modules.values():
         (ax, ay, _), (ix, iy), (mx, my) = mod.area_mm, mod.interface, mod.margin
         a, b = px(ax - mx, ay + iy + my), px(ax + ix + mx, ay - my)
         hot_mod = mod.slot in hot
         draw.rectangle((a, b), fill=(92, 98, 108), outline=(255, 160, 40) if hot_mod else (150, 156, 164), width=3 if hot_mod else 1)
         draw.text((a[0] + 3, b[1] - 13), mod.label, font=fonts.tiny, fill=(225, 228, 232))
+    if run.chute is not None:
+        o, s = run.chute.origin_mm, run.chute.size_mm
+        a, b = px(o[0], o[1] + s[1]), px(o[0] + s[0], o[1])
+        active = step is not None and step.kind == "moveToAddressableAreaForDropTip" and "chute" in step.text.lower()
+        draw.rectangle((a, b), fill=(16, 17, 19), outline=(255, 160, 40) if active else (96, 100, 106), width=3 if active else 1)
+        draw.text(((a[0] + b[0]) / 2 - 24, (a[1] + b[1]) / 2 - 7), "Chute", font=fonts.tiny, fill=(190, 194, 200))
     for lw in sorted(run.labware.values(), key=lambda item: state.origin[item.key][2]):
         o = state.origin[lw.key]
         L = lw.labware
@@ -647,10 +675,10 @@ def draw_text_panel(plan: Plan, step, t: float, fonts: Fonts, size) -> Image.Ima
     w = size[0] - 28
     y = 12
     if step is None:
-        draw.text((14, y), "准备运行", font=fonts.big, fill=(30, 34, 40))
+        draw.text((14, y), "Preparing to run", font=fonts.big, fill=(30, 34, 40))
         return img
     index = steps.index(step) + 1 if step in steps else 0
-    draw.text((14, y), f"命令 {step.cmd + 1}  ·  步骤 {index}/{len(steps)}", font=fonts.small, fill=(110, 116, 124))
+    draw.text((14, y), f"Command {step.cmd + 1}  ·  Step {index}/{len(steps)}", font=fonts.small, fill=(110, 116, 124))
     y += 22
     for line in _wrap(draw, step.text, fonts.big, w)[:3]:
         draw.text((14, y), line, font=fonts.big, fill=(20, 24, 30))
@@ -661,7 +689,7 @@ def draw_text_panel(plan: Plan, step, t: float, fonts: Fonts, size) -> Image.Ima
     y += 8
     draw.line((14, y, size[0] - 14, y), fill=(222, 226, 230))
     y += 8
-    draw.text((14, y), "接下来", font=fonts.small, fill=(110, 116, 124))
+    draw.text((14, y), "Next", font=fonts.small, fill=(110, 116, 124))
     y += 20
     for nxt in steps[index : index + 4]:
         line = _wrap(draw, nxt.text, fonts.body, w)[0]
@@ -755,7 +783,7 @@ class Renderer:
         frame.paste(close, (MAIN_W, 0))
         label = ImageDraw.Draw(frame, "RGBA")
         label.rounded_rectangle((MAIN_W + 8, 8, MAIN_W + 92, 30), 6, fill=(16, 18, 22, 190))
-        label.text((MAIN_W + 16, 10), "跟随特写", font=self.fonts.small, fill=(255, 255, 255))
+        label.text((MAIN_W + 16, 10), "Follow close-up", font=self.fonts.small, fill=(255, 255, 255))
         frame.paste(draw_deck_map(self.plan, state, step, self.fonts), (MAIN_W, CLOSE_H))
         frame.paste(draw_text_panel(self.plan, step, t, self.fonts, (PANEL_W, FRAME_H - CLOSE_H - MAP_H)), (MAIN_W, CLOSE_H + MAP_H))
         return frame
@@ -866,7 +894,7 @@ def pick_stills(plan: Plan, limit: int = 9) -> list:
         first = next((s for s in steps if s.kind == kind), None)
         if first:
             chosen.append(first)
-    mix = next((s for s in steps if s.text.startswith("混匀")), None)
+    mix = next((s for s in steps if s.text.startswith("Mix")), None)
     if mix:
         chosen.append(mix)
     moves = [s for s in steps if s.kind == "moveLabware"]
@@ -926,7 +954,7 @@ def contact_sheet(plan: Plan, thumbs, path: Path, fonts: Fonts) -> Path:
         x = 10 + (k % cols) * (tw + 10)
         y = 60 + (k // cols) * (th + cap + 10)
         sheet.paste(img.resize((tw, th), Image.LANCZOS), (x, y))
-        text = f"命令 {step.cmd + 1}: {step.text}" if step else "运行结束"
+        text = f"Command {step.cmd + 1}: {step.text}" if step else "Run complete"
         for i, line in enumerate(_wrap(draw, text, fonts.body, tw - 8)[:2]):
             draw.text((x + 4, y + th + 4 + i * 19), line, font=fonts.body, fill=(30, 34, 40))
     sheet.save(path)
@@ -998,7 +1026,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Animate a Flex protocol from its opentrons analysis")
     parser.add_argument("protocol", type=Path, help="protocol .py (analyzed first) or .analysis.json")
     parser.add_argument("--view", action="store_true", help="open the MuJoCo window instead of rendering")
-    parser.add_argument("--no-video", action="store_true", help="checks and stills only")
+    parser.add_argument("--stills", action="store_true", help="also write the still PNGs and the contact sheet (off by default)")
+    parser.add_argument("--video", action="store_true", help="also write an MP4 (slow; off by default)")
     parser.add_argument("--fps", type=int, default=30)
     parser.add_argument("--frame", type=float, action="append", help="render only the frame at this time (s); repeatable")
     args = parser.parse_args()
@@ -1031,7 +1060,7 @@ def main() -> None:
     print(f"Geometry: PASS ({len(hits)} positional commands; JSON vs labware definition worst {worst_json:.3f} mm)")
     print(f"Targets: PASS (MuJoCo tip end vs JSON position worst {worst_sim:.3f} mm; every nozzle over its well, tip ends inside the wells)")
     clearance, tightest, samples = check_clearance(plan, scene)
-    print(f"Clearance: PASS ({samples} samples; no labware, trash, wall or tool collisions; tightest enclosure gap {clearance * 1000:.1f} mm at {tightest})")
+    print(f"Clearance: PASS ({samples} samples; tightest enclosure gap {clearance * 1000:.1f} mm at {tightest})" if samples else "Clearance: NOT APPLICABLE (no gantry or labware movement)")
     liquid = check_liquid(plan)
     print("Liquid: PASS (no negative volumes)")
     for lw_name, wells in liquid.items():
@@ -1047,16 +1076,27 @@ def main() -> None:
         view(plan, scene)
         return
 
-    renderer = Renderer(plan, scene)
+    # Rendering is opt-in: without --frame/--stills/--video nothing is drawn, so a
+    # plain run cannot leave PNG or MP4 files behind. The MuJoCo renderers are only
+    # built when something actually needs them.
+    renderer = None
+    if args.frame or args.stills or args.video:
+        renderer = Renderer(plan, scene)
+
     if args.frame:
         for t in args.frame:
             path = folder / f"{name}_t{t:06.2f}.png"
             renderer.frame(t, smooth_focus=False).save(path)
             print(f"Frame: {path}")
         return
-    stills = render_stills(plan, renderer, folder, name)
-    for path in stills:
-        print(f"Still: {path}")
+
+    if args.stills:
+        stills = render_stills(plan, renderer, folder, name)
+        for path in stills:
+            print(f"Still: {path}")
+    else:
+        print("Stills: skipped (pass --stills to also write PNGs)")
+
     extra = {
         "checks": {
             "json_vs_definition_worst_mm": round(worst_json, 4),
@@ -1066,7 +1106,7 @@ def main() -> None:
         },
         "duration_s": round(plan.duration, 2),
     }
-    if not args.no_video:
+    if args.video:
         video = folder / f"{name}.mp4"
         started = time.monotonic()
         frames = render_video(plan, renderer, video, args.fps)

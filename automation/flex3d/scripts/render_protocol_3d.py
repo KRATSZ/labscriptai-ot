@@ -9,6 +9,7 @@ a degraded error and exits 0 so the caller can keep going.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -25,6 +26,7 @@ FLEX_ROBOTS = {"OT-3 Standard", "Flex"}
 
 
 def emit(payload: dict) -> None:
+    payload.setdefault("status", "unknown")
     sys.stdout.reconfigure(encoding="utf-8")
     json.dump(payload, sys.stdout, ensure_ascii=False)
     sys.stdout.write("\n")
@@ -77,17 +79,19 @@ def load_raw(path: Path) -> dict:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Flex 3D checks for one analysis")
     parser.add_argument("source", type=Path, help="analysis JSON or protocol .py")
-    parser.add_argument("--video", action="store_true", help="also write an MP4")
     parser.add_argument("--out", type=Path, default=None)
     args = parser.parse_args()
 
     source = args.source.resolve()
     if not source.is_file():
-        emit({"ok": False, "error": "missing_source", "message": f"找不到 {source}", "checks": [], "files": []})
+        emit({"ok": False, "error": "missing_source", "message": f"missing file: {source}", "checks": [], "files": []})
 
+    export = args.out or os.environ.get("FLEX3D_EXPORT") or Path(os.environ.get("PLUGIN_DATA", ROOT.parents[1] / ".plugin-data")) / "flex3d"
+    os.environ["FLEX3D_EXPORT"] = str(Path(export).resolve())
     if source.suffix == ".py":
         python = os.environ.get("OPENTRONS_PYTHON", sys.executable)
-        produced = source.with_suffix(".analysis.json")
+        produced = Path(export) / "analyses" / f"{source.stem}-{hashlib.sha256(source.read_bytes()).hexdigest()[:12]}.analysis.json"
+        produced.parent.mkdir(parents=True, exist_ok=True)
         done = subprocess.run(
             [python, "-m", "opentrons.cli", "analyze", "--json-output", str(produced), str(source)],
             capture_output=True,
@@ -115,26 +119,26 @@ def main() -> None:
         emit({
             "ok": False,
             "supported": False,
+            "status": "not_applicable",
             "error": "ot2_not_supported",
             "robot_type": kind,
-            "message": f"三维预览目前只支持 Flex，这份协议是 {kind}",
+            "message": f"the 3D preview only supports Flex; this protocol is {kind}",
             "checks": [],
             "files": [],
         })
 
-    os.environ.setdefault("FLEX3D_EXPORT", str(args.out or (ROOT / "runs")))
     try:
         import mujoco
         from sim.flex_protocol import ProtocolError, load_analysis, plan as make_plan, scene_spec
         from sim.flex_scene import EXPORT, load_deck, load_model, write_model
-        from sim.play_protocol import Renderer, Scene, check_clearance, check_liquid, check_targets, render_video
+        from sim.play_protocol import Scene, check_clearance, check_liquid, check_targets
     except ImportError as exc:
         emit({
             "ok": False,
             "degraded": True,
             "error": "mujoco_missing",
             "robot_type": kind,
-            "message": f"未安装 mujoco（或 numpy/Pillow），三维预览和四项检查不可用：{exc}",
+            "message": f"mujoco (or numpy/Pillow) is not installed, so the 3D preview and its four checks are unavailable: {exc}",
             "checks": [],
             "files": [],
         })
@@ -190,8 +194,8 @@ def main() -> None:
         clearance, tightest, samples = check_clearance(plan, scene)
         checks.append(check_item(
             "clearance",
-            "pass",
-            f"{samples} samples; tightest enclosure gap {clearance * 1000:.1f} mm at {tightest}",
+            "pass" if samples else "not_applicable",
+            f"{samples} samples; tightest enclosure gap {clearance * 1000:.1f} mm at {tightest}" if samples else tightest,
         ))
     except RuntimeError as exc:
         checks.append(check_item("clearance", "fail", str(exc), plan))
@@ -212,15 +216,14 @@ def main() -> None:
     trace.write_text(json.dumps({"robot_type": kind, "checks": checks}, indent=2), encoding="utf-8")
     files.append({"kind": "checks", "path": str(trace)})
 
-    if args.video:
-        video = out / f"{source.stem}.mp4"
-        renderer = Renderer(plan, scene)
-        render_video(plan, renderer, video, 30)
-        files.append({"kind": "mp4", "path": str(video)})
+    # No video branch here on purpose: a 3D request is served by the online
+    # viewer (sim/web_player.py). This check path must not render or export
+    # video/image files.
 
     failed = [item["name"] for item in checks if item["status"] == "fail"]
     emit({
-        "ok": True,
+        "ok": not failed,
+        "status": "failed" if failed else "passed",
         "supported": True,
         "advisory": True,
         "robot_type": kind or "OT-3 Standard",

@@ -4,9 +4,9 @@ description: Local doctor, analyze, simulate, and LogicPass for Opentrons Python
 type: script-backed
 entry: scripts/verify_protocol.py
 mcp_tools:
-  - doctor_local_runtime
+  - health_check(scope=local)
   - simulate_protocol
-  - parse_simulation_output
+  - simulate_protocol
   - logicpass_check
   - flex3d_preflight_check
 ---

@@ -144,15 +144,14 @@ export function buildRestartReview({
   const suggestedToolOrder = uniqueOrdered([
     ...(needsReconcile ? ["reconcile_state"] : []),
     "robot_status",
-    "module_status",
-    ...(followActiveRun ? ["run_history", "parse_error"] : []),
-    "experiment_history",
+    ...(followActiveRun ? ["query_history", "parse_error"] : []),
+    "query_history",
     "is_home_safe",
   ]);
 
   let narrative = needsReconcile
     ? "Session needs_reconciliation is true: call reconcile_state before autonomous physical motion. Result logs are audit-only and may show older successes that do not reflect the deck now."
-    : "Committed session state has no reconciliation flag; still poll robot_status and module_status after restart. Use experiment_history only for narrative context, not current deck truth.";
+    : "Committed session state has no reconciliation flag; still poll robot_status(include_modules=true) after restart. Use query_history(scope=experiment_logs) only for narrative context, not current deck truth.";
 
   if (homeSafety && homeSafety.auto_home_allowed === false) {
     narrative +=
@@ -188,10 +187,8 @@ export function buildRestartReview({
 const TOOL_HINTS = {
   reconcile_state: "Sync committed session deck state with the physical deck.",
   robot_status: "Live door, estop, and current command snapshot.",
-  module_status: "Module readiness (thermocycler, heater-shaker, temperature).",
-  run_history: "Command timeline for the active or last run.",
+  query_history: "Run command history (scope=run_commands), or local audit logs (scope=experiment_logs).",
   parse_error: "Structured runtime error for a run.",
-  experiment_history: "Audit narrative from persisted logs only.",
   is_home_safe: "Gate before homing or cleanup that implies homing.",
 };
 
@@ -303,8 +300,8 @@ export function buildSafeNextAction(restartReviewData = {}) {
       operator_steps_zh.push(`${nz++}. 通过标准：${criteria.join(" | ")}。`);
     }
   }
-  operator_steps.push(`${n++}. Call robot_status and module_status (pass robot_ip).`);
-  operator_steps_zh.push(`${nz++}. 调用 robot_status 和 module_status，只读确认机器状态。`);
+  operator_steps.push(`${n++}. Call robot_status(include_modules=true) (pass robot_ip).`);
+  operator_steps_zh.push(`${nz++}. 调用 robot_status(include_modules=true)，只读确认机器状态。`);
   if (liquidIdentityInputsNeededSummary.count > 0) {
     operator_steps_zh.push(
       `${nz++}. 液体身份还缺 ${liquidIdentityInputsNeededSummary.count} 个孔位：${liquidIdentityInputsNeededSummary.keys.join(", ")}。`,
@@ -331,10 +328,10 @@ export function buildSafeNextAction(restartReviewData = {}) {
   }
   if (lastRunId) {
     operator_steps.push(
-      `${n++}. last_run_id is set (${lastRunId}): use run_history then parse_error if that run still matters.`,
+      `${n++}. last_run_id is set (${lastRunId}): use query_history(scope=run_commands) then parse_error if that run still matters.`,
     );
     operator_steps_zh.push(
-      `${nz++}. last_run_id=${lastRunId}；如果这个 run 仍相关，再查 run_history 和 parse_error。`,
+      `${nz++}. last_run_id=${lastRunId}；如果这个 run 仍相关，再查 query_history(scope=run_commands) 和 parse_error。`,
     );
   }
   if (homeBlocked) {
@@ -354,9 +351,9 @@ export function buildSafeNextAction(restartReviewData = {}) {
     }
   }
   operator_steps.push(
-    `${n++}. Use experiment_history only for audit context, not as current deck truth.`,
+    `${n++}. Use query_history(scope=experiment_logs) only for audit context, not as current deck truth.`,
   );
-  operator_steps_zh.push(`${nz++}. experiment_history 只当审计记录，不当当前 deck 真相。`);
+  operator_steps_zh.push(`${nz++}. query_history(scope=experiment_logs) 只当审计记录，不当当前 deck 真相。`);
   operator_steps.push(
     `${n++}. Before home: is_home_safe (or use home_safety_preview when robot_ip was provided).`,
   );
@@ -367,6 +364,9 @@ export function buildSafeNextAction(restartReviewData = {}) {
     order: idx + 1,
     tool,
     hint: TOOL_HINTS[tool] || "See MCP tool description.",
+    args: tool === "query_history"
+      ? { scope: lastRunId ? "run_commands" : "experiment_logs", ...(lastRunId ? { run_id: lastRunId } : {}) }
+      : tool === "robot_status" ? { include_modules: true } : {},
   }));
 
   return {

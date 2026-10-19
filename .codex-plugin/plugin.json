@@ -1,6 +1,6 @@
 {
   "name": "labscriptai-ot",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "LabscriptAI Opentrons plugin bundle for Codex-style agents.",
   "author": {
     "name": "gaoyuan",
@@ -9,18 +9,27 @@
   "homepage": "https://github.com/KRATSZ/labscriptai-ot",
   "repository": "https://github.com/KRATSZ/labscriptai-ot",
   "license": "SEE LICENSE IN LICENSE",
-  "keywords": ["opentrons", "labscriptai", "mcp", "codex", "robotics"],
-  "hooks": "./hooks/codex/hooks.json",
+  "keywords": [
+    "opentrons",
+    "labscriptai",
+    "mcp",
+    "codex",
+    "robotics"
+  ],
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",
   "policy": "./policy/",
   "interface": {
     "displayName": "LabscriptAI OT",
     "shortDescription": "Opentrons simulation-first authoring and safe MCP runtime",
-    "longDescription": "LabscriptAI OT bundles seven Opentrons skills, a local MCP server, safety policy, and a small curated protocol library. Live robot actions stay opt-in and simulation remains the gate before unattended execution.",
+    "longDescription": "LabscriptAI OT bundles Opentrons skills, a local MCP server, safety policy, and a small curated protocol library. Live robot actions stay opt-in and simulation remains the gate before unattended execution.",
     "developerName": "gaoyuan",
     "category": "Coding",
-    "capabilities": ["Interactive", "Read", "Write"],
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write"
+    ],
     "defaultPrompt": [
       "Help me design a Flex liquid-handling experiment from scratch — review intent first, then write and simulate the protocol",
       "Check whether this Opentrons protocol can pass local simulation safely",

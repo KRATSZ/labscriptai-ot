@@ -55,7 +55,7 @@ export function buildHealthCheck(args = {}) {
     report.venv.status = "missing";
     report.venv.hint = args.python_executable || process.env.OPENTRONS_PYTHON
       ? "Provided python_executable does not exist; check the path or OPENTRONS_PYTHON."
-      : "Run: uv venv .venv && uv sync --extra protocol";
+      : "Run: uv sync --frozen";
   } else {
     try {
       const version = execFileSync(venvPython, ["-c", "import sys; print(sys.version.split()[0])"], {
@@ -78,7 +78,7 @@ export function buildHealthCheck(args = {}) {
       report.venv.opentrons = otVersion;
     } catch {
       report.venv.opentrons = "not_installed";
-      report.venv.opentrons_hint = "Run: uv sync --extra protocol";
+      report.venv.opentrons_hint = "Run: uv sync --frozen";
     }
   }
 

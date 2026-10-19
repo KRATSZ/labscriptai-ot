@@ -375,7 +375,7 @@ export function buildLiquidSourceSubstitutionPlan({
     blocked_reason: autoResumeEligible
       ? "suffix_plan_not_sufficient"
       : "liquid_source_substitution_requires_validated_presence_before_auto_resume",
-    required_next_step: "prepare_liquid_source_substitution_recovery",
+    required_next_step: "liquid_source_substitution (action=prepare_recovery)",
   });
   return {
     ...planned,

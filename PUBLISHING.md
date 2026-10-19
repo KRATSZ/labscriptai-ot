@@ -21,18 +21,27 @@ Gao, Yuan et al. Autonomous Liquid-handling Robotics Scripting for Accessible an
 From the repository root:
 
 ```bash
-python3 scripts/build_curated_library.py --limit 40
 python3 scripts/package_labscriptai_ot.py
 ```
 
-The output goes to `dist/labscriptai-ot/`:
+The output goes to `dist/`:
 
-- `labscriptai-ot-0.1.0-cursor.zip`
-- `labscriptai-ot-0.1.0-claude-code.zip`
-- `labscriptai-ot-0.1.0-codex.zip`
-- `release-manifest.json`
+- `labscriptai-ot-0.1.1.zip` — one runtime package for Cursor, Claude Code and Codex
+- `labscriptai-ot-flex3d-details-0.1.1.zip` — optional detailed module meshes
+- `release-manifest.json` — version, sizes, file counts and SHA-256 hashes
 
-The three archives contain the same single plugin. They are named separately so each platform can receive the matching artifact.
+The runtime package excludes development tests, QA notes, local state, secrets, Python/Node environments, vision training weights and model authoring sources. The detail pack includes only the OBJ meshes required at runtime, their manifest/provenance, and license/citation files. Extract either ZIP into the same parent directory; both use `labscriptai-ot/` as their root. Basic module models work without the detail pack.
+
+Before publishing:
+
+```bash
+node scripts/lint-manifests.mjs
+npm --prefix servers/opentrons-mcp test
+PYTHONPATH=automation/flex3d .venv/bin/python -m unittest discover -s automation/flex3d/tests
+python3 -m unittest discover -s scripts -p 'test_package_labscriptai_ot.py'
+```
+
+Validate a fresh extracted runtime package using its installer, MCP handshake, simulation, LogicPass and 3D preview before attaching the ZIPs to a release. Keep release archives out of Git.
 
 ## Cursor
 
@@ -45,7 +54,7 @@ Use these files:
 
 Practical install path:
 
-1. Unzip the Cursor archive into the target repo or plugin directory.
+1. Unzip the runtime archive into the target repo or plugin directory.
 2. Run `bash labscriptai-ot/install-labscriptai-ot.sh`.
 3. If using project config, copy `labscriptai-ot/.cursor/mcp.json` and `labscriptai-ot/.cursor/rules/` into the consuming project.
 

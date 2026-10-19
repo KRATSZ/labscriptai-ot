@@ -20,13 +20,6 @@ export function tickOutboxKind(status, goalStatus) {
   return "heartbeat";
 }
 
-export function shouldWakeOnTick(status, goalStatus, zeroLlmWhenNoError) {
-  if (!zeroLlmWhenNoError) {
-    return true;
-  }
-  return tickOutboxKind(status, goalStatus) !== "heartbeat";
-}
-
 export function appendWatchLoopOutboxEntry(event = {}, { outboxDir = null, dedupe = true } = {}) {
   return appendRuntimeOutboxEvent(event, { outboxDir, dedupe });
 }

@@ -8,7 +8,7 @@ from opentrons import protocol_api
 metadata = {
     "protocolName": "Flex — serial dilution (row) example",
     "author": "LabscriptAI OT example",
-    "description": "Row A: A1 stock, A2 primed, serial transfer along A — 7 steps, 50 µL.",
+    "description": "Row A: A1 stock, A2 onward primed, serial transfer along A — 7 steps, 50 µL.",
 }
 
 requirements = {"robotType": "Flex", "apiLevel": "2.24"}
@@ -50,11 +50,17 @@ def run(protocol: protocol_api.ProtocolContext) -> None:
     row = "A"
     wells = [f"{row}{i}" for i in range(1, 2 + steps)]
 
-    prime_vol = min(pipette.max_volume, xfer * 2)
-    pipette.pick_up_tip()
-    pipette.aspirate(prime_vol, diluent["A1"])
-    pipette.dispense(prime_vol, plate[wells[1]])
-    pipette.drop_tip(trash)
+    stock = protocol.define_liquid(name="Stock", description="Starting sample", display_color="#ee5555")
+    buffer = protocol.define_liquid(name="Diluent", description="Dilution buffer", display_color="#55aaff")
+    plate["A1"].load_liquid(liquid=stock, volume=2 * xfer)
+    diluent["A1"].load_liquid(liquid=buffer, volume=2000)
+
+    # Equal buffer and transferred sample volumes give a two-fold dilution at every step.
+    for well in wells[1:]:
+        pipette.pick_up_tip()
+        pipette.aspirate(xfer, diluent["A1"])
+        pipette.dispense(xfer, plate[well])
+        pipette.drop_tip(trash)
 
     for i in range(steps):
         src = plate[wells[i]]

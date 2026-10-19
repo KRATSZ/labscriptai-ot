@@ -111,7 +111,7 @@ test("live_liquid_recovery_gate blocks liquid rerun when a tip remains attached"
     assert.deepEqual(result.data.allowed_next_tools, [
       "robot_status",
       "live_liquid_recovery_gate",
-      "experiment_history",
+      "query_history",
     ]);
     assert.equal(result.data.human_required, true);
     assert.equal(result.data.resolution_plan.length, 1);
@@ -198,7 +198,7 @@ test("live_liquid_recovery_gate passes when read-only state is clear", async () 
     assert.equal(result.data.ok_for_live_liquid_rerun, true);
     assert.deepEqual(result.data.failed_checks, []);
     assert.equal(result.data.recommended_next_action, "run_live_liquid_recovery_tests");
-    assert.ok(result.data.allowed_next_tools.includes("runtime_watch_poll"));
+    assert.ok(result.data.allowed_next_tools.includes("runtime_watch"));
     assert.equal(result.data.resolution_plan.length, 1);
     assert.equal(result.data.resolution_plan[0].severity, "ready");
     assert.equal(result.data.resolution_plan[0].no_robot_motion, false);
@@ -475,7 +475,7 @@ test("live_liquid_recovery_gate warns when c3_d3_liquid_recovery source identity
     assert.equal(result.data.recommended_next_action, "confirm_liquid_source_identity_before_semantic_recovery");
     assert.deepEqual(result.data.allowed_next_tools, [
       "record_liquid_source_map",
-      "get_liquid_source_map",
+      "liquid_source_map",
       "live_liquid_recovery_gate",
     ]);
     assert.equal(result.data.human_required, true);
@@ -745,6 +745,30 @@ test("live_liquid_recovery_gate allows targeted no-aspirate re-probe for observe
       delete process.env.OPENTRONS_SESSION_STATE_DIR;
     } else {
       process.env.OPENTRONS_SESSION_STATE_DIR = originalSessionDir;
+    }
+  }
+});
+
+
+test("standalone gate and resolution plans only recommend public MCP calls", async () => {
+  const { buildNextAction, buildResolutionPlan } = await import("../../../scripts/live-liquid-recovery-gate.mjs");
+  const defs = new Map(TOOL_DEFINITIONS.map(tool => [tool.name, tool]));
+  for (const failedCheckNames of [[], ["source_map_requirements"],
+    ["no_attached_tip_before_liquid_probe_rerun"], ["robot_readonly_connectivity"]]) {
+    const args = { failedCheckNames, warningCheckNames: [], manualGateNames: [] };
+    const next = buildNextAction(args);
+    const plan = buildResolutionPlan(args);
+    for (const item of [next, ...plan]) {
+      assert.deepEqual(item.allowed_next_tool_calls.map(call => call.tool), item.allowed_next_tools);
+      for (const { tool, args: params } of item.allowed_next_tool_calls) {
+        assert.ok(defs.has(tool), `Unknown public tool: ${tool}`);
+        for (const key of ["action", "scope", "mode"]) {
+          const field = defs.get(tool).inputSchema.properties[key];
+          if (field?.enum && defs.get(tool).inputSchema.required?.includes(key)) {
+            assert.ok(field.enum.includes(params[key]), `${tool} needs ${key}`);
+          }
+        }
+      }
     }
   }
 });

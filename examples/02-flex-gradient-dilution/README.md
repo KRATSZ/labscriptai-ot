@@ -22,7 +22,7 @@ End-to-end walkthrough: intent → protocol → local simulation. No live robot 
 
 ## Operator prep
 
-1. Load stock/sample into **A1** before starting the run.
+1. Load **twice the transfer volume** of stock/sample into **A1** (100 µL at the default 50 µL transfer). Leave A2 onward empty; the protocol adds buffer to each destination.
 2. Fill reservoir well **A1** with diluent/buffer (≥2 mL recommended).
 3. Place labware per deck layout in `design-notes.json`.
 

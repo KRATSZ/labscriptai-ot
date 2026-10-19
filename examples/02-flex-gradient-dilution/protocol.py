@@ -1,6 +1,7 @@
 """Flex gradient dilution along row A (2-fold serial dilution).
 
-A1 = stock (highest concentration). A2 is primed with diluent (2× transfer volume).
+A1 holds twice the transfer volume of stock. Every destination A2 onward
+is primed with one transfer volume of diluent.
 Each subsequent step transfers xfer µL from well i to well i+1 and mixes,
 producing a geometric concentration gradient: 100%, 50%, 25%, 12.5%, …
 
@@ -12,7 +13,7 @@ from opentrons import protocol_api
 metadata = {
     "protocolName": "Flex — gradient dilution (2-fold, row A)",
     "author": "LabscriptAI OT",
-    "description": "Row A: A1 stock, A2 primed, serial 2-fold gradient — 7 steps, 50 µL.",
+    "description": "Row A: A1 stock, A2 onward primed, serial 2-fold gradient — 7 steps, 50 µL.",
 }
 
 requirements = {"robotType": "Flex", "apiLevel": "2.24"}
@@ -54,12 +55,17 @@ def run(protocol: protocol_api.ProtocolContext) -> None:
     row = "A"
     wells = [f"{row}{i}" for i in range(1, 2 + steps)]
 
-    # Prime A2 with buffer (2× xfer) so first serial step A1→A2 yields 2-fold dilution.
-    prime_vol = min(pipette.max_volume, xfer * 2)
-    pipette.pick_up_tip()
-    pipette.aspirate(prime_vol, diluent["A1"])
-    pipette.dispense(prime_vol, plate[wells[1]])
-    pipette.drop_tip(trash)
+    stock = protocol.define_liquid(name="Stock", description="Starting sample", display_color="#ee5555")
+    buffer = protocol.define_liquid(name="Diluent", description="Dilution buffer", display_color="#55aaff")
+    plate["A1"].load_liquid(liquid=stock, volume=2 * xfer)
+    diluent["A1"].load_liquid(liquid=buffer, volume=2000)
+
+    # Equal buffer and transferred sample volumes give a two-fold dilution at every step.
+    for well in wells[1:]:
+        pipette.pick_up_tip()
+        pipette.aspirate(xfer, diluent["A1"])
+        pipette.dispense(xfer, plate[well])
+        pipette.drop_tip(trash)
 
     for i in range(steps):
         src = plate[wells[i]]

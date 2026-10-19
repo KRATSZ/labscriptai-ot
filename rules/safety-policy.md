@@ -4,10 +4,10 @@ This file is the **single source of truth** for safety rules and hard bans in th
 
 ## Hard bans (do not violate)
 
-1. **Simulation gate is blocking before unattended live execution.** If `simulate_protocol` or `doctor_local_runtime` fails, fix the protocol or environment before live play. Read-only diagnostics may still run to understand the robot state.
+1. **Simulation gate is blocking before unattended live execution.** If `simulate_protocol` or `health_check(scope=local)` fails, fix the protocol or environment before live play. Read-only diagnostics may still run to understand the robot state.
 2. **Live execution prefers MCP, with HTTP fallback as a formal route.** Use MCP `run_protocol` by default. Use `opentrons-robot-lan` / robot HTTP when MCP is unavailable, when debugging MCP itself, or when the operator explicitly chooses the HTTP route. Do not run MCP and HTTP control commands against the same robot at the same time.
 3. **Hardware errors → MCP recovery pipeline.** `parse_error` → `suggest_recovery_action` → `execute_protocol_recovery`. No improvised commands.
-4. **Logs are audit-only.** `experiment_history` is post-hoc review. Current deck truth: `reconcile_state`, `robot_status`, `module_status`.
+4. **Logs are audit-only.** `query_history(scope=experiment_logs)` is post-hoc review. Current deck truth: `reconcile_state`, `robot_status`, `robot_status`.
 5. **No parallel MCP + HTTP/scripts on the same robot.**
 6. **Hard stops require human review.** `HARDWARE_FAULT`, `DECK_COLLISION`, `UNKNOWN` always escalate.
 
@@ -22,9 +22,9 @@ This file is the **single source of truth** for safety rules and hard bans in th
 
 ## Vision and camera
 
-Vision / `vision_check` / `deck_vision_check` is **observation-only**. It does not mutate session state or override `reconcile_state`. Never treat vision as committed deck truth — always compare with robot APIs and reconciled deck state.
+Vision / `deck_vision_check(mode=local)` / `deck_vision_check` is **observation-only**. It does not mutate session state or override `reconcile_state`. Never treat vision as committed deck truth — always compare with robot APIs and reconciled deck state.
 
-**Default preflight may run observation-only Phase 3b** (unless `OPENTRONS_PREFLIGHT_VISION=off`). Ad-hoc vision outside preflight remains available when useful (see `policy/workflows.md`).
+**Optional Phase 3b uses observation-only vision** when configured or requested (`OPENTRONS_PREFLIGHT_VISION=on`). An unavailable vision check is reported as not checked; include deck-layout confirmation in the final go-live check. Ad-hoc vision outside preflight remains available when useful (see `policy/workflows.md`).
 
 On vision uncertainty or soft mismatch: prefer **auto-reconcile** (`reconcile_state`, re-check APIs) before any human ask. Sensor-aligned agreement (e.g. VLM agrees with expected layout) is a machine **pass**, not a prompt to confirm the subgate.
 
@@ -32,7 +32,7 @@ On vision uncertainty or soft mismatch: prefer **auto-reconcile** (`reconcile_st
 
 - Open-ended experiment or robot questions → start from `opentrons-experiment-run`.
 - Live readiness / staged bring-up questions → prefer `live_readiness_check`, then `create_run`, then the smallest safe live run.
-- After MCP or host restart → prefer `safe_next_action` (or `restart_review`) before chaining `reconcile_state` and live status tools.
+- After MCP or host restart → prefer `safe_next_action` (or `safe_next_action(detail=full)`) before chaining `reconcile_state` and live status tools.
 
 ## Interaction defaults
 

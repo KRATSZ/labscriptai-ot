@@ -153,7 +153,7 @@ function renderMarkdown(payload = {}) {
 
   lines.push("## 安全边界", "");
   lines.push("- 这份文件是重启恢复建议，不代表当前 deck 真相。");
-  lines.push("- 任何机器人运动前，先用 robot_status/module_status 或 live gate 重新确认。");
+  lines.push("- 任何机器人运动前，先用 robot_status（含模块快照）或 live gate 重新确认。");
   lines.push("- 如果 No robot motion 为 true，不要自动 home，也不要继续液体测试。");
   lines.push("");
   return lines.join("\n");

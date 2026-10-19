@@ -20,23 +20,23 @@ Server name: `opentrons-lab`. Workflows: [policy/workflows.md](../policy/workflo
 
 ## L0 — Getting started — local simulation and environment
 
-### `doctor_local_runtime` [L0]
-
-Probe whether the local Python environment can import opentrons.simulate.
-
-**Parameters:** `workspace_root` (optional), `api_root` (optional), `shared_data_root` (optional), `python_executable` (optional)
-
 ### `health_check` [L0]
 
-Comprehensive environment health check: MCP server, Python venv, opentrons package, git state, session state, and optional robot connectivity.
+Health and environment checks in one entry. scope=full (default) is the comprehensive check: MCP server, Python venv, opentrons package, git state, session state, plus robot connectivity when robot_ip is given; scope=robot is a quick robot /health connectivity ping (requires robot_ip); scope=local probes whether the local Python environment can import opentrons.simulate.
 
-**Parameters:** `robot_ip` (optional), `python_executable` (optional)
+**Parameters:** `scope` (optional), `robot_ip` (optional), `python_executable` (optional), `workspace_root` (optional), `api_root` (optional), `shared_data_root` (optional)
 
-### `parse_simulation_output` [L0]
+### `labware_lookup` [L0]
 
-Classify simulation stdout/stderr into structured repair categories.
+Look up a labware load name in the local Opentrons definition index. action=validate checks existence and returns close matches; action=inspect returns geometry, capacity, and dead-volume guidance.
 
-**Parameters:** `simulation_output_json` (optional), `stdout` (optional), `stderr` (optional), `exit_code` (optional), `protocol_path` (optional)
+**Parameters:** `action`, `load_name`, `limit` (optional)
+
+### `logicpass_check` [L0]
+
+Run LogicPass on the shared opentrons analyze JSON (vendored labscriptai.benchmark.logicpass). Returns outcome pass, fail, or unevaluable, plus issues with step_index. Does not re-analyze when simulate_protocol already cached this protocol. Also reports analyze failure reasons (analyze.reason, never a bare failure) and capacity_sources per labware: source=definition means the real per-well max volume from the installed Opentrons definitions; source=name_hint/unknown means the capacity was guessed from the load name — surface capacity_note and guessed_capacity_labware to the user instead of treating those numbers as fact.
+
+**Parameters:** `protocol_path` (optional), `analysis_path` (optional), `sim_pass` (optional), `python_executable` (optional)
 
 ### `runtime_recovery_self_test` [L0]
 
@@ -46,15 +46,9 @@ Run no-motion recovery invariants inside the loaded MCP process, including liqui
 
 ### `simulate_protocol` [L0]
 
-Run local opentrons.simulate against a protocol file and return structured logs. When virtual_lab_steps (or validate_virtual_lab_state=true) is provided, runs deterministic Virtual Lab State validation first and blocks the Python simulation on any violation (Phase 1.5 gate).
+Judge a protocol with one opentrons analyze run and classify the result into structured repair categories (parsed_repair in the response, replacing the former parse_simulation_output call). The analyze JSON is cached and reused by logicpass_check. When virtual_lab_steps (or validate_virtual_lab_state=true) is provided, runs deterministic Virtual Lab State validation first and blocks analysis on any violation (Phase 1.5 gate). extra_args still falls back to opentrons.simulate.
 
 **Parameters:** `protocol_path`, `workspace_root` (optional), `api_root` (optional), `shared_data_root` (optional), `python_executable` (optional), `extra_args` (optional), `max_log_chars` (optional), `session_id` (optional), `initial_state` (optional), `virtual_lab_steps` (optional), `validate_virtual_lab_state` (optional), `skip_virtual_lab_state_validation` (optional)
-
-### `validate_labware_name` [L0]
-
-Validate a labware load name against the local Opentrons definition index and return close matches.
-
-**Parameters:** `load_name`, `limit` (optional)
 
 ## L1 — Authoring helpers — labware, tips, preflight
 
@@ -64,24 +58,6 @@ Heuristically estimate tip usage and flag low-volume transfers below the recomme
 
 **Parameters:** `protocol_source` (optional), `file_path` (optional), `tip_rack_count` (optional), `tip_rack_capacity` (optional)
 
-### `flex3d_open_viewer` [L1]
-
-Start the interactive Flex 3D viewer (MuJoCo + Three.js) on 127.0.0.1 and return the browser URL. Requires mujoco in the plugin Python env; degrades with `mujoco_missing` when absent. Flex protocols only.
-
-**Parameters:** `protocol_path` (optional), `port` (optional), `python_executable` (optional)
-
-### `flex3d_preflight_check` [L1]
-
-Flex 3D physical preflight (MuJoCo): geometry, liquid, targets, and clearance checks on an opentrons analyze JSON or protocol `.py`. `command_index` on failing checks aligns with LogicPass `step_index`. Degrades gracefully (`ok=false, error=mujoco_missing`, exit 0) when mujoco is not installed. OT-2 is refused.
-
-**Parameters:** `source`, `out_dir` (optional), `video` (optional), `python_executable` (optional)
-
-### `inspect_labware_definition` [L1]
-
-Inspect a labware load name and return geometry, capacity, and dead-volume guidance from the local definition index.
-
-**Parameters:** `load_name`, `limit` (optional)
-
 ### `preflight_run_setup` [L1]
 
 Before play: verify session reconciliation, robot readiness, and (Flex) declared protocol loads vs live deck snapshot. Callable standalone or invoked automatically inside run_protocol after run creation.
@@ -90,29 +66,11 @@ Before play: verify session reconciliation, robot readiness, and (Flex) declared
 
 ## L2 — Live read-only — robot and session status
 
-### `experiment_history` [L2]
+### `deck_slots` [L2]
 
-Query persisted run, recovery, and reconciliation result logs for recent experiment history.
+Deck slot state. action=occupation returns whether one slot is occupied, unknown, or mismatched against committed session deck state (requires slot_name); action=available lists slots matching criteria (empty, addressable, or all) grouped by availability type.
 
-**Parameters:** `session_id` (optional), `run_id` (optional), `tool_name` (optional), `event_kind` (optional), `status` (optional), `limit` (optional)
-
-### `generate_continuation_protocol` [L2]
-
-Generate a new tip-only continuation protocol from an awaiting-recovery run. This writes a local protocol file but does not stop, play, or move the robot.
-
-**Parameters:** `robot_ip`, `run_id`, `session_id` (optional), `output_path` (optional), `page_length` (optional), `protocol_name` (optional), `use_session_state` (optional)
-
-### `generate_liquid_source_substitution_protocol` [L2]
-
-Generate a fixed no-aspirate validation protocol for a planned same-liquid source substitution. This writes a local protocol file only; it does not upload, run, or resume the robot.
-
-**Parameters:** `session_id` (optional), `failed_source_key`, `failed_slot_name` (optional), `failed_well_name` (optional), `preferred_source_key` (optional), `pipette_name`, `mount`, `tiprack_load_name`, `tiprack_slot`, `output_path` (optional), `api_level` (optional), `robot_type` (optional), `tiprack_namespace` (optional), `tiprack_version` (optional), `labware_namespace` (optional), `labware_version` (optional), `trash_slot` (optional)
-
-### `get_liquid_source_map` [L2]
-
-Read operator-confirmed liquid/source identity from session state. This is bookkeeping only and does not inspect or move the robot.
-
-**Parameters:** `session_id` (optional), `slot_name` (optional), `well_name` (optional)
+**Parameters:** `action`, `robot_ip` (optional), `slot_name` (optional), `session_id` (optional), `run_id` (optional), `context_type` (optional), `context_id` (optional), `filter` (optional)
 
 ### `get_protocols` [L2]
 
@@ -120,47 +78,29 @@ List protocols stored on the robot.
 
 **Parameters:** `robot_ip` (optional)
 
-### `get_runs` [L2]
-
-List runs on the robot.
-
-**Parameters:** `robot_ip` (optional)
-
-### `get_slot_occupation` [L2]
-
-Return whether a slot is occupied, unknown, or mismatched against committed session deck state.
-
-**Parameters:** `robot_ip` (optional), `slot_name`, `session_id` (optional), `run_id` (optional), `context_type` (optional), `context_id` (optional)
-
 ### `is_home_safe` [L2]
 
 Return whether auto-home is currently safe and which cleanup actions are still required first.
 
 **Parameters:** `robot_ip` (optional), `session_id` (optional)
 
-### `list_available_slots` [L2]
+### `liquid_source_map` [L2]
 
-List all available slots matching specific criteria (empty, addressable, suitable for labware/modules). Returns slots grouped by availability type.
+Read the operator-confirmed liquid/source map from session state (bookkeeping only; does not inspect or move the robot). action=get returns recorded sources with optional slot/well filters; action=summarize returns source-map completeness/readiness for semantic recovery; action=critical_targets lists critical wells for preflight LPD probing (wash buffer, enzyme, etc.). Use record_liquid_source_map to write and apply_liquid_probe_results to write probe observations.
 
-**Parameters:** `robot_ip` (optional), `session_id` (optional), `run_id` (optional), `context_type` (optional), `context_id` (optional), `filter` (optional)
+**Parameters:** `action`, `session_id` (optional), `slot_name` (optional), `well_name` (optional), `critical_sources` (optional), `include_all_expected_present_fallback` (optional)
 
-### `list_critical_probe_targets` [L2]
+### `liquid_source_substitution` [L2]
 
-List critical source wells for preflight LPD probing (wash buffer, enzyme, etc.). Reads session liquid source map critical flags/roles; does not move the robot.
+Same-liquid source substitution recovery in three stages. action=plan (read-only) picks a replacement source from the recorded source map; action=generate_protocol writes a fixed no-aspirate validation protocol locally (no upload, run, or resume); action=prepare_recovery runs the registered playbook end to end — plan, generate protocol, local simulation, auditable recovery bundle — and stops before any robot motion. generate_protocol and prepare_recovery additionally require failed_source_key plus pipette_name, mount, tiprack_load_name, and tiprack_slot.
 
-**Parameters:** `session_id` (optional), `critical_sources` (optional), `include_all_expected_present_fallback` (optional)
+**Parameters:** `action`, `session_id` (optional), `failed_source_key` (optional), `failed_slot_name` (optional), `failed_well_name` (optional), `preferred_source_key` (optional), `pipette_name` (optional), `mount` (optional), `tiprack_load_name` (optional), `tiprack_slot` (optional), `output_path` (optional), `output_protocol_path` (optional), `python_executable` (optional), `api_level` (optional), `robot_type` (optional), `tiprack_namespace` (optional), `tiprack_version` (optional), `labware_namespace` (optional), `labware_version` (optional), `trash_slot` (optional)
 
 ### `list_recovery_playbooks` [L2]
 
 List registered fixed recovery playbooks, their gates, allowed watch-mode use, and semantic invariants. This is read-only.
 
 **Parameters:** `include_motion` (optional)
-
-### `list_tip_candidates` [L2]
-
-List remaining candidate tip wells in default search order using session bookkeeping plus current run context.
-
-**Parameters:** `robot_ip` (optional), `session_id` (optional), `run_id` (optional), `tiprack_slots` (optional)
 
 ### `live_liquid_recovery_gate` [L2]
 
@@ -174,23 +114,11 @@ Read-only live readiness gate for Flex: combines local runtime health, restart/s
 
 **Parameters:** `robot_ip`, `session_id` (optional), `file_path` (optional), `python_executable` (optional), `run_id` (optional)
 
-### `module_status` [L2]
+### `query_history` [L2]
 
-Fetch attached module state and summarize which modules are ready for execution.
+Query run and experiment history. scope=robot_runs lists runs on the robot (requires robot_ip); scope=run_commands returns one run's state plus recent command history in an agent-friendly format (requires robot_ip and run_id); scope=experiment_logs queries persisted run, recovery, and reconciliation result logs (local, filterable by session/run/tool/event kind/status).
 
-**Parameters:** `robot_ip` (optional)
-
-### `plan_liquid_source_substitution` [L2]
-
-Plan a same-liquid source substitution from the recorded source map. This is read-only/no-motion and does not execute or resume a run.
-
-**Parameters:** `session_id` (optional), `failed_source_key` (optional), `failed_slot_name` (optional), `failed_well_name` (optional), `preferred_source_key` (optional)
-
-### `prepare_liquid_source_substitution_recovery` [L2]
-
-Prepare the registered same-liquid source-substitution recovery playbook: plan replacement, generate the fixed validation protocol, run local simulation, write an auditable bundle, and stop before any robot motion.
-
-**Parameters:** `session_id` (optional), `failed_source_key`, `failed_slot_name` (optional), `failed_well_name` (optional), `preferred_source_key` (optional), `pipette_name`, `mount`, `tiprack_load_name`, `tiprack_slot`, `output_path` (optional), `output_protocol_path` (optional), `python_executable` (optional), `api_level` (optional), `robot_type` (optional), `tiprack_namespace` (optional), `tiprack_version` (optional), `labware_namespace` (optional), `labware_version` (optional), `trash_slot` (optional)
+**Parameters:** `scope`, `robot_ip` (optional), `run_id` (optional), `page_length` (optional), `session_id` (optional), `tool_name` (optional), `event_kind` (optional), `status` (optional), `limit` (optional)
 
 ### `reconcile_state` [L2]
 
@@ -204,89 +132,35 @@ Record operator-confirmed liquid/sample identity and optional live probe observa
 
 **Parameters:** `session_id` (optional), `sources`
 
-### `restart_review` [L2]
-
-After MCP or host restart: summarize persisted session state plus recent result logs with structured guidance. suggested_tool_order includes run_history and parse_error when session last_run_id is set. Logs are historical only; pass robot_ip optionally to include a live is_home_safe preview (narrative warns if auto-home is blocked).
-
-**Parameters:** `session_id` (optional), `limit` (optional), `robot_ip` (optional)
-
-### `robot_health` [L2]
-
-Check robot connectivity and health via /health.
-
-**Parameters:** `robot_ip` (optional)
-
 ### `robot_status` [L2]
 
-Fetch the live hardware snapshot needed before physical actions: health, instruments, door, estop, and deck configuration.
+Fetch the live hardware snapshot needed before physical actions: health, instruments, door, estop, and deck configuration. With include_modules=true (default) the attached module state and execution-readiness summary is embedded in the same snapshot.
 
-**Parameters:** `robot_ip` (optional)
+**Parameters:** `robot_ip` (optional), `include_modules` (optional)
 
-### `run_history` [L2]
+### `runtime_alerts` [L2]
 
-Get run state plus recent command history in an agent-friendly format.
+Runtime watch and monitor alerts. action=list reads alerts plus latest watch state; action=ack marks one alert handled after the operator has supplied the requested decision (requires run_id and alert_id).
 
-**Parameters:** `robot_ip` (optional), `run_id`, `page_length` (optional)
-
-### `runtime_ack_alert` [L2]
-
-Mark a runtime watch alert handled after the operator has supplied the requested decision.
-
-**Parameters:** `run_id`, `alert_id`, `note` (optional), `selection` (optional), `watch_dir` (optional)
-
-### `runtime_ack_outbox` [L2]
-
-Mark a runtime notification outbox event handled after the operator or host adapter has acted on it.
-
-**Parameters:** `session_id` (optional), `outbox_id`, `note` (optional), `selection` (optional), `outbox_dir` (optional)
-
-### `runtime_deliver_outbox` [L2]
-
-Deliver pending runtime outbox events to configured host adapters: claudecode, codex, cursor, piagent, opencode, cli, or webhook.
-
-**Parameters:** `session_id` (optional), `run_id` (optional), `adapters` (optional), `limit` (optional), `include_delivered` (optional), `outbox_dir` (optional), `host_adapter_dir` (optional), `webhook_url` (optional)
-
-### `runtime_get_alerts` [L2]
-
-Read runtime watch and monitor alerts plus latest watch state. Intended for hook/insurance paths and current-dialog notification checks.
-
-**Parameters:** `run_id` (optional), `session_id` (optional), `limit` (optional), `include_acked` (optional), `watch_dir` (optional)
-
-### `runtime_get_outbox` [L2]
-
-Read pending runtime notification outbox events created from watcher/monitor alerts for host adapters.
-
-**Parameters:** `session_id` (optional), `run_id` (optional), `limit` (optional), `include_acked` (optional), `include_delivered` (optional), `outbox_dir` (optional), `host_adapter_dir` (optional)
+**Parameters:** `action`, `run_id` (optional), `session_id` (optional), `alert_id` (optional), `note` (optional), `selection` (optional), `limit` (optional), `include_acked` (optional), `watch_dir` (optional)
 
 ### `runtime_recovery_monitor` [L2]
 
 Active L1-L4 runtime recovery monitor tick. L1 checks runtime/robot/module health, L2 watches a run, L3 coordinates recovery gates and safe-next guidance, and L4 only delegates whitelisted L0 self-fixes when explicitly enabled.
 
-**Parameters:** `robot_ip` (optional), `session_id` (optional), `run_id` (optional), `levels` (optional), `self_fix_mode` (optional), `allow_l4_execution` (optional), `operator_opt_in` (optional), `source_plan` (optional), `required_sources` (optional), `enable_liquid_gate` (optional), `allow_observed_mismatch_reprobe` (optional), `max_block_ms` (optional), `poll_interval_ms` (optional), `timeout_ms` (optional), `page_length` (optional), `tiprack_slots` (optional), `tip_binding_mode` (optional), `protocol_source` (optional), `file_path` (optional), `protocol_path` (optional), `watch_dir` (optional), `record_result_log` (optional), `publish_notifications` (optional), `include_info_notifications` (optional), `notify_adapters` (optional), `notify_limit` (optional), `outbox_dir` (optional), `host_adapter_dir` (optional), `webhook_url` (optional)
-
-### `runtime_watch_loop` [L2]
-
-Auto-wake runtime watch loop: reuses runtime_watch_poll on a budgeted schedule (max_turns / max_runtime_ms / interval_ms) and emits one outbox sentinel per tick for host-adapter wake (claudecode/cursor/codex/cli/webhook). Persists a goal-state.json per run (resume=true continues an active goal). Goal status is COMPLETE/BLOCKED/BUDGET_LIMITED; COMPLETE requires either a completed tick or a verify callback. Safety model is inherited from runtime_watch_poll: only L0 whitelist fixes auto-execute; needs_user/hard_stop stop the loop and emit a BLOCKED sentinel. Default self_fix_mode=observe (no robot motion).
-
-**Parameters:** `robot_ip` (optional), `run_id`, `session_id` (optional), `goal_id` (optional), `goal_prompt` (optional), `max_turns` (optional), `max_runtime_ms` (optional), `interval_ms` (optional), `max_block_ms` (optional), `poll_interval_ms` (optional), `page_length` (optional), `tiprack_slots` (optional), `tip_binding_mode` (optional), `protocol_source` (optional), `file_path` (optional), `protocol_path` (optional), `module_wait_timeout_ms` (optional), `module_poll_interval_ms` (optional), `max_attempts_per_failed_command` (optional), `unreachable_threshold` (optional), `resume` (optional), `self_fix_mode` (optional), `allow_l4_execution` (optional), `operator_opt_in` (optional), `watch_dir` (optional), `outbox_dir` (optional), `notify_adapters` (optional), `notify_limit` (optional), `host_adapter_dir` (optional), `webhook_url` (optional), `zero_llm_when_no_error` (optional)
+**Parameters:** `robot_ip` (optional), `session_id` (optional), `run_id` (optional), `levels` (optional), `self_fix_mode` (optional), `allow_l4_execution` (optional), `operator_opt_in` (optional), `source_plan` (optional), `required_sources` (optional), `enable_liquid_gate` (optional), `allow_observed_mismatch_reprobe` (optional), `max_block_ms` (optional), `poll_interval_ms` (optional), `timeout_ms` (optional), `page_length` (optional), `tiprack_slots` (optional), `tip_binding_mode` (optional), `protocol_source` (optional), `file_path` (optional), `protocol_path` (optional), `watch_dir` (optional), `record_result_log` (optional), `publish_notifications` (optional), `include_info_notifications` (optional), `notify_adapters` (optional), `notify_limit` (optional), `outbox_dir` (optional), `webhook_url` (optional)
 
 ### `safe_next_action` [L2]
 
-Single-entry operator summary after MCP/host restart: same payload as restart_review plus safe_next_action (recommended_next_tool, operator_steps, tool_sequence). Prefer this when the user wants one call instead of reading the full guidance object. Atomic tools are unchanged.
+Single-entry restart summary: persisted session state plus recent result logs with structured guidance. detail=summary (default) adds safe_next_action (recommended_next_tool, operator_steps, tool_sequence) on top of the same payload; detail=full returns the complete restart_review guidance object. suggested_tool_order includes query_history(scope=run_commands) and parse_error when session last_run_id is set. Logs are historical only; pass robot_ip optionally to include a live is_home_safe preview (narrative warns if auto-home is blocked).
 
-**Parameters:** `session_id` (optional), `limit` (optional), `robot_ip` (optional)
+**Parameters:** `detail` (optional), `session_id` (optional), `limit` (optional), `robot_ip` (optional)
 
-### `suggest_next_tip_well` [L2]
+### `tip_wells` [L2]
 
-Suggest the next viable tip well after skipping previously failed or depleted wells.
+Tip well bookkeeping. action=list returns remaining candidate tip wells in default search order (session bookkeeping plus current run context); action=suggest_next picks the next viable well after skipping previously failed or depleted wells.
 
-**Parameters:** `robot_ip` (optional), `session_id` (optional), `run_id` (optional), `tiprack_slots` (optional), `tiprack_slot` (optional), `failed_well` (optional), `failure_status` (optional)
-
-### `summarize_liquid_source_map` [L2]
-
-Summarize liquid source-map completeness for semantic recovery. This is read-only and does not inspect or move the robot.
-
-**Parameters:** `session_id` (optional), `slot_name` (optional)
+**Parameters:** `action`, `robot_ip` (optional), `session_id` (optional), `run_id` (optional), `tiprack_slots` (optional), `tiprack_slot` (optional), `failed_well` (optional), `failure_status` (optional)
 
 ### `validate_virtual_lab_state_steps` [L2]
 
@@ -308,29 +182,17 @@ Execute openGripperJaw, moveToMaintenancePosition, and conditional home in a mai
 
 **Parameters:** `robot_ip` (optional), `context_id`, `mount` (optional), `maintenance_position` (optional), `allow_home` (optional), `home_axes` (optional), `session_id` (optional), `timeout_ms` (optional), `poll_interval_ms` (optional)
 
-### `control_heater_shaker` [L3]
+### `control_module` [L3]
 
-Control Heater-Shaker temperature, shaker speed, or latch in an active context.
+Control an attached module in an active run or maintenance context. module_type=temperature supports set_target_temperature / wait_for_temperature / deactivate (celsius). module_type=heater_shaker supports heater actions plus set_shake_speed / set_and_wait_for_shake_speed / deactivate_shaker / open_labware_latch / close_labware_latch (celsius, rpm). module_type=thermocycler supports block/lid temperature, open_lid / close_lid, and run_profile (celsius, hold_time_seconds, ramp_rate, profile).
 
-**Parameters:** `robot_ip` (optional), `context_type` (optional), `context_id`, `module_id`, `action`, `celsius` (optional), `rpm` (optional), `ensure_latch_closed` (optional), `intent` (optional), `key` (optional), `session_id` (optional), `timeout_ms` (optional), `poll_interval_ms` (optional)
+**Parameters:** `module_type`, `action`, `robot_ip` (optional), `context_type` (optional), `context_id`, `module_id`, `celsius` (optional), `rpm` (optional), `ensure_latch_closed` (optional), `hold_time_seconds` (optional), `block_max_volume_ul` (optional), `ramp_rate` (optional), `profile` (optional), `intent` (optional), `key` (optional), `session_id` (optional), `timeout_ms` (optional), `poll_interval_ms` (optional)
 
 ### `control_run` [L3]
 
 Play, pause, stop, or resume-from-recovery for a run.
 
 **Parameters:** `robot_ip` (optional), `run_id`, `action`, `page_length` (optional), `session_id` (optional), `tiprack_slots` (optional)
-
-### `control_temperature_module` [L3]
-
-Control a Temperature Module in an active run or maintenance context.
-
-**Parameters:** `robot_ip` (optional), `context_type` (optional), `context_id`, `module_id`, `action`, `celsius` (optional), `intent` (optional), `key` (optional), `session_id` (optional), `timeout_ms` (optional), `poll_interval_ms` (optional)
-
-### `control_thermocycler` [L3]
-
-Control Thermocycler block/lid temperature or lid state in an active context.
-
-**Parameters:** `robot_ip` (optional), `context_type` (optional), `context_id`, `module_id`, `action`, `celsius` (optional), `hold_time_seconds` (optional), `block_max_volume_ul` (optional), `ramp_rate` (optional), `profile` (optional), `intent` (optional), `key` (optional), `session_id` (optional), `timeout_ms` (optional), `poll_interval_ms` (optional)
 
 ### `create_run` [L3]
 
@@ -346,9 +208,9 @@ Create either a protocol run context or a maintenance-run context before enqueue
 
 ### `drop_attached_tip` [L3]
 
-Safely drop an already attached pipette tip in a maintenance context after a stopped or recovery run. Refuses when robot_status does not confirm a tip on the requested mount. Defaults to trash-centered drop (`alternate_drop_location=false`) to avoid offsetting outside the chute.
+Safely drop an already attached pipette tip in a maintenance context after a stopped or recovery run. Refuses when robot_status does not confirm a tip on the requested mount. Defaults to trash-centered drop (alternate_drop_location=false) to avoid offsetting outside the chute.
 
-**Parameters:** `robot_ip` (optional), `context_id`, `mount` (optional), `pipette_name` (optional), `pipette_id` (optional), `labware_id` (optional), `well_name` (optional), `alternate_drop_location` (optional, default `false`), `session_id` (optional), `timeout_ms` (optional), `poll_interval_ms` (optional)
+**Parameters:** `robot_ip` (optional), `context_id`, `mount` (optional), `pipette_name` (optional), `pipette_id` (optional), `labware_id` (optional), `well_name` (optional), `alternate_drop_location` (optional), `session_id` (optional), `timeout_ms` (optional), `poll_interval_ms` (optional)
 
 ### `execute_protocol_recovery` [L3]
 
@@ -394,15 +256,21 @@ In protocol recovery state, enqueue a fixit pickUpTip on the next viable well an
 
 ### `run_protocol` [L3]
 
-Upload a protocol, create a run (auto-attaching stored labware offsets), optionally play it, then poll until the run reaches a terminal or intervention-required state.
+Upload a protocol, create a run (auto-attaching stored labware offsets), optionally play it, then poll until the run reaches a terminal or intervention-required state. Gated: local simulation must pass AND LogicPass final_pass_v2 must be true (outcome=pass) before upload/play; fail or unevaluable blocks execution (skip_logicpass_gate=true to opt out deliberately).
 
-**Parameters:** `robot_ip` (optional), `file_path`, `protocol_kind` (optional), `key` (optional), `run_time_parameters` (optional), `labware_offsets` (optional), `auto_play` (optional), `timeout_ms` (optional), `poll_interval_ms` (optional), `page_length` (optional), `session_id` (optional), `skip_preflight` (optional), `skip_preflight_deck_diff` (optional), `strict_preflight_labware_slots` (optional), `tiprack_slots` (optional)
+**Parameters:** `robot_ip` (optional), `file_path`, `protocol_kind` (optional), `key` (optional), `run_time_parameters` (optional), `labware_offsets` (optional), `auto_play` (optional), `timeout_ms` (optional), `poll_interval_ms` (optional), `page_length` (optional), `session_id` (optional), `skip_logicpass_gate` (optional), `skip_preflight` (optional), `skip_preflight_deck_diff` (optional), `strict_preflight_labware_slots` (optional), `tiprack_slots` (optional)
 
-### `runtime_watch_poll` [L3]
+### `runtime_outbox` [L3]
 
-Bounded runtime watch poll for a live protocol run. Polls run status, executes only narrow L0 self-fix branches, and returns only running/completed/needs_user/hard_stop/unreachable.
+Durable runtime event log for watcher/monitor alerts. action=list reads events; action=ack marks one event handled (requires outbox_id); action=deliver optionally sends pending events to stdout or a configured webhook.
 
-**Parameters:** `robot_ip` (optional), `run_id`, `session_id` (optional), `max_block_ms` (optional), `poll_interval_ms` (optional), `timeout_ms` (optional), `page_length` (optional), `tiprack_slots` (optional), `tip_binding_mode` (optional), `protocol_source` (optional), `file_path` (optional), `protocol_path` (optional), `module_wait_timeout_ms` (optional), `module_poll_interval_ms` (optional), `max_attempts_per_failed_command` (optional), `unreachable_threshold` (optional)
+**Parameters:** `action`, `session_id` (optional), `run_id` (optional), `outbox_id` (optional), `note` (optional), `selection` (optional), `adapters` (optional), `limit` (optional), `include_acked` (optional), `include_delivered` (optional), `outbox_dir` (optional), `webhook_url` (optional)
+
+### `runtime_watch` [L3]
+
+Bounded runtime watch for a live protocol run. mode=poll runs one bounded poll (run status plus narrow L0 self-fix branches only; returns running/completed/needs_user/hard_stop/unreachable). mode=loop reuses those polls on a budgeted schedule (max_turns / max_runtime_ms / interval_ms), records outbox events, and persists a goal-state.json per run (resume=true continues an active goal; goal status COMPLETE/BLOCKED/BUDGET_LIMITED). Safety model is shared: only L0 whitelist fixes auto-execute; needs_user/hard_stop stop the loop and record a BLOCKED event. Default self_fix_mode=observe (no robot motion).
+
+**Parameters:** `mode`, `robot_ip` (optional), `run_id`, `session_id` (optional), `goal_id` (optional), `goal_prompt` (optional), `max_turns` (optional), `max_runtime_ms` (optional), `interval_ms` (optional), `max_block_ms` (optional), `poll_interval_ms` (optional), `timeout_ms` (optional), `page_length` (optional), `tiprack_slots` (optional), `tip_binding_mode` (optional), `protocol_source` (optional), `file_path` (optional), `protocol_path` (optional), `module_wait_timeout_ms` (optional), `module_poll_interval_ms` (optional), `max_attempts_per_failed_command` (optional), `unreachable_threshold` (optional), `resume` (optional), `self_fix_mode` (optional), `allow_l4_execution` (optional), `operator_opt_in` (optional), `watch_dir` (optional), `outbox_dir` (optional), `notify_adapters` (optional), `notify_limit` (optional), `webhook_url` (optional)
 
 ### `upload_protocol` [L3]
 
@@ -412,59 +280,53 @@ Upload a local protocol file to the robot.
 
 ## L4 — Recovery and vision — on demand
 
-### `analyze_image_with_ark` [L4]
+### `analyze_image` [L4]
 
-Analyze a local robot deck image with Volcengine Ark (Doubao VLM) using the Responses API. Observation-only; does not mutate session state. Default model endpoint from ARK_MODEL_ENDPOINT or ep-20260716144817-n6rgn; API key from ARK_API_KEY.
+Analyze a local robot/deck image with a multimodal VLM (observation-only; does not mutate session state). provider=ark uses Volcengine Ark (Doubao) via the Responses API — default model endpoint from ARK_MODEL_ENDPOINT or ep-20260716144817-n6rgn, API key from ARK_API_KEY or automation/.env. provider=kimi uses SiliconFlow Kimi-K2.5 (or another OpenAI-compatible multimodal model) via chat completions — API key from SILICONFLOW_API_KEY or automation/.env.
 
-**Parameters:** `image_path`, `api_key` (optional), `base_url` (optional), `model_endpoint` (optional), `prompt` (optional), `expected_layout` (optional), `max_output_tokens` (optional)
+**Parameters:** `provider`, `image_path`, `api_key` (optional), `base_url` (optional), `model` (optional), `model_endpoint` (optional), `prompt` (optional), `system_prompt` (optional), `detail` (optional), `temperature` (optional), `max_tokens` (optional), `expected_layout` (optional), `max_output_tokens` (optional)
 
-### `analyze_image_with_kimi` [L4]
+### `camera_settings` [L4]
 
-Analyze a local robot image with SiliconFlow Kimi-K2.5 or another multimodal model using OpenAI-compatible chat completions.
+Built-in robot camera configuration. action=status reads camera enablement and livestream state; action=configure enables/tunes the camera (/camera booleans plus optional /camera/cameraSettings image parameters; requires at least one state field or image setting).
 
-**Parameters:** `image_path`, `api_key` (optional), `base_url` (optional), `model` (optional), `prompt` (optional), `system_prompt` (optional), `detail` (optional), `temperature` (optional), `max_tokens` (optional), `expected_layout` (optional)
+**Parameters:** `action`, `robot_ip` (optional), `camera_enabled` (optional), `live_stream_enabled` (optional), `error_recovery_camera_enabled` (optional), `camera_id` (optional), `resolution_width` (optional), `resolution_height` (optional), `zoom` (optional), `contrast` (optional), `brightness` (optional), `saturation` (optional), `pan_x` (optional), `pan_y` (optional)
 
-### `camera_status` [L4]
+### `capture_image` [L4]
 
-Read built-in camera enablement and livestream state from the robot.
+Capture a robot image and save it locally, returning the artifact path for human or model analysis. mode=preview captures directly via the camera preview endpoint (no run required); mode=run captures through the robot command queue in an active context and downloads the resulting data file (requires context_id).
 
-**Parameters:** `robot_ip` (optional)
+**Parameters:** `mode`, `robot_ip` (optional), `context_type` (optional), `context_id` (optional), `output_path` (optional), `file_name` (optional), `camera_id` (optional), `resolution_width` (optional), `resolution_height` (optional), `zoom` (optional), `contrast` (optional), `brightness` (optional), `saturation` (optional), `pan_x` (optional), `pan_y` (optional), `intent` (optional), `key` (optional), `timeout_ms` (optional), `poll_interval_ms` (optional)
 
-### `capture_preview_image` [L4]
+### `data_files` [L4]
 
-Capture a robot preview image, save it locally, and return the artifact path for later human or model analysis.
+Robot data files (including historical camera images). action=list shows generated or uploaded files available on the robot; action=download downloads one file by id and saves it locally (requires data_file_id).
 
-**Parameters:** `robot_ip` (optional), `output_path` (optional), `camera_id` (optional), `resolution_width` (optional), `resolution_height` (optional), `zoom` (optional), `contrast` (optional), `brightness` (optional), `saturation` (optional), `pan_x` (optional), `pan_y` (optional)
-
-### `capture_run_image` [L4]
-
-Capture an image through the robot command queue, download the resulting data file, and save it locally.
-
-**Parameters:** `robot_ip` (optional), `context_type` (optional), `context_id`, `output_path` (optional), `file_name` (optional), `resolution_width` (optional), `resolution_height` (optional), `zoom` (optional), `contrast` (optional), `brightness` (optional), `saturation` (optional), `pan_x` (optional), `pan_y` (optional), `intent` (optional), `key` (optional), `timeout_ms` (optional), `poll_interval_ms` (optional)
-
-### `configure_camera` [L4]
-
-Enable or tune the built-in camera. Supports /camera booleans and optional /camera/cameraSettings image parameters.
-
-**Parameters:** `robot_ip` (optional), `camera_enabled` (optional), `live_stream_enabled` (optional), `error_recovery_camera_enabled` (optional), `camera_id` (optional), `resolution_width` (optional), `resolution_height` (optional), `zoom` (optional), `contrast` (optional), `brightness` (optional), `saturation` (optional), `pan_x` (optional), `pan_y` (optional)
+**Parameters:** `action`, `robot_ip` (optional), `data_file_id` (optional), `output_path` (optional)
 
 ### `deck_vision_check` [L4]
 
-Preflight deck vision orchestration: capture_preview_image → vision_check (YOLO first) → optional Ark VLM second opinion when uncertain or mismatched. Observation-only; compare with reconcile_state before treating as deck truth. Set OPENTRONS_PREFLIGHT_VISION=off to skip.
+Deck vision observation (observation-only; does not mutate session state; compare with reconcile_state before treating as deck truth). mode=preflight orchestrates capture → YOLO → optional VLM second opinion when uncertain or mismatched (requires robot_ip; enable the optional configured path with OPENTRONS_PREFLIGHT_VISION=on). mode=local runs the YOLOE/YOLO observation directly on a saved image (requires image_path): detections map to Flex 12 slots via optional deck homography or a uniform image-grid fallback; empty slots are geometric. Default YOLOE prompts are Flex-tuned (colored tip racks, modules, trash); override with class_prompts + canonical_labels.
 
-**Parameters:** `robot_ip`, `session_id` (optional), `expected_layout` (optional), `output_path` (optional), `force_vlm` (optional), `vlm_provider` (optional), `conf_threshold` (optional), `weights` (optional)
+**Parameters:** `mode`, `robot_ip` (optional), `session_id` (optional), `expected_layout` (optional), `output_path` (optional), `force_vlm` (optional), `vlm_provider` (optional), `conf_threshold` (optional), `weights` (optional), `image_path` (optional), `reference_image_path` (optional), `use_text_prompts` (optional), `annotated_output_dir` (optional), `python_executable` (optional), `deck_corners_norm` (optional), `load_labels_sidecar` (optional), `class_prompts` (optional), `canonical_labels` (optional)
 
-### `download_data_file` [L4]
+### `flex3d_open_viewer` [L4]
 
-Download a robot data file by id and save it locally.
+Start the interactive Flex 3D viewer (MuJoCo + Three.js) on 127.0.0.1 and return the browser URL. Requires mujoco in the plugin Python env; degrades with a clear error when missing. Requires protocol_path (analyze JSON or protocol .py); the returned URL carries ?key=example. Online preview only: no video is rendered and no rendered image is exported — the only files written are the scene the page serves (flex.xml, view.json and flex_assets). Readiness is verified against this viewer process; a failed start is reported and timed-out processes are stopped.
 
-**Parameters:** `robot_ip` (optional), `data_file_id`, `output_path` (optional)
+**Parameters:** `protocol_path`, `port` (optional), `python_executable` (optional)
 
-### `list_data_files` [L4]
+### `flex3d_preflight_check` [L4]
 
-List generated or uploaded data files available on the robot, including historical camera images.
+Flex 3D physical preflight (MuJoCo). Runs automation/flex3d/scripts/render_protocol_3d.py on an opentrons analyze JSON or protocol .py: geometry, liquid, targets, clearance checks with command_index aligned to LogicPass step_index. Flex only (OT-2 refused). Degrades gracefully (ok=false, error=mujoco_missing) when mujoco is not installed. Returns passed/failed/unknown/not_applicable; failed checks set ok=false. Uses the shared analysis cache. Checks and scene assets stay under PLUGIN_DATA; no image or video export. For a live 3D look at the deck use flex3d_open_viewer, which returns an online preview URL.
 
-**Parameters:** `robot_ip` (optional)
+**Parameters:** `source`, `out_dir` (optional), `python_executable` (optional)
+
+### `generate_continuation_protocol` [L4]
+
+Generate a new tip-only continuation protocol from an awaiting-recovery run. This writes a local protocol file but does not stop, play, or move the robot.
+
+**Parameters:** `robot_ip`, `run_id`, `session_id` (optional), `output_path` (optional), `page_length` (optional), `protocol_name` (optional), `use_session_state` (optional)
 
 ### `parse_error` [L4]
 
@@ -477,12 +339,6 @@ Parse run or maintenance command failures into structured runtime error categori
 Recommend the next recovery branch from live run errors, robot/module state, and session bookkeeping.
 
 **Parameters:** `robot_ip` (optional), `session_id` (optional), `run_id` (optional), `context_type` (optional), `context_id` (optional), `error_category` (optional), `target_slot` (optional), `failed_well` (optional), `tiprack_slot` (optional), `tip_binding_mode` (optional), `protocol_source` (optional), `file_path` (optional), `protocol_path` (optional), `tiprack_slots` (optional)
-
-### `vision_check` [L4]
-
-Local YOLOE/YOLO vision observation for CHECKDECK or CHECKTIPS (observation-only; does not mutate session state). Uses ultralytics in the project Python env. CHECKDECK maps detections to Flex 12 slots using optional deck homography (deck_corners_norm or labels sidecar optional_deck_corners_norm) or a uniform image-grid fallback; empty slots are geometric (no detection in cell). Default YOLOE prompts are Flex-tuned (colored tip racks, modules, trash). Override with class_prompts + canonical_labels. CHECKTIPS is stubbed pending rack-local analysis.
-
-**Parameters:** `mode` (optional), `image_path`, `expected_layout` (optional), `reference_image_path` (optional), `conf_threshold` (optional), `use_text_prompts` (optional), `weights` (optional), `annotated_output_dir` (optional), `python_executable` (optional), `deck_corners_norm` (optional), `load_labels_sidecar` (optional), `class_prompts` (optional), `canonical_labels` (optional)
 
 ## Safety reminders
 
