@@ -364,7 +364,7 @@ function buildNextAction({ failedCheckNames = [], warningCheckNames = [], manual
   if (failed.has("robot_readonly_connectivity")) {
     return {
       recommended_next_action: "restore_robot_connectivity",
-      allowed_next_tools: ["health_check", "robot_status", "module_status"],
+      allowed_next_tools: ["health_check", "robot_status"],
       human_required: true,
       reason: "robot_readonly_connectivity_failed",
     };
@@ -420,7 +420,7 @@ function buildNextAction({ failedCheckNames = [], warningCheckNames = [], manual
   if (warned.has("module_blockers")) {
     return {
       recommended_next_action: "wait_or_resolve_module_blockers",
-      allowed_next_tools: ["module_status", "live_liquid_recovery_gate"],
+      allowed_next_tools: ["robot_status", "live_liquid_recovery_gate"],
       human_required: false,
       reason: "module_blockers_reported",
     };
@@ -482,7 +482,7 @@ function buildResolutionPlan({
       severity: "blocker",
       action: "restore_robot_connectivity",
       human_required: true,
-      allowed_next_tools: ["health_check", "robot_status", "module_status"],
+      allowed_next_tools: ["health_check", "robot_status"],
       acceptance_criteria: ["robot_status can read 192.168.66.102 and reports robot_reachable=true."],
     });
   }
@@ -580,8 +580,8 @@ function buildResolutionPlan({
       severity: "warning",
       action: "wait_or_resolve_module_blockers",
       human_required: false,
-      allowed_next_tools: ["module_status", "live_liquid_recovery_gate"],
-      acceptance_criteria: ["module_status reports no blockers."],
+      allowed_next_tools: ["robot_status", "live_liquid_recovery_gate"],
+      acceptance_criteria: ["robot_status(include_modules=true) reports no blockers."],
     });
   }
   if (manual.has("mcp_client_reload")) {

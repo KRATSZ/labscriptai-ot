@@ -1225,13 +1225,13 @@ const TOOL_DEFINITIONS = [
   {
     name: "flex3d_open_viewer",
     description:
-      "Start the interactive Flex 3D viewer (MuJoCo + Three.js) on 127.0.0.1 and return the browser URL. Requires mujoco in the plugin Python env; degrades with a clear error when missing. Pass protocol_path to preload an analyze JSON or protocol .py (the returned URL then carries the required ?key=example). Online preview only: no video is rendered and no rendered image is exported — the only files written are the scene the page serves (flex.xml, view.json and flex_assets). Startup takes ~20 s for a long protocol, and the health poll can report a false timeout on slow starts — the process usually comes up anyway.",
+      "Start the interactive Flex 3D viewer (MuJoCo + Three.js) on 127.0.0.1 and return the browser URL. Requires mujoco in the plugin Python env; degrades with a clear error when missing. Requires protocol_path (analyze JSON or protocol .py); the returned URL carries ?key=example. Online preview only: no video is rendered and no rendered image is exported — the only files written are the scene the page serves (flex.xml, view.json and flex_assets). Readiness is verified against this viewer process; a failed start is reported and timed-out processes are stopped.",
     inputSchema: {
       type: "object",
       properties: {
         protocol_path: {
           type: "string",
-          description: "Optional analyze JSON or protocol .py to preload",
+          description: "Analyze JSON or protocol .py to preview",
         },
         port: {
           type: "number",
@@ -1243,12 +1243,13 @@ const TOOL_DEFINITIONS = [
           description: "Override Python for mujoco (else OPENTRONS_PYTHON / .venv)",
         },
       },
+      required: ["protocol_path"],
     },
   },
   {
     name: "deck_vision_check",
     description:
-      "Deck vision observation (observation-only; does not mutate session state; compare with reconcile_state before treating as deck truth). mode=preflight orchestrates capture → YOLO → optional VLM second opinion when uncertain or mismatched (requires robot_ip; set OPENTRONS_PREFLIGHT_VISION=off to skip). mode=local runs the YOLOE/YOLO observation directly on a saved image (requires image_path): detections map to Flex 12 slots via optional deck homography or a uniform image-grid fallback; empty slots are geometric. Default YOLOE prompts are Flex-tuned (colored tip racks, modules, trash); override with class_prompts + canonical_labels.",
+      "Deck vision observation (observation-only; does not mutate session state; compare with reconcile_state before treating as deck truth). mode=preflight orchestrates capture → YOLO → optional VLM second opinion when uncertain or mismatched (requires robot_ip; enable the optional configured path with OPENTRONS_PREFLIGHT_VISION=on). mode=local runs the YOLOE/YOLO observation directly on a saved image (requires image_path): detections map to Flex 12 slots via optional deck homography or a uniform image-grid fallback; empty slots are geometric. Default YOLOE prompts are Flex-tuned (colored tip racks, modules, trash); override with class_prompts + canonical_labels.",
     inputSchema: {
       type: "object",
       properties: {
@@ -7075,9 +7076,10 @@ const TOOL_HANDLERS = {
           reason: "OPENTRONS_PREFLIGHT_VISION=off",
           subphase: "deck_vision",
           consensus: {
-            status: "passed",
+            status: "not_applicable",
             summary: "Deck vision preflight skipped by environment flag.",
-            recommended_next_actions: ["list_critical_probe_targets"],
+            recommended_next_actions: ["liquid_source_map"],
+            recommended_next_args: { action: "critical_targets" },
           },
         },
       };

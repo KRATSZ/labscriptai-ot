@@ -56,7 +56,7 @@ test("DESTINATION_OCCUPIED stays human slot confirm without camera primary", () 
   assert.equal(enriched.default_next_step, "suggest_recovery_action");
   assert.ok(!enriched.recommended_next_tools.includes("deck_vision_check"));
   assert.ok(!enriched.recommended_next_tools.includes("capture_preview_image"));
-  assert.ok(enriched.recommended_next_tools.includes("get_slot_occupation"));
+  assert.ok(enriched.recommended_next_tools.includes("deck_slots"));
 });
 
 test("enrichRecoverySuggestion adds routing metadata", () => {
@@ -76,4 +76,21 @@ test("buildRecoveryRoutingGuidance labels dashboard channel in Chinese", () => {
   assert.equal(guidance.recovery_channel, "dashboard");
   assert.equal(guidance.recovery_channel_label, "仪表盘");
   assert.ok(guidance.recommended_next_tools.includes("live_readiness_check"));
+});
+
+test("every recovery channel points to advertised tools with valid selectors", async () => {
+  const { TOOL_DEFINITIONS } = await import("../index.js");
+  const defs = new Map(TOOL_DEFINITIONS.map(tool => [tool.name, tool]));
+  for (const errorLeaf of ["DOOR_OPEN", "LABWARE_MISMATCH", "STATE_MISMATCH", "INSUFFICIENT_VOLUME",
+    "TIP_PHYSICALLY_MISSING", "DECK_COLLISION", "DESTINATION_OCCUPIED"]) {
+    const guidance = buildRecoveryRoutingGuidance({ errorLeaf });
+    for (const { tool, args } of guidance.recommended_tool_calls) {
+      assert.ok(defs.has(tool), `${errorLeaf} recommends unknown tool ${tool}`);
+      for (const [key, property] of Object.entries(defs.get(tool).inputSchema.properties)) {
+        if (["action", "mode", "provider", "scope", "detail"].includes(key) && property.enum && defs.get(tool).inputSchema.required?.includes(key)) {
+          assert.ok(property.enum.includes(args[key]), `${tool} needs selector ${key}`);
+        }
+      }
+    }
+  }
 });

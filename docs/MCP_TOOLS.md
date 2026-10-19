@@ -306,15 +306,15 @@ Robot data files (including historical camera images). action=list shows generat
 
 ### `deck_vision_check` [L4]
 
-Deck vision observation (observation-only; does not mutate session state; compare with reconcile_state before treating as deck truth). mode=preflight orchestrates capture → YOLO → optional VLM second opinion when uncertain or mismatched (requires robot_ip; set OPENTRONS_PREFLIGHT_VISION=off to skip). mode=local runs the YOLOE/YOLO observation directly on a saved image (requires image_path): detections map to Flex 12 slots via optional deck homography or a uniform image-grid fallback; empty slots are geometric. Default YOLOE prompts are Flex-tuned (colored tip racks, modules, trash); override with class_prompts + canonical_labels.
+Deck vision observation (observation-only; does not mutate session state; compare with reconcile_state before treating as deck truth). mode=preflight orchestrates capture → YOLO → optional VLM second opinion when uncertain or mismatched (requires robot_ip; enable the optional configured path with OPENTRONS_PREFLIGHT_VISION=on). mode=local runs the YOLOE/YOLO observation directly on a saved image (requires image_path): detections map to Flex 12 slots via optional deck homography or a uniform image-grid fallback; empty slots are geometric. Default YOLOE prompts are Flex-tuned (colored tip racks, modules, trash); override with class_prompts + canonical_labels.
 
 **Parameters:** `mode`, `robot_ip` (optional), `session_id` (optional), `expected_layout` (optional), `output_path` (optional), `force_vlm` (optional), `vlm_provider` (optional), `conf_threshold` (optional), `weights` (optional), `image_path` (optional), `reference_image_path` (optional), `use_text_prompts` (optional), `annotated_output_dir` (optional), `python_executable` (optional), `deck_corners_norm` (optional), `load_labels_sidecar` (optional), `class_prompts` (optional), `canonical_labels` (optional)
 
 ### `flex3d_open_viewer` [L4]
 
-Start the interactive Flex 3D viewer (MuJoCo + Three.js) on 127.0.0.1 and return the browser URL. Requires mujoco in the plugin Python env; degrades with a clear error when missing. Pass protocol_path to preload an analyze JSON or protocol .py (the returned URL then carries the required ?key=example). Online preview only: no video is rendered and no rendered image is exported — the only files written are the scene the page serves (flex.xml, view.json and flex_assets). Startup takes ~20 s for a long protocol, and the health poll can report a false timeout on slow starts — the process usually comes up anyway.
+Start the interactive Flex 3D viewer (MuJoCo + Three.js) on 127.0.0.1 and return the browser URL. Requires mujoco in the plugin Python env; degrades with a clear error when missing. Requires protocol_path (analyze JSON or protocol .py); the returned URL carries ?key=example. Online preview only: no video is rendered and no rendered image is exported — the only files written are the scene the page serves (flex.xml, view.json and flex_assets). Readiness is verified against this viewer process; a failed start is reported and timed-out processes are stopped.
 
-**Parameters:** `protocol_path` (optional), `port` (optional), `python_executable` (optional)
+**Parameters:** `protocol_path`, `port` (optional), `python_executable` (optional)
 
 ### `flex3d_preflight_check` [L4]
 

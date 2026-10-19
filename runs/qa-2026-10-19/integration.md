@@ -1,0 +1,11 @@
+# Flex plugin integration — 2026-10-19
+
+Integration PR: https://github.com/KRATSZ/labscriptai-ot/pull/9 (includes #5, #6, #7 and #8). Goal: a general, lightweight Opentrons Flex plugin; retain the existing authoring/runtime harness.
+
+Implemented: 52 consolidated MCP tools; preserved local removal of host wake adapters; combined modules/stacking, waste chute and keyed online preview; shared protocol analysis cache; corrected watch resume budgets and public recovery-tool guidance; cross-platform local runtime installer; optional vision defaults off and reports skipped checks honestly; fixed serial-dilution volume/concentration; deterministic core and optional-model ZIPs. Empty previews require a protocol; no-motion clearance is not applicable. No new service, database or agent framework.
+
+Verified: 357 Node tests, 9 Python model/geometry/liquid tests and 3 package tests pass. Installer and manifest checks pass. A freshly extracted core ZIP installs and completes a real stdio MCP handshake (52 tools), simulation, LogicPass and all four applicable 3D checks without the optional model pack. Real local viewer health identity, keyed URL, redirect and scene payload pass. Missing input reports unknown; undeclared source liquids report failed. No physical robot actions were performed. Independent review identified and prompted fixes for stale recovery tools, restart guidance and empty previews. GitHub Actions runs the same test suites.
+
+Build: `python3 scripts/package_labscriptai_ot.py`. Output: `dist/labscriptai-ot-0.1.1.zip`, optional `dist/labscriptai-ot-flex3d-details-0.1.1.zip`, and `dist/release-manifest.json` (exact sizes and SHA-256). Core excludes environments, secrets, tests, QA notes, training weights, Blender sources and duplicate exports. Dependencies install locally. Basic 3D works without detailed meshes. Release publication is separate from merging.
+
+Local handoff: preserved pre-integration changes and untracked files under `.agent-runs/integration-20261019/` when updating the original checkout; that directory also holds final verification logs. Do not reapply the old patch wholesale: its runtime changes are already integrated. Remaining validation: physical Flex execution and actual host-client UI installation (Codex/Claude Code/Cursor) have not been claimed as tested.

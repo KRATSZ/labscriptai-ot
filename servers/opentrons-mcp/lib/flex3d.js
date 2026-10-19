@@ -123,7 +123,7 @@ function pollHealth(url, child, timeoutMs = 45000) {
 
   return new Promise(resolve => {
     const attempt = () => {
-      if (child.exitCode !== null) {
+      if (!child.pid || child.exitCode !== null || child.signalCode !== null) {
         resolve({ exited: true });
         return;
       }
@@ -162,6 +162,9 @@ export async function startFlex3dViewer({
   port = FLEX3D_DEFAULT_PORT,
   preferredPython,
 } = {}) {
+  if (!protocolPath || !String(protocolPath).trim()) {
+    return { ok: false, error: "protocol_required", message: "Provide protocol_path to open a 3D preview." };
+  }
   const args = ["-m", "sim.web_player", "--host", "127.0.0.1", "--port", String(port)];
   const hasProtocol = Boolean(protocolPath && String(protocolPath).trim());
   if (hasProtocol) {

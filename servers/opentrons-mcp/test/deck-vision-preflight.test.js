@@ -308,3 +308,16 @@ test("isPreflightVisionEnabled respects OPENTRONS_PREFLIGHT_VISION=off", () => {
     }
   }
 });
+
+test("optional preflight vision is off until explicitly configured", () => {
+  const original = process.env.OPENTRONS_PREFLIGHT_VISION;
+  try {
+    delete process.env.OPENTRONS_PREFLIGHT_VISION;
+    assert.equal(isPreflightVisionEnabled(), false);
+    process.env.OPENTRONS_PREFLIGHT_VISION = "on";
+    assert.equal(isPreflightVisionEnabled(), true);
+  } finally {
+    if (original === undefined) delete process.env.OPENTRONS_PREFLIGHT_VISION;
+    else process.env.OPENTRONS_PREFLIGHT_VISION = original;
+  }
+});

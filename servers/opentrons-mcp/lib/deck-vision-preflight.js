@@ -7,7 +7,7 @@ const ESCALATION_UNCERTAINTIES = new Set([
 ]);
 
 export function isPreflightVisionEnabled() {
-  const flag = String(process.env.OPENTRONS_PREFLIGHT_VISION || "on").trim().toLowerCase();
+  const flag = String(process.env.OPENTRONS_PREFLIGHT_VISION || "off").trim().toLowerCase();
   return !["0", "false", "off", "no"].includes(flag);
 }
 
