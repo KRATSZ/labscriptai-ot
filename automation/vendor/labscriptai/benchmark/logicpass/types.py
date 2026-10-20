@@ -81,12 +81,14 @@ SUPPORTED_LEAF_COMMANDS: frozenset[str] = frozenset(
 # stays allowlisted because it has no volume transfer in the L1/L4 model.
 #
 # Conservative exclusions that remain LP-L5: transfer/consolidate/distribute,
-# aspirateInPlace, liquidProbe, moveLabware, setTipState, custom.
+# aspirateInPlace, liquidProbe, setTipState, custom.
 # ``dispenseInPlace`` into trash / waste chute / trash_bin is a discard
 # (empty the tip; same family as dropTipInPlace), not LP-L5.
 # ``mix`` is *not* a compound parent here — same zero-net-volume
 # family as blowout (PE 8.8.1 expands ``pipette.mix`` to aspirate/dispense).
-# Note: ``moveLabware`` is *not* allowlisted → disposition ``lp_l5``.
+# ``moveLabware`` and thermocycler temperature/profile commands do not change
+# well or tip volumes, so they are allowlisted. Liquid stays on the same
+# labware id after a gripper move.
 ALLOWLISTED_NON_STATE_COMMANDS: frozenset[str] = frozenset(
     {
         # Phase-0 freeze base
@@ -99,6 +101,7 @@ ALLOWLISTED_NON_STATE_COMMANDS: frozenset[str] = frozenset(
         "moveToWell",
         "moveToAddressableArea",
         "moveToAddressableAreaForDropTip",
+        "moveLabware",
         "waitForDuration",
         "waitForResume",
         "comment",
@@ -121,6 +124,14 @@ ALLOWLISTED_NON_STATE_COMMANDS: frozenset[str] = frozenset(
         "heaterShaker/deactivateHeater",
         "thermocycler/openLid",
         "thermocycler/closeLid",
+        "thermocycler/setTargetBlockTemperature",
+        "thermocycler/waitForBlockTemperature",
+        "thermocycler/setTargetLidTemperature",
+        "thermocycler/waitForLidTemperature",
+        "thermocycler/deactivateBlock",
+        "thermocycler/deactivateLid",
+        "thermocycler/runProfile",
+        "thermocycler/awaitProfileComplete",
     }
 )
 
@@ -155,7 +166,6 @@ UNSUPPORTED_LIQUID_AFFECTING_EXAMPLES: frozenset[str] = frozenset(
         "aspirateInPlace",
         "configureForVolume",
         "liquidProbe",
-        "moveLabware",
         "setTipState",
         "custom",
         *PARENT_OR_COMPOUND_COMMANDS,
