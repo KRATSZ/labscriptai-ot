@@ -372,6 +372,33 @@ test("execute_protocol_recovery handles module blocker reconciliation by waiting
   }
 });
 
+test("module recovery does not auto-resume when reported blockers disappear into unknown state", async () => {
+  const originalFetch = global.fetch;
+  let reads = 0;
+  let resumed = false;
+  installCommonRecoveryFetch({
+    commands: [{ id: "cmd-module-wait", commandType: "aspirate", status: "failed", params: {}, error: { errorType: "ModuleNotReadyError", detail: "module is still heating" } }],
+    modules: [{ id: "temp-1", moduleModel: "temperatureModuleV2", moduleOffset: { slot: "C1" }, data: { status: "heating", currentTemperature: 25, targetTemperature: 37 } }],
+    onRunAction() { resumed = true; },
+  });
+  const mockFetch = global.fetch;
+  global.fetch = async (url, options = {}) => {
+    if ((options.method || "GET") === "GET" && new URL(url).pathname === "/modules" && ++reads >= 4) {
+      return jsonResponse({ data: [{ id: "temp-1", moduleModel: "temperatureModuleV2", moduleOffset: { slot: "C1" } }] });
+    }
+    return mockFetch(url, options);
+  };
+  try {
+    await assert.rejects(() => TOOL_HANDLERS.execute_protocol_recovery({
+      robot_ip: "robot.invalid", run_id: "run-1", session_id: "recover-module-unknown",
+      module_wait_timeout_ms: 30, module_poll_interval_ms: 1,
+    }), /timed out waiting for module/);
+    assert.equal(resumed, false);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
 test("recover_tip_pickup remains as a compatibility wrapper", async () => {
   const originalFetch = global.fetch;
   installCommonRecoveryFetch({

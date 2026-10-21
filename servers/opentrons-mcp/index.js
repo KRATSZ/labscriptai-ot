@@ -3,9 +3,9 @@
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
+import { Server, StdioServerTransport, CallToolRequestSchema, ListToolsRequestSchema } from "./lib/sdk.js";
+import { quoteCliArg } from "./lib/cli.js";
+import { systemPath } from "../../scripts/runtime-paths.mjs";
 
 import { errorResponse, successResponse } from "./lib/envelope.js";
 import { requestRobotBytes, requestRobotJson } from "./lib/http.js";
@@ -65,7 +65,7 @@ import {
 } from "./lib/labware-offsets.js";
 import { parseSimulationLog, runDoctorTool, runSimulationTool } from "./lib/simulation.js";
 import { analyzeProtocolOnce } from "./lib/analyze-once.js";
-import { runFlex3dCheck, startFlex3dViewer } from "./lib/flex3d.js";
+import { runFlex3dCheck, startFlex3dViewer, stopFlex3dViewer } from "./lib/flex3d.js";
 import { runLogicpassCheck, buildLogicpassGateBlock } from "./lib/logicpass.js";
 import { buildProbeWellsProtocol, extractProbeResultsFromCommands } from "./lib/probe.js";
 import * as probeLib from "./lib/probe.js";
@@ -151,9 +151,10 @@ import {
   runVlmSecondOpinion,
   shouldEscalateToVlm,
 } from "./lib/deck-vision-preflight.js";
-import { ARTIFACTS_DIR, DATA_DIR } from "./lib/paths.js";
+import { ARTIFACTS_DIR, DATA_DIR, PLUGIN_ROOT } from "./lib/paths.js";
 
 const __filename = fileURLToPath(import.meta.url);
+process.env.PATH = systemPath();
 const DEFAULT_CAMERA_ARTIFACT_DIR = path.join(ARTIFACTS_DIR, "camera-captures");
 const DEFAULT_VISION_ANNOTATED_DIR = path.resolve(DEFAULT_CAMERA_ARTIFACT_DIR, "vision-annotated");
 const DEFAULT_PROBE_PROTOCOL_DIR = path.join(ARTIFACTS_DIR, "probe-protocols");
@@ -1202,7 +1203,7 @@ const TOOL_DEFINITIONS = [
   {
     name: "flex3d_preflight_check",
     description:
-      "Flex 3D physical preflight (MuJoCo). Runs automation/flex3d/scripts/render_protocol_3d.py on an opentrons analyze JSON or protocol .py: geometry, liquid, targets, clearance checks with command_index aligned to LogicPass step_index. Flex only (OT-2 refused). Degrades gracefully (ok=false, error=mujoco_missing) when mujoco is not installed. Returns passed/failed/unknown/not_applicable; failed checks set ok=false. Uses the shared analysis cache. Checks and scene assets stay under PLUGIN_DATA; no image or video export. For a live 3D look at the deck use flex3d_open_viewer, which returns an online preview URL.",
+      "Flex 3D physical preflight (MuJoCo). Runs automation/flex3d/scripts/render_protocol_3d.py on an opentrons analyze JSON or protocol .py: geometry, liquid, targets, clearance checks with command_index aligned to LogicPass step_index. Flex only (OT-2 refused). Degrades gracefully (ok=false, error=mujoco_missing) when mujoco is not installed. Returns passed/failed/unknown/not_applicable; failed checks set ok=false. Includes the complete warnings array and warnings_count. Uses the shared analysis cache. Checks and scene assets stay under PLUGIN_DATA; no image or video export. For a live 3D look at the deck use flex3d_open_viewer, which returns an online preview URL.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1212,11 +1213,11 @@ const TOOL_DEFINITIONS = [
         },
         out_dir: {
           type: "string",
-          description: "Directory for generated scene/view files (default .plugin-data/flex3d)",
+          description: "Directory for generated scene/view files (default PLUGIN_DATA/flex3d)",
         },
         python_executable: {
           type: "string",
-          description: "Override Python for mujoco (else OPENTRONS_PYTHON / .venv)",
+          description: "Override Python for mujoco (else OPENTRONS_PYTHON / shared runtime / .venv)",
         },
       },
       required: ["source"],
@@ -1225,25 +1226,15 @@ const TOOL_DEFINITIONS = [
   {
     name: "flex3d_open_viewer",
     description:
-      "Start the interactive Flex 3D viewer (MuJoCo + Three.js) on 127.0.0.1 and return the browser URL. Requires mujoco in the plugin Python env; degrades with a clear error when missing. Requires protocol_path (analyze JSON or protocol .py); the returned URL carries ?key=example. Online preview only: writes scene assets and a startup log under PLUGIN_DATA, with no rendered images or videos. The viewer stays running after the client exits; pid and log_path allow stopping and diagnosis. Readiness is verified against this viewer process; a failed start is reported and timed-out processes are stopped.",
+      "Open or close the local interactive Flex 3D preview. action=open (default) requires protocol_path (.py or analyze JSON); returns a browser URL and reuses this plugin's running viewer. Different protocols keep separate keyed URLs (up to four loaded models). action=close stops only the verified viewer owned by this plugin's data directory; protocol_path is unnecessary. A foreign port is left untouched with an actionable error. Online preview only; scene assets and private logs stay under PLUGIN_DATA, with no images or video exports. Local simulation only; no robot connection.",
     inputSchema: {
       type: "object",
       properties: {
-        protocol_path: {
-          type: "string",
-          description: "Analyze JSON or protocol .py to preview",
-        },
-        port: {
-          type: "number",
-          description: "Port for the local viewer server (default 8791)",
-          default: 8791,
-        },
-        python_executable: {
-          type: "string",
-          description: "Override Python for mujoco (else OPENTRONS_PYTHON / .venv)",
-        },
+        action: { type: "string", enum: ["open", "close"], default: "open" },
+        protocol_path: { type: "string", description: "Analyze JSON or protocol .py; required for action=open" },
+        port: { type: "integer", minimum: 1, maximum: 65535, description: "Local viewer port (default 8791); pass the returned port to close", default: 8791 },
+        python_executable: { type: "string", description: "Override Python for mujoco (else OPENTRONS_PYTHON / shared runtime / .venv)" },
       },
-      required: ["protocol_path"],
     },
   },
   {
@@ -1291,7 +1282,7 @@ const TOOL_DEFINITIONS = [
           type: "string",
           description: "local only: directory for the annotated debug image (default under artifacts/camera-captures/vision-annotated).",
         },
-        python_executable: { type: "string", description: "Override Python for ultralytics (else OPENTRONS_PYTHON / .venv)." },
+        python_executable: { type: "string", description: "Override Python for ultralytics (else OPENTRONS_PYTHON / shared runtime / .venv)." },
         deck_corners_norm: {
           type: "array",
           description: "local only: optional 4-corner deck homography in normalized image coordinates [[x,y], ...].",
@@ -1349,7 +1340,7 @@ const TOOL_DEFINITIONS = [
   {
     name: "run_protocol",
     description:
-      "Upload a protocol, create a run (auto-attaching stored labware offsets), optionally play it, then poll until the run reaches a terminal or intervention-required state. Gated: local simulation must pass AND LogicPass final_pass_v2 must be true (outcome=pass) before upload/play; fail or unevaluable blocks execution (skip_logicpass_gate=true to opt out deliberately).",
+      "Upload, create and optionally play a protocol, then poll to a terminal or intervention state. Local simulation is required. LogicPass and software preflight gate by default; honor explicit operator waivers with the corresponding skip flags and record skipped checks. Liquid probing is optional and its enable flag is not required for this tool.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1375,11 +1366,11 @@ const TOOL_DEFINITIONS = [
         skip_logicpass_gate: {
           type: "boolean",
           description:
-            "If true, skip the LogicPass (final_pass_v2) gate. Only use for intentional no-gate live diagnostics; default runs are blocked when LogicPass is fail or unevaluable.",
+            "Use true when the operator explicitly waives the liquid ledger for this run/test, including unsupported analysis. Records skipped, not passed. Local simulation still runs; do not ask for the same authorization again.",
         },
         skip_preflight: {
           type: "boolean",
-          description: "If true, skip the post-run preflight gate and proceed directly to play.",
+          description: "Use true only for an explicit waiver of the software preflight before play. Records skipped, not passed; does not disable robot interlocks. Prefer skip_preflight_deck_diff for a deck-diff-only waiver.",
         },
         skip_preflight_deck_diff: {
           type: "boolean",
@@ -2085,8 +2076,8 @@ async function readRobotStatus(args) {
   const [health, instruments, doorStatus, estopStatus, deckConfiguration] = await Promise.all([
     requestRobotJson("GET", args.robot_ip, "/health"),
     requestRobotJson("GET", args.robot_ip, "/instruments"),
-    requestRobotJson("GET", args.robot_ip, "/robot/door/status"),
-    requestRobotJson("GET", args.robot_ip, "/robot/control/estopStatus"),
+    requestRobotJson("GET", args.robot_ip, "/robot/door/status").catch(error => ({ unavailable: true, error: error.message })),
+    requestRobotJson("GET", args.robot_ip, "/robot/control/estopStatus").catch(error => ({ unavailable: true, error: error.message })),
     requestRobotJson("GET", args.robot_ip, "/deck_configuration"),
   ]);
 
@@ -2655,23 +2646,23 @@ function buildLiquidSourceIdentityOperatorGuidance(sessionId = DEFAULT_SESSION_I
     draft_tsv_path: draftTsv,
     validation_report_path: validationReport,
     generate_draft_command: [
-      "node scripts/summarize-liquid-source-map.mjs",
-      `--session-id ${sessionId}`,
-      `--out ${path.join(artifactDir, "liquid-source-map-summary-with-md-latest.json")}`,
-      `--template-json-out ${draftJson}`,
-      `--template-tsv-out ${draftTsv}`,
-      `--template-md-out ${draftMd}`,
+      `node ${quoteCliArg(path.join(PLUGIN_ROOT, "scripts/summarize-liquid-source-map.mjs"))}`,
+      `--session-id ${quoteCliArg(sessionId)}`,
+      `--out ${quoteCliArg(path.join(artifactDir, "liquid-source-map-summary-with-md-latest.json"))}`,
+      `--template-json-out ${quoteCliArg(draftJson)}`,
+      `--template-tsv-out ${quoteCliArg(draftTsv)}`,
+      `--template-md-out ${quoteCliArg(draftMd)}`,
     ].join(" "),
     validate_markdown_command: [
-      "node scripts/summarize-liquid-source-map.mjs",
-      `--session-id ${sessionId}`,
-      `--validate-template-md ${draftMd}`,
-      `--report-out ${validationReport}`,
+      `node ${quoteCliArg(path.join(PLUGIN_ROOT, "scripts/summarize-liquid-source-map.mjs"))}`,
+      `--session-id ${quoteCliArg(sessionId)}`,
+      `--validate-template-md ${quoteCliArg(draftMd)}`,
+      `--report-out ${quoteCliArg(validationReport)}`,
     ].join(" "),
     apply_markdown_command: [
-      "node scripts/summarize-liquid-source-map.mjs",
-      `--apply-template-md ${draftMd}`,
-      `--report-out ${path.join(artifactDir, "liquid-source-identity-md-apply-latest.json")}`,
+      `node ${quoteCliArg(path.join(PLUGIN_ROOT, "scripts/summarize-liquid-source-map.mjs"))}`,
+      `--apply-template-md ${quoteCliArg(draftMd)}`,
+      `--report-out ${quoteCliArg(path.join(artifactDir, "liquid-source-identity-md-apply-latest.json"))}`,
     ].join(" "),
   };
 }
@@ -3280,12 +3271,15 @@ function buildLiveLiquidRecoveryGateResult({
     ),
     buildGateCheck(
       "module_blockers",
-      (moduleStatus.blockers || []).length === 0 ? "pass" : "warn",
-      (moduleStatus.blockers || []).length === 0
+      (moduleStatus.blockers || []).length === 0 && (moduleStatus.not_checked || []).length === 0 ? "pass" : "warn",
+      (moduleStatus.not_checked || []).length > 0
+        ? "Some module states were not checked; see not_checked."
+        : (moduleStatus.blockers || []).length === 0
         ? "No module blockers were reported."
         : "One or more module blockers were reported.",
       {
         blockers: moduleStatus.blockers || [],
+        not_checked: moduleStatus.not_checked || [],
       },
     ),
     sourcePlanCheck,
@@ -4100,7 +4094,7 @@ async function enforceSimulationGate(args) {
     simulation,
     parsed,
     logicpass: args.skip_logicpass_gate === true
-      ? { skipped: true, final_pass_v2: null }
+      ? { skipped: true, outcome: "skipped", logic_pass: null, final_pass_v2: null }
       : {
           skipped: false,
           outcome: logicpassVerdict?.outcome ?? null,
@@ -4131,7 +4125,7 @@ async function waitForModuleRecoveryReady({
 
   while (Date.now() - startedAt <= timeoutMs) {
     latest = await readModuleStatus({ robot_ip: robotIp });
-    if ((latest?.data?.blockers || []).length === 0) {
+    if (latest?.data?.modules?.length > 0 && latest.data.blockers.length === 0 && latest.data.not_checked.length === 0) {
       return {
         ready: true,
         waited_ms: Date.now() - startedAt,
@@ -7011,7 +7005,7 @@ const TOOL_HANDLERS = {
     let source = args.source;
     if (path.extname(source || "").toLowerCase() === ".py") {
       const analyzed = await analyzeProtocolOnce({ protocol_path: source, python_executable: args.python_executable });
-      if (!analyzed.ok) return { data: { ...analyzed, status: "failed", checks: [] } };
+      if (!analyzed.ok) return { data: { ...analyzed, status: "failed", checks: [], warnings: [], warnings_count: 0 } };
       source = analyzed.analysis_path;
     }
     const result = await runFlex3dCheck({
@@ -7022,19 +7016,10 @@ const TOOL_HANDLERS = {
     return { data: result };
   },
 
-  async flex3d_open_viewer(args) {
-    let source = args.protocol_path;
-    if (path.extname(source || "").toLowerCase() === ".py") {
-      const analyzed = await analyzeProtocolOnce({ protocol_path: source, python_executable: args.python_executable });
-      if (!analyzed.ok) return { data: { ...analyzed, status: "failed" } };
-      source = analyzed.analysis_path;
-    }
-    const result = await startFlex3dViewer({
-      protocolPath: source,
-      port: args.port,
-      preferredPython: args.python_executable,
-    });
-    return { data: result };
+  async flex3d_open_viewer(args = {}) {
+    if (args.action === "close") return { data: await stopFlex3dViewer({ port: args.port }) };
+    if (args.action && args.action !== "open") return { data: { ok: false, error: "invalid_action", message: "Choose action=open or action=close." } };
+    return { data: await startFlex3dViewer({ protocolPath: args.protocol_path, port: args.port, preferredPython: args.python_executable }) };
   },
 
   async vision_check(args) {
@@ -7195,10 +7180,11 @@ const TOOL_HANDLERS = {
       let preflightGate;
       if (args.skip_preflight === true) {
         preflightGate = {
-          ok: true,
+          ok: null,
           allowed_to_play: true,
           skipped: true,
-          summary: "Preflight skipped (skip_preflight=true).",
+          status: "skipped",
+          summary: "Software preflight skipped by request (skip_preflight=true); not checked.",
         };
       } else {
         const preflightWrap = await runPreflightRunSetup({
@@ -8280,7 +8266,7 @@ class OpentronsLabMCP {
     this.server = new Server(
       {
         name: "opentrons-lab-mcp",
-        version: "0.1.0",
+        version: JSON.parse(fs.readFileSync(new URL("./package.json", import.meta.url), "utf8")).version,
       },
       {
         capabilities: {

@@ -41,6 +41,29 @@ test("buildPreflightRunSetupResult blocks when needs_reconciliation", () => {
   assert.ok(result.errors.some(e => e.code === "needs_reconciliation"));
 });
 
+test("preflight exposes all unavailable status checks without blocking ordinary play", () => {
+  const result = buildPreflightRunSetupResult({
+    robotStatusSnapshot: { ready_for_physical_action: true, blockers: [], not_checked: ["door", "estop"] },
+    skipDeckDiff: true,
+  });
+  assert.equal(result.allowed_to_play, true);
+  assert.deepEqual(result.not_checked, ["door", "estop"]);
+  assert.deepEqual(result.warnings.map(item => item.code), ["door_not_checked", "estop_not_checked"]);
+  assert.equal(result.warnings_count, 2);
+  assert.equal(result.warning_checks.every(item => item.status === "warn"), true);
+  assert.equal(result.warning_checks.every(item => item.severity === "warning" && item.requires_human_review === false && item.error_leaf === null), true);
+});
+
+test("skipped deck comparison and unavailable module state stay visible in preflight", () => {
+  const result = buildPreflightRunSetupResult({ skipDeckDiff: true, moduleStatusSnapshot: { not_checked: ["module:temp-1"] } });
+  assert.equal(result.allowed_to_play, true);
+  assert.deepEqual(result.skipped_checks, ["deck_diff"]);
+  assert.equal(result.deck_diff.status, "skipped");
+  assert.deepEqual(result.not_checked, ["module:temp-1"]);
+  assert.equal(result.warning_checks[0].requires_human_review, false);
+  assert.deepEqual(result.warning_checks[0].evidence_sources, ["module_status"]);
+});
+
 test("preflight_run_setup handler returns ok with mocked robot", async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "preflight-"));
   const protocolPath = path.join(dir, "noop.py");

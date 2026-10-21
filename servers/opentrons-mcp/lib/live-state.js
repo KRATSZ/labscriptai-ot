@@ -41,8 +41,8 @@ function normalizeBool(value) {
     return value;
   }
   if (typeof value === "string") {
-    const normalized = value.toLowerCase();
-    if (["true", "open", "engaged", "pressed", "on"].includes(normalized)) {
+    const normalized = value.trim().toLowerCase();
+    if (["true", "open", "engaged", "pressed", "triggered", "on"].includes(normalized)) {
       return true;
     }
     if (["false", "closed", "disengaged", "released", "off"].includes(normalized)) {
@@ -73,7 +73,7 @@ function summarizeInstruments(instrumentsPayload) {
       instrument_name: readNested(instrument, [["instrumentName"], ["name"], ["model"]]),
       model: readNested(instrument, [["model"], ["instrumentModel"]]),
       serial: readNested(instrument, [["serialNumber"], ["serial"]]),
-      ok,
+      ok: typeof ok === "boolean" ? ok : null,
       tip_detected: readNested(
         instrument,
         [["tipDetected"], ["data", "tipDetected"], ["pipette", "tipDetected"], ["state", "tipDetected"]],
@@ -89,11 +89,11 @@ function summarizeDoor(doorPayload) {
   const rawStatus = readNested(door, [["status"], ["doorStatus"]], null);
   const open =
     normalizeBool(rawStatus) ??
-    normalizeBool(readNested(door, [["open"]])) ??
-    (typeof rawStatus === "string" ? rawStatus.toLowerCase() === "open" : null);
+    normalizeBool(readNested(door, [["open"]]));
   return {
     status: rawStatus,
     open,
+    checked: open !== null,
   };
 }
 
@@ -101,14 +101,13 @@ function summarizeEstop(estopPayload) {
   const estop = unwrapData(estopPayload) || {};
   const rawStatus = readNested(estop, [["status"], ["estopStatus"]], null);
   const engaged =
+    (["physicallyengaged", "logicallyengaged"].includes(String(rawStatus).toLowerCase()) ? true : null) ??
     normalizeBool(rawStatus) ??
-    normalizeBool(readNested(estop, [["engaged"]])) ??
-    (typeof rawStatus === "string"
-      ? ["engaged", "pressed", "triggered"].includes(rawStatus.toLowerCase())
-      : null);
+    normalizeBool(readNested(estop, [["engaged"]]));
   return {
     status: rawStatus,
     engaged,
+    checked: engaged !== null,
   };
 }
 
@@ -144,6 +143,11 @@ export function buildRobotStatusSnapshot({
   if (instrumentSummary.some(instrument => instrument.ok === false)) {
     blockers.push("instrument_not_ready");
   }
+  const notChecked = [
+    ...(doorSummary.checked ? [] : ["door"]),
+    ...(estopSummary.checked ? [] : ["estop"]),
+    ...instrumentSummary.filter(item => item.ok === null).map(item => `instrument:${item.mount || item.instrument_name || "unknown"}`),
+  ];
 
   return {
     robot_reachable: true,
@@ -152,9 +156,18 @@ export function buildRobotStatusSnapshot({
     door: doorSummary,
     estop: estopSummary,
     deck_configuration: deckSummary,
-    ready_for_physical_action: blockers.length === 0,
+    ready_for_physical_action: blockers.length ? false : notChecked.length ? null : true,
+    not_checked: notChecked,
     blockers,
   };
+}
+
+function readingAtTarget(current, target, tolerance = 0) {
+  if (target == null) return true;
+  const numeric = value => ["number", "string"].includes(typeof value)
+    && String(value).trim() !== "" && Number.isFinite(Number(value));
+  if (!numeric(current) || !numeric(target)) return null;
+  return tolerance ? Math.abs(Number(current) - Number(target)) < tolerance : Number(current) === Number(target);
 }
 
 function normalizeModule(module) {
@@ -179,19 +192,11 @@ function normalizeModule(module) {
   const lowerStatus =
     typeof rawStatus === "string" ? rawStatus.toLowerCase() : String(rawStatus || "");
 
-  const thermalReady =
-    targetTemp == null ||
-    currentTemp == null ||
-    Math.abs(Number(currentTemp) - Number(targetTemp)) < 0.5;
-  const speedReady =
-    targetSpeed == null ||
-    currentSpeed == null ||
-    Number(currentSpeed) === Number(targetSpeed);
-  const statusReady =
-    !rawStatus ||
-    ["idle", "holding at target", "engaged", "disengaged", "ready", "steady"].some(
-      token => lowerStatus.includes(token),
-    );
+  const thermalReady = readingAtTarget(currentTemp, targetTemp, 0.5);
+  const speedReady = readingAtTarget(currentSpeed, targetSpeed);
+  const statusReady = ["idle", "holding at target", "engaged", "disengaged", "ready", "steady"].includes(lowerStatus)
+    ? true : /heating|cooling|shaking|running|busy|error|failed|fault|opening|closing/.test(lowerStatus) ? false : null;
+  const readiness = [thermalReady, speedReady, statusReady];
 
   return {
     id: readNested(data, [["id"], ["moduleId"], ["serialNumber"], ["serial"]]),
@@ -215,7 +220,7 @@ function normalizeModule(module) {
       [["magneticEngaged"], ["engaged"], ["data", "engaged"]],
       null,
     ),
-    ready: Boolean(thermalReady && speedReady && statusReady),
+    ready: readiness.includes(false) ? false : readiness.includes(null) ? null : true,
   };
 }
 
@@ -228,7 +233,8 @@ export function buildModuleStatusSnapshot(modulesPayload) {
   return {
     modules,
     module_count: modules.length,
-    ready_module_count: modules.filter(module => module.ready).length,
+    ready_module_count: modules.filter(module => module.ready === true).length,
+    not_checked: modules.filter(module => module.ready === null).map(module => `module:${module.id || module.slot || module.model || "unknown"}`),
     blockers,
   };
 }

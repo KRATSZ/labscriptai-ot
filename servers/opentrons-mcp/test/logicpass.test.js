@@ -6,7 +6,7 @@ import { fileURLToPath } from "url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const pluginRoot = path.resolve(here, "../../..");
-const python = path.join(pluginRoot, ".venv/bin/python");
+const python = process.env.OPENTRONS_PYTHON || path.join(pluginRoot, ".venv/bin/python");
 const bridge = path.join(pluginRoot, "servers/opentrons-mcp/scripts/logicpass_check.py");
 
 function run(args) {

@@ -169,7 +169,7 @@ test("simulate_protocol response embeds parsed_repair classification", async () 
 
 test("3D preview requires a protocol and fails without starting an empty viewer", async () => {
   const def = TOOL_DEFINITIONS.find(tool => tool.name === "flex3d_open_viewer");
-  assert.ok(def.inputSchema.required.includes("protocol_path"));
+  assert.ok(def.inputSchema.properties.action.enum.includes("close"));
   const result = await TOOL_HANDLERS.flex3d_open_viewer({});
   assert.equal(result.data.ok, false);
   assert.equal(result.data.error, "protocol_required");

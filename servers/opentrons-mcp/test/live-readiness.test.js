@@ -37,6 +37,37 @@ test("buildLiveReadinessReport prioritizes local runtime blockers", () => {
   assert.deepEqual(report.recommended_next_tools, ["health_check"]);
 });
 
+test("unreadable door/estop are warnings, not a pass or a detected fault", () => {
+  const report = buildLiveReadinessReport({
+    healthReport: { venv: { status: "ok" }, robot: { status: "reachable" } },
+    robotStatusSnapshot: { blockers: [], not_checked: ["door", "estop"] },
+    homeSafety: { auto_home_allowed: false, blockers: ["door_not_checked", "estop_not_checked"] },
+    hasFilePath: true,
+  });
+  const check = report.checks.find(item => item.name === "robot_status");
+  assert.equal(check.status, "warn");
+  assert.deepEqual(check.not_checked, ["door", "estop"]);
+  assert.equal(report.overall_status, "warn");
+  assert.equal(report.ready_for_play, true);
+  assert.deepEqual(report.blocking_reasons, []);
+  assert.deepEqual(report.recommended_next_tools, ["create_run"], "missing readings must not cause a maintenance-homing loop");
+});
+
+test("readiness preserves top-level preflight failure, skipped checks and unknown modules", () => {
+  const base = { healthReport: { venv: { status: "ok" }, robot: { status: "reachable" } } };
+  const failed = buildLiveReadinessReport({ ...base, preflight: { ok: false, blocking_checks: [], warning_checks: [] } });
+  assert.equal(failed.overall_status, "fail");
+  assert.equal(failed.ready_for_play, false);
+  const skipped = buildLiveReadinessReport({ ...base, preflight: { skipped: true, ok: null } });
+  assert.equal(skipped.checks.find(item => item.name === "preflight_gate").status, "skipped");
+  assert.equal(skipped.overall_status, "warn");
+  assert.equal(skipped.ready_for_play, true);
+  const partial = buildLiveReadinessReport({ ...base, preflight: { ok: true, skipped_checks: ["deck_diff"] }, moduleStatusSnapshot: { blockers: [], not_checked: ["module:temp-1"] } });
+  assert.equal(partial.checks.find(item => item.name === "preflight_gate").status, "warn");
+  assert.equal(partial.checks.find(item => item.name === "module_status").status, "warn");
+  assert.equal(partial.ready_for_play, true);
+});
+
 test("buildLiveReadinessReport warns on stale session and preflight warnings", () => {
   const report = buildLiveReadinessReport({
     healthReport: {

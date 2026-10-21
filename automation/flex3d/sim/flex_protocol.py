@@ -401,7 +401,10 @@ def load_analysis(path: Path, deck: Deck) -> ProtocolRun:
             if params.get("strategy") == "usingGripper" and params["labwareId"] not in moved:
                 moved.append(params["labwareId"])
     title = raw.get("metadata", {}).get("protocolName") or path.stem
-    run = ProtocolRun(path, title, labware, pipettes, liquids, raw["commands"], trash, moved, deck, modules=modules, chutes=chutes, chute=next(iter(chute_bodies.values()), None))
+    # The deck definition lists possible fixtures, not installed ones. Drawing
+    # its optional chute unconditionally overlaps a trash bin or labware in D3.
+    chute = next(iter(chute_bodies.values()), None) if chutes else None
+    run = ProtocolRun(path, title, labware, pipettes, liquids, raw["commands"], trash, moved, deck, modules=modules, chutes=chutes, chute=chute)
     _settle(run)
     return run
 
@@ -884,9 +887,11 @@ class Planner:
         self._push(dict(self.q), state, "seat", 0.18)
         self._move_site(tool, site, "lift")
 
-    def _drop(self, tool: str, return_to: tuple[str, ...] | None = None) -> None:
+    def _drop(self, tool: str, return_to: tuple[tuple[str, str], ...] | None = None) -> None:
         state = self.state.copy()
-        state.falling[tool] = 1.0
+        # Returning to a rack seats the tip at its definition's original pose.
+        # Only waste drops use the free-fall/fade animation through empty space.
+        state.falling[tool] = 0.0 if return_to else 1.0
         for mix in state.tip_liquid[tool]:
             mix.clear()
         self._push(dict(self.q), state, "eject", 0.55)
@@ -1119,7 +1124,7 @@ class Planner:
         elif kind == "dropTipInPlace":
             text = "Drop tip"
         elif kind == "dropTip":
-            text = f"Drop tip in {lw.name if lw else ''}"
+            text = f"Return tip to {self._well_text(tool, lw, params['wellName'])}"
         elif kind == "moveLabware":
             src = self.run.where_text(self.state_at_time(t0).parent[lw.key])
             dst = self.run.where_text(self._dest(params["newLocation"], lw.name))

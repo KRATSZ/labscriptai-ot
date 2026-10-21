@@ -24,6 +24,72 @@ test("buildRobotStatusSnapshot derives blockers and readiness", () => {
   assert.equal(snapshot.instruments_summary[0].instrument_name, "flex_1channel_50");
 });
 
+test("missing or unfamiliar door/estop readings stay unknown without inventing faults", () => {
+  for (const status of [null, "unknown", "future-status"]) {
+    const snapshot = buildRobotStatusSnapshot({
+      health: {}, instruments: { data: [] },
+      doorStatus: { data: { status } }, estopStatus: { data: { status } },
+    });
+    assert.equal(snapshot.door.open, null);
+    assert.equal(snapshot.estop.engaged, null);
+    assert.deepEqual(snapshot.not_checked, ["door", "estop"]);
+    assert.equal(snapshot.ready_for_physical_action, null);
+    assert.deepEqual(snapshot.blockers, []);
+  }
+});
+
+test("official physical and logical estop states still block", () => {
+  for (const status of ["physicallyEngaged", "logicallyEngaged", "engaged"]) {
+    const snapshot = buildRobotStatusSnapshot({
+      doorStatus: { data: { status: "closed" } }, estopStatus: { data: { status } },
+    });
+    assert.equal(snapshot.estop.engaged, true);
+    assert.equal(snapshot.estop.checked, true);
+    assert.equal(snapshot.ready_for_physical_action, false);
+    assert.deepEqual(snapshot.blockers, ["estop_engaged"]);
+  }
+});
+
+test("missing instrument readiness stays unknown; an explicit failed instrument blocks", () => {
+  const args = { doorStatus: { data: { status: "closed" } }, estopStatus: { data: { status: "disengaged" } } };
+  const unknown = buildRobotStatusSnapshot({ ...args, instruments: { data: [{ mount: "left" }] } });
+  assert.equal(unknown.instruments_summary[0].ok, null);
+  assert.equal(unknown.ready_for_physical_action, null);
+  assert.deepEqual(unknown.not_checked, ["instrument:left"]);
+  assert.deepEqual(unknown.blockers, []);
+  const failed = buildRobotStatusSnapshot({ ...args, instruments: { data: [{ mount: "left", ok: false }] } });
+  assert.equal(failed.ready_for_physical_action, false);
+  assert.deepEqual(failed.blockers, ["instrument_not_ready"]);
+});
+
+test("missing module status or target measurements are unknown, not ready or an observed fault", () => {
+  const snapshot = buildModuleStatusSnapshot({ data: [
+    { id: "missing", moduleModel: "temperatureModuleV2" },
+    { id: "unmeasured", status: "idle", targetTemperature: 37 },
+    { id: "faulted", status: "error" },
+  ] });
+  assert.deepEqual(snapshot.modules.map(item => item.ready), [null, null, false]);
+  assert.deepEqual(snapshot.not_checked, ["module:missing", "module:unmeasured"]);
+  assert.equal(snapshot.ready_module_count, 0);
+  assert.deepEqual(snapshot.blockers, ["module_not_ready:faulted"]);
+});
+
+test("invalid temperature and speed readings remain unknown instead of reporting a fault", () => {
+  for (const value of ["unknown", "", true, NaN, Infinity]) {
+    for (const data of [
+      { currentTemperature: value, targetTemperature: 37 },
+      { currentTemperature: 37, targetTemperature: value },
+      { currentSpeed: value, targetSpeed: 500 },
+      { currentSpeed: 500, targetSpeed: value },
+    ]) {
+      const snapshot = buildModuleStatusSnapshot({ data: [{ id: "mod", status: "idle", ...data }] });
+      assert.equal(snapshot.modules[0].ready, null);
+      assert.deepEqual(snapshot.blockers, []);
+      assert.deepEqual(snapshot.not_checked, ["module:mod"]);
+    }
+  }
+});
+
 test("buildModuleStatusSnapshot flags modules that are not ready", () => {
   const snapshot = buildModuleStatusSnapshot({
     data: [

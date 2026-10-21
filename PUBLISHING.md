@@ -26,15 +26,19 @@ python3 scripts/package_labscriptai_ot.py
 
 The output goes to `dist/`:
 
-- `labscriptai-ot-0.1.1.zip` — one runtime package for Cursor, Claude Code and Codex, including detailed Flex module meshes
-- `release-manifest.json` — version, sizes, file counts and SHA-256 hashes
+- `labscriptai-ot-0.1.2.zip` — one runtime package for Cursor, Claude Code and Codex, including detailed Flex module meshes
+- `release-manifest.json` — version, sizes, file counts and SHA-256 hashes; build-info.json inside the ZIP identifies the exact runtime content
 
 The runtime package excludes development tests, QA notes, local state, secrets, Python/Node environments, vision training weights and model authoring sources. Detailed models include only the OBJ meshes required at runtime and their manifest/provenance; Blender, GLB and STL duplicates stay out. Extract the ZIP and install from its `labscriptai-ot/` folder. The viewer uses detailed modules automatically.
+
+Tags named `v<version>` run the three-platform checks and publish the ZIP from that tag only when the version matches. Each ZIP contains `build-info.json`; `health_check` reports that identity and the loaded folder.
 
 Before publishing:
 
 ```bash
 node scripts/lint-manifests.mjs
+claude plugin validate .
+claude plugin validate .claude-plugin/plugin.json
 npm --prefix servers/opentrons-mcp test
 PYTHONPATH=automation/flex3d .venv/bin/python -m unittest discover -s automation/flex3d/tests
 python3 -m unittest discover -s scripts -p 'test_package_labscriptai_ot.py'
@@ -55,7 +59,7 @@ Practical install path:
 
 1. Unzip the runtime archive into the target repo or plugin directory.
 2. Run `bash labscriptai-ot/install-labscriptai-ot.sh`.
-3. If using project config, copy `labscriptai-ot/.cursor/mcp.json` and `labscriptai-ot/.cursor/rules/` into the consuming project.
+3. Run `node labscriptai-ot/scripts/configure-cursor.mjs "/absolute/path/to/project"` to generate paths while preserving unrelated MCP config.
 
 Marketplace note: Cursor's extension distribution is still closer to VS Code extension publishing for many use cases. Keep this bundle as the source package and adapt marketplace metadata if Cursor requires a VSIX wrapper.
 

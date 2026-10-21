@@ -1,12 +1,30 @@
 # Agent output contract
 
-Give the operator a short, plain-language result and a concrete next action. Distinguish local software checks from physical robot checks; never turn an unavailable check into a pass. Ask for missing blocking facts instead of guessing.
+Give the operator a short, plain-language result and a concrete next action. For routine completion, use up to three short bullets: what completed, what needs the user (omit when none), and links to the protocol/preview. Show gate names, exit codes, PIDs and per-check metrics only when they explain a problem or the user requests details. A successful local check normally needs one sentence, not a full test report. Distinguish local software checks from physical robot checks; never turn an unavailable check into a pass. Ask for missing blocking facts instead of guessing.
 
 Keep structured status in the client's state or a single `status.json` beside the protocol, updating it at major phase boundaries. Do not paste this JSON, internal phase names or full logs into normal chat. Show structured output only when the user or client explicitly requests it. A brief clarification does not need a status file or a report.
 
 Reuse returned tool results when recording status; do not rerun successful gates or inspect their implementation just to copy a report. Link existing artifacts and save only the compact outcome the operator needs.
 
 Workflow order remains in [workflows.md](workflows.md). Error taxonomy remains in [error-response.md](error-response.md).
+
+## Plain-language defaults
+
+Use everyday words in normal replies; keep tool names and internal statuses in artifacts unless needed for troubleshooting.
+
+For an already authorized action, prefer one or two short sentences: “按你要求跳过这两项，开始本次测试。” Mention new limitations only when they affect the next decision. Avoid bureaucratic words such as “豁免、准入、风险承诺” and repeated explanations of warnings the user has already addressed.
+
+| Internal term | Say to the user |
+|---------------|-----------------|
+| preflight / gate | 上机前检查 / 这一步检查 |
+| LogicPass / liquid ledger | 液体用量检查 |
+| unevaluable / unsupported command | 这个工具暂时查不了这一步 |
+| LPD / critical sources | 液位探测 / 优先检查的试剂孔 |
+| reconcile_state / deck truth | 核对台面和记录是否一致 |
+| skipped / not_checked | 已按你要求跳过 / 这项还没检查 |
+| operator override / scoped authorization | 按你这次的要求继续 |
+
+Optional checks are suggestions, not mandatory prerequisites. Keep “tool cannot check”, “not checked” and “a fault was detected” distinct. State a limitation once and proceed within the user’s existing instructions; do not make the operator repeat the same permission or use special wording. Offer practical options when a real problem needs a decision.
 
 ## Status JSON template
 
@@ -29,7 +47,7 @@ Use this structure for recorded status (intent complete, protocol drafted, simul
 |-------|----------|----------------|
 | `phase` | yes | `intent`, `protocol`, `simulation`, `live_preflight`, `execution`, `recovery` |
 | `subphase` | for `live_preflight` | `dashboard`, `deck_vision`, `critical_probe` |
-| `status` | yes | `passed`, `failed`, `blocked`, `needs_confirmation`, `auto_fixable`, `needs_operator_physical_action` |
+| `status` | yes | `passed`, `failed`, `skipped`, `not_checked`, `blocked`, `needs_confirmation`, `auto_fixable`, `needs_operator_physical_action` |
 | `summary` | yes | Plain-language outcome |
 | `next_action` | yes | Concrete next step; use `null` only when truly complete |
 | `artifacts` | no | Paths or labels for files the user may need |
@@ -43,23 +61,16 @@ Use this structure for recorded status (intent complete, protocol drafted, simul
 | Status | Who acts | When |
 |--------|----------|------|
 | **passed** | Agent continues | Machine-judged gate cleared (incl. sensor-aligned vision). No verbal human re-confirm of this subgate. |
-| **failed** | Agent / authoring loop | Fix required in this phase (e.g. simulation error → repair). |
+| **failed** | Agent / authoring loop | A check actually detected a failure (e.g. simulation error → repair). |
+| **skipped** / **not_checked** | Agent continues where allowed | Optional check declined/unavailable, or named software gate explicitly waived. Record the omission; never turn it into a pass. |
 | **auto_fixable** | Agent | Soft mismatch or uncertainty the agent can resolve with tools (prefer `reconcile_state`, re-check, repair) before any human ask. |
 | **needs_operator_physical_action** | Operator (physical) | Hardware/lab state needs hands-on work (door, refill, rearrange labware). Report blockers; do not re-ask go-live confirm. |
-| **blocked** | Stop | Cannot proceed (missing IP, hard stop, env gate not set). Surfaced reason; no stacked “confirm this subgate?” prompts. |
-| **needs_confirmation** | Operator (verbal, once) | **Final go-live only** — after Phase 3a/3b/3c machine gates pass, before `run_protocol` / play. May bundle `dry_run_on` and whether live-probe env is already opted in. |
+| **blocked** | Stop | Cannot proceed (missing IP, hard stop, or requested live probe lacking its opt-in flag). Surfaced reason; no stacked “confirm this subgate?” prompts. |
+| **needs_confirmation** | Operator (verbal, once) | Before the first physical motion lacking scoped authorization; may cover targeted probing and a conditional run together. See HumanConfirmBudget. |
 
 ### HumanConfirmBudget (go-live)
 
-Phase **3a / 3b / 3c** tool outcomes are **machine-judged**. Agents must **not** verbally re-confirm each passed subgate (“Door OK?”, “Vision OK?”, “Probe OK?”).
-
-The **only** go-live verbal confirmation is the final `run_protocol` / play confirmation. That single prompt may bundle:
-
-- proceed with live run,
-- resolved `dry_run_on`,
-- whether `OPENTRONS_ENABLE_PROBE_WELLS=1` (or equivalent) is already set when live probe was used.
-
-Do **not** remove env / opt-in hard gates themselves — if probe live motion requires the env flag and it is unset, status is `blocked` (set the env), not a conversational substitute for the gate.
+Use the scoped authorization rules in [workflows.md](workflows.md#humanconfirmbudget-go-live). No repeated permission questions for passing machine checks. Explicit authorization and an operator at the robot are required **before** live probing or any other physical motion; an env flag alone is insufficient. One prompt may cover selected probing and the planned run, including named software-check waivers. Reuse that authorization only while the protocol, deck and action scope remain unchanged.
 
 ## Examples
 
@@ -97,7 +108,7 @@ Do **not** remove env / opt-in hard gates themselves — if probe live motion re
   "status": "passed",
   "summary": "Door closed, estop clear, modules ready, session consistent.",
   "next_action": "Continue Phase 3b with deck_vision_check.",
-  "sensors_used": ["live_readiness_check", "robot_status", "robot_status"],
+  "sensors_used": ["live_readiness_check", "robot_status"],
   "vlm_used": false
 }
 ```
@@ -112,7 +123,7 @@ YOLO uncertainty escalated to VLM; VLM agrees with expected layout → **passed*
   "subphase": "deck_vision",
   "status": "passed",
   "summary": "YOLO low confidence on D3; Ark VLM agrees a 96-well plate is present and matches session layout.",
-  "next_action": "Continue Phase 3c critical probe (machine gate); no human re-confirm of vision.",
+  "next_action": "Continue selected probing, or skip it and proceed under the existing run authorization.",
   "sensors_used": ["deck_vision_check(mode=local)", "analyze_image(provider=ark)"],
   "vlm_escalated": true,
   "vlm_used": true
@@ -148,16 +159,16 @@ YOLO uncertainty escalated to VLM; VLM agrees with expected layout → **passed*
 }
 ```
 
-### Live preflight needs confirmation — final go-live only
+### Live preflight needs scoped motion authorization
 
-Use `needs_confirmation` **once** after machine-judged 3a/3b/3c pass (or skip), not per subgate.
+Use `needs_confirmation` before the first physical action not already covered by explicit authorization, not after every passing subgate.
 
 ```json
 {
   "phase": "live_preflight",
   "status": "needs_confirmation",
-  "summary": "Phases 3a–3c machine gates passed; robot reachable, deck reconciled, critical sources probed.",
-  "next_action": "Confirm start of run_protocol (may include dry_run_on and live-probe env already opted in).",
+  "summary": "Read-only checks passed; the selected targeted probe and run await authorization.",
+  "next_action": "Authorize the selected probe and planned run, including any named software-check waivers.",
   "artifacts": []
 }
 ```

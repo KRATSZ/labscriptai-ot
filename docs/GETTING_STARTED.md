@@ -1,554 +1,107 @@
-# Getting Started with LabscriptAI OT
+# Getting started
 
-LabscriptAI OT is a single plugin bundle for **Claude Code**, **Codex**, and **Cursor**. It helps AI agents write Opentrons protocols, run local simulation, and safely assist with live Flex/OT-2 workflows.
+Write an Opentrons protocol, check it locally, and preview Flex motion before choosing whether to connect a robot. No robot, camera, vision weights or API key is needed for local simulation and 3D preview.
 
-**Safety in one line:** simulate first, opt in to live motion, treat vision as observation-only.
+## 1. Install the local runtime
 
-## Decision flow
-
-```
-Download ZIP → Extract → Run installer → Verify setup → Enable plugin → Send first command → Simulation passes
-```
-
-| Step | Action | Verify |
-|------|--------|--------|
-| 1 | Download the [latest release ZIP](https://github.com/KRATSZ/labscriptai-ot/releases/latest) and extract it | You have a `labscriptai-ot/` folder |
-| 2 | Run `install-labscriptai-ot.sh` (macOS/Linux) or `install-labscriptai-ot.ps1` (Windows) | Node dependencies and the local Python runtime install successfully |
-| 3 | Run `node scripts/verify-setup.mjs` | No failures; `health_check: runtime capabilities` reports `liquid-source-map-v2`, and `runtime_recovery_self_test` passes |
-| 4 | Enable the plugin in your client (see platform sections below) | MCP server `opentrons-lab` appears |
-| 5 | Send a [recommended first command](#recommended-first-commands) | Agent responds and uses MCP tools |
-| 6 | Reach simulation pass on a protocol | `simulate_protocol` succeeds locally |
-
-Terms: [GLOSSARY.md](GLOSSARY.md). Workflows: [policy/workflows.md](../policy/workflows.md).
-
----
-
-## Install
-
-### macOS / Linux
-
-After extracting the release ZIP:
+Install **Node.js 18+** and either **uv** or **Python 3.11–3.13** first. Download and extract the [release ZIP](https://github.com/KRATSZ/labscriptai-ot/releases/latest), open a terminal in its `labscriptai-ot/` folder, then run:
 
 ```bash
-cd labscriptai-ot
 bash install-labscriptai-ot.sh
-node scripts/verify-setup.mjs
 ```
 
-### Windows (PowerShell)
-
-After extracting the release ZIP:
+Windows PowerShell:
 
 ```powershell
-cd labscriptai-ot
 .\install-labscriptai-ot.ps1
-node scripts\verify-setup.mjs
 ```
 
-For source development, `git clone https://github.com/KRATSZ/labscriptai-ot.git` is an alternative to the ZIP. The remaining steps are the same.
+The installer installs dependencies and runs the local self-check automatically. Look for **0 failures**. Detailed Flex models are included and used automatically. Dependencies download on first install and take additional disk space; the ZIP is not the total installed size.
 
-### Local runtime
+To recheck later: `node scripts/verify-setup.mjs`. Add `--verbose` for details. Dependencies and default user records live in a stable per-user directory, so a new plugin folder or client cache reuses them. An upgrade with changed dependencies needs the installer once; unchanged dependencies work offline. `LABSCRIPTAI_HOME` overrides that directory; an explicit `PLUGIN_DATA` still controls user records.
 
-The installer sets up Node/MCP and a project-local Python environment with Opentrons 9.x, MuJoCo and Pillow. Install **Node.js 18+** and either **uv** or **Python 3.11–3.13** first. With uv, dependencies follow `uv.lock`; the Python fallback installs the supported dependency ranges from `pyproject.toml`.
+Upgrading from 0.1.1: keep an existing `PLUGIN_DATA` setting. Updating the original folder copies its old `.plugin-data` records into the shared user directory when that directory has no records yet. If you move to a new folder, the installer cannot discover records left in the old folder: keep `PLUGIN_DATA` pointing there, or copy those records to the new data directory before removing the old folder.
 
-No manual `OPENTRONS_PYTHON` setting is needed for the bundled `.venv` on macOS, Linux or Windows. Use it only to override the interpreter. Re-run `node scripts/verify-setup.mjs` after moving or updating the plugin.
-
-Release downloads contain one common runtime ZIP with detailed Flex module models already included and used automatically. No separate model installation is needed. Training weights and external VLM services are optional; simulation and 3D work without them.
-
-### Environment variables
-
-| Variable | Purpose |
-|----------|---------|
-| `OPENTRONS_PLUGIN_ROOT` | Absolute path to this repo |
-| `OPENTRONS_PROTOCOL_LIBRARY_PATH` | Defaults to `bundled-library/` |
-| `PLUGIN_DATA` | Writable state directory (default: `.plugin-data/`) |
-| `OPENTRONS_PYTHON` | Python with `opentrons` for simulation |
-
----
-
-## Platform setup
-
-### Claude Code
-
-1. Add the marketplace and install:
-
-   ```text
-   /plugin marketplace add KRATSZ/labscriptai-ot
-   /plugin install labscriptai-ot@labscriptai-ot-marketplace
-   ```
-
-2. Or clone locally and point Claude Code at this repo as a plugin source.
-
-3. Manifest: `.claude-plugin/plugin.json`, MCP: `.claude-plugin/mcp.json`.
-
-4. After install, try a [recommended first command](#recommended-first-commands).
-
-### Codex
-
-1. Use this repository as a local plugin source (path to clone root).
-
-2. Manifest: `.codex-plugin/plugin.json`, MCP: `.mcp.json`.
-
-3. `.mcp.json` should resolve the server entry through `${PLUGIN_ROOT}/servers/opentrons-mcp/index.js`. If this repository also has `.codex/config.toml`, use absolute paths there; that file is the local Codex desktop runtime config and can keep an old relative-path MCP process alive. After reload, `health_check` should report `mcp_server.entrypoint` under the same clone root; otherwise Codex is still using a stale or wrong plugin copy.
-
-4. Default prompts are pre-configured in the manifest interface.
-
-5. Run verify-setup if MCP tools fail to load.
+## 2. Connect your client
 
 ### Cursor
 
-1. Copy project config into your workspace (adjust paths to your clone location):
+From the plugin folder, generate configuration for your existing project:
 
-   ```text
-   .cursor/mcp.json          → your project/.cursor/mcp.json
-   .cursor/rules/labscriptai-ot.mdc → your project/.cursor/rules/
-   ```
+```bash
+node scripts/configure-cursor.mjs "/absolute/path/to/your/project"
+```
 
-2. Edit `.cursor/mcp.json` — replace `${workspaceFolder}/plugins/labscriptai-ot` with the **actual path** to your clone:
+The helper adds `opentrons-lab` and a short skill-routing rule, uses absolute paths, and preserves other MCP servers. Reload Cursor, open that project, and confirm **opentrons-lab is connected** in MCP settings. Re-run the helper after moving the plugin. It refuses malformed configuration or a conflicting rule rather than overwriting them.
 
-   ```json
-   "args": ["C:/path/to/labscriptai-ot/servers/opentrons-mcp/index.js"],
-   "env": {
-     "OPENTRONS_PLUGIN_ROOT": "C:/path/to/labscriptai-ot",
-     "OPENTRONS_PROTOCOL_LIBRARY_PATH": "C:/path/to/labscriptai-ot/bundled-library"
-   }
-   ```
+### Claude Code
 
-3. Reload Cursor MCP (Settings → MCP) and confirm `opentrons-lab` is connected.
+For the extracted ZIP, load the same folder you installed in step 1:
 
-4. Manifest reference: `.cursor-plugin/plugin.json`.
+```bash
+claude --plugin-dir "/absolute/path/to/labscriptai-ot"
+```
 
----
+This keeps the installed runtime and plugin together. To check discovery before opening a chat: `claude plugin validate .claude-plugin/plugin.json`.
 
-## Recommended first commands
+Marketplace installation is also supported:
 
-Copy one of these as your first message:
+```text
+/plugin marketplace add KRATSZ/labscriptai-ot
+/plugin install labscriptai-ot@labscriptai-ot-marketplace
+```
 
-1. **New Flex experiment (full flow):**
-   *"Help me design a Flex serial dilution experiment from scratch — review intent first, then write and simulate the protocol."*
+Marketplace copies share the installed runtime when their dependencies match. Run the installer once from the extracted ZIP, install the plugin, then reload your client. You do not need to find and install inside every cache folder.
 
-2. **Validate existing protocol:**
-   *"Check whether this Opentrons protocol can pass local simulation safely."*
+### Codex
 
-3. **Robot status / recovery prep:**
-   *"What state is the robot in? Run safety checks before any recovery action."*
+Register the extracted folder as a local marketplace:
 
-These map to the `opentrons-experiment-run` orchestration skill. See [examples/01-flex-serial-dilution](../examples/01-flex-serial-dilution/README.md) for a guided walkthrough.
+```bash
+codex plugin marketplace add "/absolute/path/to/labscriptai-ot"
+```
 
----
+Restart the desktop app, open the plugin browser, select **labscriptai-ot-marketplace**, and install **LabscriptAI OT**. Local plugin installation and cache behavior are described in the [official OpenAI guide](https://developers.openai.com/plugins/build/plugins#install-a-local-plugin-manually).
+
+Codex loads a cached copy and reuses the shared runtime. After reloading, ask the agent to run `health_check` without a robot IP: `mcp_server.version`, `build_id` and `entrypoint` identify the version and copy actually in use. See [MCP startup help](runbooks/mcp-wont-start.md). An older CLI without `plugin marketplace` needs an update before using this command.
+
+## 3. Try a local task
+
+Copy this as your first message (attach the protocol or give its path):
+
+> Check this Opentrons protocol locally. Explain any problems, run simulation and liquid-volume checks, and show a 3D preview if it is a Flex protocol. Do not connect to a robot.
+
+Or start a new protocol:
+
+> Help me write a Flex protocol. Ask about any missing experiment details first, then write and validate it locally. Do not connect to a robot.
+
+Expect a short result, a protocol/report link, and any question that still blocks the work. The agent should ask when mapping, volume, installed equipment or sample-handling requirements are unclear.
+
+For a bundled example, use [the Flex serial dilution walkthrough](../examples/01-flex-serial-dilution/README.md). The 3D preview starts on the deck; use **Machine** for the enclosure and **Reset view** to return to the default angle. Raw step parameters are collapsed. It is a local browser page; you can ask the agent to close it when finished. OT-2 protocols support local validation, but the 3D viewer is Flex-only.
+
+## What a passing result means
+
+- **Simulation:** the Opentrons software can interpret and execute the protocol locally.
+- **Liquid-volume checks (LogicPass):** the available command trace passes supported source-volume and well-capacity rules. Missing evidence is reported as unevaluable.
+- **3D checks:** supported geometry, targets and motion clearances pass; unavailable checks remain unknown or not applicable.
+
+These results do not measure pipetting accuracy or verify the physical deck. A live run requires the robot's current state, a person at the robot and explicit motion authorization. Local-only tasks end with their local results.
 
 ## LogicPass gate
 
-LogicPass is the deterministic "算账" layer on top of simulation. It replays the analyze command trace (`opentrons analyze --json-output`) through the vendored `labscriptai.benchmark.logicpass` package and checks the ledger rules (LP-L1 dry-well aspirate, LP-L2 reagent demand, LP-L4 capacity overflow, LP-L5 trace completeness, etc.).
+`logicpass_check` checks liquid use: `pass` means supported checks passed, `fail` means an issue was found, and `unevaluable` means the tool cannot assess part of the protocol. It gates runs by default. You can explicitly skip it for a run/test; the agent uses `skip_logicpass_gate=true` and records the omission. Optional liquid probing does not need to be enabled for an ordinary run. Local simulation still runs; missing checks are not reported as passed.
 
-Three outcomes, closed algebra:
+## If something fails
 
-| outcome | `final_pass_v2` | meaning |
-|---------|-----------------|---------|
-| `pass` | `true` | simulation passed **and** the ledger rules found no violation |
-| `fail` | `false` | a hard rule violation (e.g. dispensing 5 mL into a 1.6 mL well) |
-| `unevaluable` | `false` | the trace could not be fully evaluated (missing analyze artifact, non-succeeded command, unsupported command type) — fail-closed, never a pass |
+| What you see | Next action |
+|-------------|-------------|
+| Node/npm is missing | Install Node.js 18+ and rerun the installer |
+| Python or Opentrons is missing | Install uv or Python 3.11–3.13; rerun the installer from the new plugin ZIP |
+| Cursor cannot find the server | Re-run `configure-cursor.mjs` with your project path, then reload MCP |
+| Client uses an old plugin copy | Check `health_check.mcp_server.version` and `build_id`; update the plugin and reload |
+| The protocol fails simulation | Let the agent explain and repair the specific error; [simulation help](runbooks/simulation-fails.md) |
+| 3D port is occupied by another service | Ask the agent to use a different port; unrelated services are left running |
 
-Key behaviors:
+[MCP startup help](runbooks/mcp-wont-start.md) · [Optional deck vision](deck-vision.md) · [Advanced liquid-probe/recovery diagnostics](runbooks/probe-wells-live-validation.md) · [Tool reference](MCP_TOOLS.md) · [Workflow policy](../policy/workflows.md)
 
-- **`run_protocol` is gated on LogicPass.** The live gate now requires `final_pass_v2=true`; `fail` and `unevaluable` both block upload/play with `gate_stage=logicpass_check` and the concrete reason (LP-L5 detail or the analyze failure reason in `analyze.reason`). Pass `skip_logicpass_gate=true` only for intentional no-gate diagnostics.
-- **Capacity comes from real definitions first.** `logicpass_check` reads the per-well `totalLiquidVolume` from the installed `opentrons_shared_data` labware definitions (`capacity_sources[].source="definition"`). Only when a load name has no installed definition does it fall back to parsing the name (`source="name_hint"`), and the output lists those labware in `guessed_capacity_labware` plus a Chinese `capacity_note`. Decimal names are parsed correctly (`1.6ml` → 1600 µL, `corning_6_wellplate_16.8ml_flat` → 16800 µL); treat guessed numbers as hints, not facts.
-- **Analyze failures always carry a reason.** `logicpass_check` returns an `analyze` summary (`ok`, `error_count`, `errors[]`, `reason`) — e.g. "No module named opentrons" or `NameError [line 12]` — instead of a bare failure.
-- **Stale cache self-heals.** If a cached analyze meta exists but its analysis JSON was deleted, the cache entry is dropped and the protocol is re-analyzed instead of failing with `missing_analyze_artifact`.
-
-Quick check from the CLI (no robot):
-
-```bash
-.venv/bin/python servers/opentrons-mcp/scripts/logicpass_check.py \
-  servers/opentrons-mcp/test/fixtures/logicpass/static_transfer_min.json true
-```
-
----
-
-## Deck vision
-
-Lab-trained deck vision (camera → YOLO → slot layout) is documented in **[docs/deck-vision.md](deck-vision.md)** — setup, daily MCP/CLI use, machine layout, maintenance, and troubleshooting.
-
-Quick verify: `node scripts/verify-setup.mjs`
-
----
-
-## Quick verification (manual)
-
-```bash
-cd servers/opentrons-mcp
-OPENTRONS_PLUGIN_ROOT="$(cd ../.. && pwd)" npm test
-```
-
-Or from repo root: `node scripts/verify-setup.mjs`.
-
-The verifier imports the local MCP server entry and runs `runtime_recovery_self_test` without robot motion. This catches stale or incomplete local installs before live work.
-
-After reloading an MCP client, also run the MCP `health_check` tool itself. The loaded server is current only if:
-
-```json
-"mcp_server": {
-  "capabilities": {
-    "runtime_build": "liquid-source-map-v2"
-  }
-}
-```
-
-If this field is missing, the client is still running an older MCP process even if the local files have been updated.
-
-The loaded `health_check` should also include `mcp_server.required_runtime_tools.all_present=true`. The required runtime tools are the minimum self-recovery surface: `runtime_recovery_self_test`, `safe_next_action`, `safe_next_action(detail=full)`, `validate_virtual_lab_state_steps`, `live_liquid_recovery_gate`, `robot_status`, `robot_status`, `is_home_safe`, `query_history(scope=experiment_logs)`, `runtime_watch(mode=loop)`, and the liquid source-map tools. If this block is missing, reload or reinstall the plugin before trusting live runtime recovery.
-
-Then run `runtime_recovery_self_test` in the same MCP client. It should return:
-
-```json
-{
-  "status": "pass",
-  "runtime_build": "liquid-source-map-v2"
-}
-```
-
-This self-test is no-motion and no-network. It checks that the loaded MCP process treats empty-source liquid detection as `INSUFFICIENT_VOLUME`, keeps liquid recovery manual-only, preserves source-map context, and reports attached-tip cleanup instead of inventing an automatic liquid-source change. It covers both an expected-empty source (`D3.A12`, `expected_presence=false`) and an expected-present source that probes as empty (`D3.A1`, `expected_presence=true`, `observed_liquid_presence=false`).
-
-`health_check` accepts either an absolute Python path or a PATH executable such as `python3`. A valid PATH Python with the `opentrons` package installed should report `venv.status="ok"`; it should not be treated as missing just because it is not an absolute path.
-
-Before repeating live liquid recovery tests, run the read-only gate from the repo root:
-
-```bash
-node scripts/live-liquid-recovery-gate.mjs --robot-ip 192.168.66.102
-```
-
-The gate writes a JSON artifact under `<PLUGIN_DATA>/runs/self-recovery/artifacts/` (default; pass `--out` to override), appends a `live_liquid_recovery_gate_cli` result-log entry, and exits non-zero when prerequisites are not met, for example an attached tip remains or the MCP client still needs a reload check. A non-zero result is a stop signal for live liquid watcher/probe re-runs, not a script failure. The artifact and result-log entry include self-test coverage so the operator can confirm the loaded recovery logic covers both expected-empty and expected-present liquid-probe failures.
-
-When the MCP client is unavailable or you only need the physical robot snapshot, use the standalone read-only status exporter first:
-
-```bash
-node scripts/export-real-machine-readonly-status.mjs \
-  --robot-ip 192.168.66.102 \
-  --session-id self-recovery-liquid \
-  --out runs/self-recovery/artifacts/real-machine-readonly-status-latest.json \
-  --markdown-out runs/self-recovery/artifacts/real-machine-readonly-status-latest.md
-```
-
-This does not use MCP and does not move the robot. It queries only robot HTTP status endpoints, writes a JSON/Markdown artifact, and appends a `real_machine_readonly_status_cli` result-log entry. Treat `blockers` such as `attached_tip:left`, an open door, or engaged estop as a hard stop before live liquid tests.
-
-For the current liquid recovery validation set, use the same named source plan from the command line:
-
-```bash
-node scripts/live-liquid-recovery-gate.mjs \
-  --robot-ip 192.168.66.102 \
-  --session-id self-recovery-liquid \
-  --source-plan c3_d3_liquid_recovery \
-  --operator-request-md-out runs/self-recovery/artifacts/live-liquid-operator-request-latest.md \
-  --operator-request-json-out runs/self-recovery/artifacts/live-liquid-operator-request-latest.json
-```
-
-The standalone gate expands the plan to `C3.A1` present, `D3.A1-H1` present, and `D3.A12` absent; checks those entries against the session source map; and prints `recommended_next_action`, `allowed_next_tools`, and `human_required`.
-
-When `--operator-request-md-out` or `--operator-request-json-out` is provided, the standalone gate also writes a short human handoff request derived from `operator_request`. Use this artifact when the agent needs help clearing a physical blocker, filling liquid/sample identity, or reloading the MCP client.
-
-Unknown source plans are blocking errors. The gate refuses to treat a typo as an empty source requirement set.
-
-For one-off checks, `--required-source` accepts `slot.well=present` or `slot.well=absent` values, for example `--required-source D3.A1=present`. Unsupported values are blocking errors.
-
-When running repeated `probe_wells` live checks with the same physical tip rack, set `starting_tip` to the first known fresh tip for that run. This prevents a new run from defaulting back to a tip already consumed by an earlier probe run.
-
-After a live probe run, apply the observation artifact back to the source map without changing the expected source-map intent:
-
-```bash
-node scripts/apply-liquid-probe-results.mjs \
-  --session-id self-recovery-liquid \
-  --probe-artifact runs/self-recovery/artifacts/probe-d3-first-column-live-result-latest.json \
-  --slot D3 \
-  --labware-load-name corning_96_wellplate_360ul_flat \
-  --out runs/self-recovery/artifacts/apply-liquid-probe-results-d3-first-column-latest.json
-```
-
-This records `observed_presence`, `observed_run_id`, and `observed_source=live_probe` while preserving `expected_presence`. If an expected-present source probes as absent, `liquid_source_map(action=summarize)` reports `observed_presence_mismatch_count>0` and `ready_for_semantic_recovery=false` until the mismatch is resolved or deliberately corrected.
-
-When the only source-map problem is an expected-present source whose latest live observation is `observed_presence=false`, the normal live-liquid gate still blocks resume. To collect more evidence, use the narrower re-probe gate:
-
-```bash
-node scripts/live-liquid-recovery-gate.mjs \
-  --robot-ip 192.168.66.102 \
-  --session-id self-recovery-liquid \
-  --source-plan c3_d3_liquid_recovery \
-  --allow-observed-mismatch-reprobe
-```
-
-This may downgrade the source-map check from `fail` to `warn` only for targeted no-aspirate `probe_wells` evidence collection. The gate output lists `allowed_probe_targets`; do not use this mode for `runtime_watch(mode=poll)`, `run_protocol` resume, aspirate, or dispense.
-
-For expected-present sources, the gate also warns when the source map only says generic `operator-confirmed-liquid` or omits `sample_id`. This warning does not mean liquid probing is unsafe by itself, but it does mean semantic recovery such as changing sources or resuming sample-dependent work needs human confirmation before any live action.
-
-To inspect this before a gate fails, use the read-only MCP tool `liquid_source_map(action=summarize)`. It reports how many expected-present sources still need a specific `liquid_name` or `sample_id`, whether the current source map is ready for semantic recovery, and a `record_liquid_source_map_template` with the exact wells that need operator-filled identity fields.
-
-If the MCP client has not been reloaded yet, use the equivalent local no-motion CLI from the repo root:
-
-```bash
-node scripts/summarize-liquid-source-map.mjs \
-  --session-id self-recovery-liquid
-```
-
-It calls the local MCP handlers directly, writes a JSON artifact under `<PLUGIN_DATA>/runs/self-recovery/artifacts/` (default; pass `--out` to override), appends a `liquid_source_map(action=summarize)` result-log entry, and exits non-zero when the source map is not ready for semantic recovery. Use `--slot D3` or `--well A1` to narrow the summary without contacting the robot.
-
-To generate operator-fillable identity drafts, add template outputs:
-
-```bash
-node scripts/summarize-liquid-source-map.mjs \
-  --session-id self-recovery-liquid \
-  --template-json-out runs/self-recovery/artifacts/liquid-source-identity-draft.json \
-  --template-tsv-out runs/self-recovery/artifacts/liquid-source-identity-draft.tsv \
-  --template-md-out runs/self-recovery/artifacts/liquid-source-identity-draft.md
-```
-
-Use the Markdown draft for human review or direct validation/apply, and use JSON/TSV when another tool is filling the fields. All three files are generated from the same source-map draft.
-
-After filling the JSON draft with specific `liquid_name` and `sample_id` values, validate it without changing session state:
-
-```bash
-node scripts/summarize-liquid-source-map.mjs \
-  --validate-template-json runs/self-recovery/artifacts/liquid-source-identity-draft.json
-```
-
-For a filled TSV draft, use the TSV validator:
-
-```bash
-node scripts/summarize-liquid-source-map.mjs \
-  --session-id self-recovery-liquid \
-  --validate-template-tsv runs/self-recovery/artifacts/liquid-source-identity-draft.tsv
-```
-
-For a filled Markdown draft, use:
-
-```bash
-node scripts/summarize-liquid-source-map.mjs \
-  --validate-template-md runs/self-recovery/artifacts/liquid-source-identity-draft.md
-```
-
-Add `--report-out runs/self-recovery/artifacts/liquid-source-identity-validation-latest.json` to save the same validation result as an artifact, including the exact row and field for any missing identity.
-
-When validation passes and the identities are operator-confirmed, record the filled JSON into the session source map:
-
-```bash
-node scripts/summarize-liquid-source-map.mjs \
-  --apply-template-json runs/self-recovery/artifacts/liquid-source-identity-draft.json
-```
-
-Or record a filled TSV draft:
-
-```bash
-node scripts/summarize-liquid-source-map.mjs \
-  --session-id self-recovery-liquid \
-  --apply-template-tsv runs/self-recovery/artifacts/liquid-source-identity-draft.tsv
-```
-
-Or record a filled Markdown draft:
-
-```bash
-node scripts/summarize-liquid-source-map.mjs \
-  --apply-template-md runs/self-recovery/artifacts/liquid-source-identity-draft.md
-```
-
-This still does not contact the robot; it only updates local session bookkeeping and then re-runs the source-map readiness summary.
-
-Apply output includes `summary_result_log_entry_id` and the latest `summary_result_log_entry`, so the identity update can be audited through `query_history(scope=experiment_logs)` as well as the saved `--report-out` artifact.
-
-After the MCP client has been reloaded, prefer the MCP tool `live_liquid_recovery_gate` for the same go/no-go check from inside the plugin. It is also read-only and blocks live liquid watcher/probe re-runs when the loaded recovery self-test fails, the robot cannot be read, door/estop is unsafe, modules report blockers, or a pipette still reports an attached tip.
-
-When a liquid source is expected-present and has a specific identity, you can build a no-motion same-liquid substitution validation bundle. This chains source substitution planning, fixed validation protocol generation, local simulation, and result-log recording:
-
-```bash
-OPENTRONS_PYTHON=.venv/bin/python \
-node scripts/validate-liquid-source-substitution.mjs \
-  --session-id self-recovery-liquid \
-  --failed-source-key D3.A1 \
-  --preferred-source-key C3.A1 \
-  --pipette-name flex_1channel_1000 \
-  --mount left \
-  --tiprack-load-name opentrons_flex_96_tiprack_1000ul \
-  --tiprack-slot B2 \
-  --python-executable .venv/bin/python \
-  --out runs/self-recovery/artifacts/liquid-source-substitution-validation-bundle-latest.json \
-  --markdown-out runs/self-recovery/artifacts/liquid-source-substitution-validation-bundle-latest.md
-```
-
-The generated protocol only calls `require_liquid_presence` on the replacement source, then drops the tip. It does not aspirate, dispense, upload, play, or resume a failed experiment. The bundle also includes `liquid_guard_analysis`; it should report `status=pass`, `first_aspirate_guarded=true`, and `no_aspirate_or_dispense=true` for this validation protocol. A `passed` bundle means the replacement-source validation protocol passes local simulation; live execution still requires `live_liquid_recovery_gate` and explicit operator opt-in. The bundle may report `auto_resume_eligible=true` when the fixed playbook can automatically choose a same-liquid replacement with validated presence, but `live_execution_allowed` and `live_protocol_run_allowed` must remain false before the live gate and operator opt-in.
-
-To prepare the registered fixed recovery playbook from inside the MCP runtime, use `liquid_source_substitution(action=prepare_recovery)` with the same source and pipette inputs. This plans the replacement, generates the fixed validation protocol, runs local simulation, writes a recovery bundle, and records `event_kind=liquid_source_substitution_recovery_bundle`. It still does not upload, play, resume, aspirate, dispense, or move the robot. The recovery bundle should report `status=prepared`, `fixed_script_prepared=true`, `liquid_guard_analysis.status=pass`; `auto_resume_eligible=true` is allowed only for same-liquid replacement with validated presence, while `live_execution_allowed=false` remains mandatory until `live_liquid_recovery_gate` and operator opt-in are satisfied.
-
-When a runtime liquid-probe failure has same-liquid alternatives in the source map, the recovery suggestion and runtime-watch alert expose the fixed playbook as structured fields: `same_liquid_source_substitution_next_tool=liquid_source_substitution(action=prepare_recovery)`, `same_liquid_source_substitution_playbook=liquid_source_substitution_continuation_protocol`, and `same_liquid_source_substitution_required_gates=["live_liquid_recovery_gate","run_protocol_only_after_operator_opt_in"]`. These fields mean the plugin has a deterministic next tool to prepare recovery; they do not mean the robot may automatically resume.
-
-To replay that liquid failure handoff without contacting or moving the robot, export a local recovery-decision artifact:
-
-```bash
-node scripts/export-liquid-failure-replay.mjs \
-  --session-id self-recovery-liquid \
-  --failed-source-key D3.A1 \
-  --attached-tip-mount left \
-  --run-id synthetic-self-recovery-liquid-d3a1 \
-  --out runs/self-recovery/artifacts/liquid-failure-replay-d3a1-latest.json \
-  --markdown-out runs/self-recovery/artifacts/liquid-failure-replay-d3a1-latest.md
-```
-
-The replay reads the current session source map, synthesizes a `liquidProbe` / `liquidNotFound` failed command for the requested source, runs the same recovery suggestion and action-summary code used by the watcher, writes a `liquid_failure_replay` result-log entry, and exits non-zero if the fixed playbook handoff is missing. `--attached-tip-mount` is optional; use it to verify the handoff still preserves both the liquid recovery path and cleanup such as `drop_tip:left`. This is useful after edits because it proves the current runtime still points D3.A1 water failures at the registered same-liquid recovery path while keeping `same_liquid_auto_resume_eligible=false`.
-
-If MCP transport is down but read-only status confirms an attached tip that blocks liquid reruns, use the CLI fallback in dry-run mode first:
-
-```bash
-node scripts/drop-attached-tip.mjs \
-  --robot-ip 192.168.66.102 \
-  --session-id self-recovery-liquid \
-  --mount left \
-  --out runs/self-recovery/artifacts/drop-attached-tip-dry-run-latest.json \
-  --markdown-out runs/self-recovery/artifacts/drop-attached-tip-dry-run-latest.md
-```
-
-Dry-run mode creates no maintenance context and sends no robot commands. It writes `tool_name=drop_attached_tip_cli`, `event_kind=cleanup_dry_run`, and returns `status=dry_run_ready` only when the robot is reachable, the door is closed, estop is disengaged, and the requested mount actually has a detected tip. Re-run with `--execute` only when tip cleanup is intended; execution uses the same MCP handler path as `drop_attached_tip`, records `event_kind=cleanup_action`, and still does not upload, play, resume, aspirate, or dispense.
-
-For liquid tests with known source wells, pass `required_sources` to `live_liquid_recovery_gate`. Each item should include `slot_name`, `well_name`, and optional boolean `expected_presence`. The gate fails when a required source-map entry is missing, when `expected_presence` is not boolean, or when the recorded `expected_presence` does not match the requested value.
-
-For the current liquid recovery validation set, use `source_plan: "c3_d3_liquid_recovery"` instead of listing wells manually. It expands to `C3.A1` present, `D3.A1-H1` present, and `D3.A12` absent.
-
-Use `recommended_next_action`, `allowed_next_tools`, `human_required`, `resolution_plan`, and `operator_request` from the gate response to decide what the agent may do next. `resolution_plan` is an ordered machine-readable checklist; each item names the failed or warning check, the allowed next tools, whether a human is required, and the acceptance criteria for clearing that item. `operator_request` is the human-facing subset of that plan, including physical-state requests, liquid-identity requests, artifact paths, and validation/apply commands. Treat `no_robot_motion=true` as a hard boundary.
-
-When the gate reports an attached-tip blocker, continue only with read-only status/gate/history tools until the operator clears the physical state. When it reports `source_identity_metadata`, record a specific liquid name and sample ID before treating the source map as enough for semantic recovery.
-
-When `source_identity_metadata` is present, the gate check also includes `operator_guidance` with the Markdown draft path plus exact generate, validate, and apply commands for the source-identity table.
-
-After a client or host restart, run `safe_next_action` with the same `session_id`. It reads recent result-log entries and surfaces the latest `resolution_plan` and `operator_request`, so the agent can resume from the same no-motion blocker and ask for the exact human input instead of guessing from old run status.
-
-To save that restart guidance as an auditable artifact and result-log entry without contacting the robot, run:
-
-```bash
-node scripts/export-safe-next-action.mjs \
-  --session-id self-recovery-liquid \
-  --out runs/self-recovery/artifacts/safe-next-action-latest.json \
-  --markdown-out runs/self-recovery/artifacts/safe-next-action-latest.md
-```
-
-Add `--robot-ip 192.168.66.102` when you want the same handoff to include a live, read-only home-safety preview. This still must not move the robot; it only records blockers such as `tip_attached:left` alongside the persisted liquid recovery plan.
-
-The exported JSON artifact includes `rationale_zh`, `operator_steps_zh`, the latest operator-request artifact paths, a liquid identity input summary, and any live home blockers when `--robot-ip` is provided. The optional Markdown artifact is a short Chinese-first operator handoff with the current no-motion boundary and exact wells that still need liquid identity metadata. The result log uses `tool_name=safe_next_action_cli` and `event_kind=resume_guidance`, so it can be read back with `query_history(scope=experiment_logs)`.
-
-For active monitoring, use `runtime_recovery_monitor` from MCP or the CLI wrapper. This is a bounded monitor tick, not a hidden daemon. It combines four levels:
-
-| Level | What it checks | Motion boundary |
-|---|---|---|
-| L1 | loaded recovery self-test, `health_check`, `robot_status`, `robot_status` | no robot motion |
-| L2 | current run state and, in observe mode, recovery guidance for `awaiting-recovery` / failed runs | observe mode has no robot motion |
-| L3 | `safe_next_action`, optional `live_liquid_recovery_gate`, prepared recovery bundles | no robot motion |
-| L4 | guarded execution boundary for self-recovery | only delegates existing `runtime_watch(mode=poll)` L0 fixes when explicitly enabled |
-
-Before trusting a runtime recovery path, inspect the fixed playbook registry:
-
-```json
-{"include_motion": true}
-```
-
-Call `list_recovery_playbooks` and confirm the intended recovery class is registered. The registry states whether watch mode may call the playbook, whether it can move the robot, which gates are required, and which semantic invariants must hold. Liquid source substitution is registered as a no-motion preparation playbook; it does not authorize automatic aspirate, dispense, or resume.
-
-Before simulation or live recovery, call `validate_virtual_lab_state_steps` for the proposed bookkeeping changes. It is pure software: it checks tip state, source volume, dead volume, destination capacity, and unsupported steps without writing session state or moving the robot. Treat any violation as a stop sign before uploading or playing a live run. The same checks run inline as a pre-simulation gate when you pass `virtual_lab_steps` to `simulate_protocol` (Phase 1.5 gate); the simulation is blocked with `blocked_by: "virtual_lab_state_validation"` instead of spawning Python.
-
-For monitored live runs, use `runtime_watch(mode=loop)` after `run_protocol` returns a `run_id`. It reuses `runtime_watch(mode=poll)` on a budgeted schedule, persists `goal-state.json` per run, and records events for MCP review. Default `self_fix_mode=observe`; guarded L0 self-fix requires `allow_l4_execution=true` and `operator_opt_in=true`.
-
-Default mode is observe-only:
-
-```bash
-node scripts/runtime-recovery-monitor.mjs \
-  --session-id self-recovery-liquid \
-  --robot-ip 192.168.66.102 \
-  --source-plan c3_d3_liquid_recovery \
-  --out runs/self-recovery/artifacts/runtime-recovery-monitor-latest.json \
-  --markdown-out runs/self-recovery/artifacts/runtime-recovery-monitor-latest.md
-```
-
-To monitor multiple ticks, add `--cycles` and `--interval-ms`. A typical low-noise monitor reports meaningful status changes and required attention:
-
-```bash
-node scripts/runtime-recovery-monitor.mjs \
-  --session-id self-recovery-liquid \
-  --robot-ip 192.168.66.102 \
-  --run-id <run-id> \
-  --cycles 20 \
-  --interval-ms 30000 \
-  --out runs/self-recovery/artifacts/runtime-recovery-monitor-latest.json \
-  --markdown-out runs/self-recovery/artifacts/runtime-recovery-monitor-latest.md
-```
-
-Only use L0 self-fix mode when the operator has opted in and the intended recovery class is one of the existing `runtime_watch(mode=poll)` whitelist cases, such as missing-tip retry or module-wait recovery:
-
-```bash
-node scripts/runtime-recovery-monitor.mjs \
-  --session-id self-recovery-liquid \
-  --robot-ip 192.168.66.102 \
-  --run-id <run-id> \
-  --self-fix-mode l0 \
-  --allow-l4-execution \
-  --operator-opt-in
-```
-
-This still does not authorize liquid source changes, aspirate/dispense retries, deck relocation, or arbitrary resume. Liquid recovery remains gated by `live_liquid_recovery_gate` and operator opt-in. The monitor writes a `runtime_recovery_monitor` result-log entry with `notifications`, `recommended_next_tools`, `acceptance`, and `no_robot_motion`, so the agent can use `query_history(scope=experiment_logs)` to resume after restart.
-
-The monitor also publishes requires-attention and resolved-state notifications into a durable alert/outbox layer. `runtime_alerts(action=list)` reads watcher and monitor alerts; `runtime_outbox(action=list)` reads the persisted event history; the corresponding `ack` actions mark handled items. You can optionally send pending events to the command line or a webhook with `runtime_outbox(action=deliver)`.
-
-Example low-noise monitor:
-
-```bash
-node scripts/runtime-recovery-monitor.mjs \
-  --session-id self-recovery-liquid \
-  --robot-ip 192.168.66.102 \
-  --levels L1,L3,L4 \
-  --source-plan c3_d3_liquid_recovery \
-  --enable-liquid-gate \
-  --out runs/self-recovery/artifacts/runtime-recovery-monitor-latest.json \
-  --markdown-out runs/self-recovery/artifacts/runtime-recovery-monitor-latest.md
-```
-
-By default only attention, hard-stop, and important resolved-state events enter the outbox. Use `--include-info-notifications` to publish all monitor notifications, or `--no-publish-notifications` when you need a pure inspection tick with no local alert/outbox writes.
-
-For real-machine validation, require `acceptance.metrics.unapproved_motion_count=0` and `acceptance.metrics.experiment_intent_violation_count=0`. `l0_auto_fix_count` should increment only when `self_fix_mode=l0`, `allow_l4_execution=true`, and `operator_opt_in=true` are all present. If those gates are missing, the monitor must report `l0_self_fix_gate_blocked` and must not delegate self-fix execution to `runtime_watch(mode=poll)`.
-
-For a shorter go/no-go bundle after a restart, combine the latest live-liquid gate artifact with safe-next:
-
-```bash
-node scripts/export-runtime-recovery-readiness.mjs \
-  --session-id self-recovery-liquid \
-  --robot-ip 192.168.66.102 \
-  --gate-artifact runs/self-recovery/artifacts/live-liquid-recovery-gate-source-plan-latest.json \
-  --real-machine-artifact runs/self-recovery/artifacts/real-machine-readonly-status-latest.json \
-  --validation-bundle-artifact runs/self-recovery/artifacts/liquid-source-substitution-validation-bundle-latest.json \
-  --recovery-bundle-artifact runs/self-recovery/artifacts/liquid-source-substitution-recovery-bundle-latest.json \
-  --out runs/self-recovery/artifacts/runtime-recovery-readiness-latest.json \
-  --markdown-out runs/self-recovery/artifacts/runtime-recovery-readiness-latest.md
-```
-
-This is also read-only. The JSON/Markdown bundle reports `live_liquid_tests_allowed`, `next_tool`, `no_robot_motion`, the latest gate result-log id, whether a local `node ...opentrons-mcp/index.js` server process is running, the latest real-machine blockers, the latest liquid source-substitution validation bundle, the fixed recovery playbook bundle, and any wells still missing liquid identity. The process check intentionally ignores `node -e` / `--input-type=module` commands that merely import `opentrons-mcp/index.js` during tests or local scripts. Treat `live_liquid_tests_allowed=false` or `no_robot_motion=true` as a stop signal for live liquid watcher/probe tests. If `mcp_process.running=false`, reload the MCP client before trying MCP tools again; this usually corresponds to a `Transport closed` client error. If `real_machine.blockers` includes `attached_tip:left`, clear or confirm that physical state before any liquid motion. A source-substitution validation or recovery bundle may report `auto_resume_eligible=true` when a fixed playbook can automatically choose a same-liquid replacement after validation, but readiness still fails closed if the bundle claims `live_execution_allowed=true` or `live_protocol_run_allowed=true` before the live gate and operator opt-in. The result log uses `tool_name=runtime_recovery_readiness_cli` and `event_kind=readiness_bundle`.
-
----
-
-## Common failures (quick reference)
-
-| Symptom | Likely cause | Fix |
-|---------|--------------|-----|
-| MCP server won't start | Wrong `OPENTRONS_PLUGIN_ROOT` or missing `npm install` | [runbooks/mcp-wont-start.md](runbooks/mcp-wont-start.md) |
-| `simulate_protocol` fails | Python/opentrons not installed | Set `OPENTRONS_PYTHON`, install deps |
-| Tools list empty in Cursor | Bad path in `mcp.json` | Use absolute paths; reload MCP |
-| Simulation errors in protocol | Labware name, trash, volumes | [runbooks/simulation-fails.md](runbooks/simulation-fails.md) |
-| Live tools unreachable | Robot IP, network, or door/estop | `robot_status`, check LAN |
-| Parallel control errors | MCP + HTTP fallback on same robot | Use one control path only |
-
-Full runbooks: [docs/runbooks/](runbooks/).
-
----
-
-## Next steps
-
-- [GLOSSARY.md](GLOSSARY.md) — deck truth, simulate gate, reconcile_state
-- [deck-vision.md](deck-vision.md) — lab-trained deck vision setup and daily use
-- [MCP_TOOLS.md](MCP_TOOLS.md) — tool reference by tier (L0–L4)
-- [policy/workflows.md](../policy/workflows.md) — canonical workflow sequences
-- [examples/](../examples/) — end-to-end example prompts
-- [AGENTS.md](../AGENTS.md) — agent behavior contract
-
-## Citation
-
-Public use requires citing the LabscriptAI bioRxiv preprint (DOI: [10.1101/2025.09.30.679666](https://doi.org/10.1101/2025.09.30.679666)). See [LICENSE](../LICENSE) and [README.md](../README.md).
+Public use requires the citation in [LICENSE](../LICENSE) and [CITATION.cff](../CITATION.cff).

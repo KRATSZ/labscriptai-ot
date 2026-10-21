@@ -1,14 +1,8 @@
 ---
 name: opentrons-protocol-verify
 description: Local doctor, analyze, simulate, and LogicPass for Opentrons Python protocols without a live robot.
-type: script-backed
-entry: scripts/verify_protocol.py
-mcp_tools:
-  - health_check(scope=local)
-  - simulate_protocol
-  - simulate_protocol
-  - logicpass_check
-  - flex3d_preflight_check
+metadata:
+  entry: scripts/verify_protocol.py
 ---
 
 # Protocol Verify
@@ -23,8 +17,8 @@ Use `.venv/bin/python` or `uv run python` for all commands.
 2. Run `scripts/verify_protocol.py doctor` if runtime readiness is unknown.
 3. If `doctor` reports broken imports, report the missing prerequisite — do not
    pretend the protocol is validated.
-4. `analyze` — parser and command graph checks.
-5. `simulate` — stronger dry run (requires working environment). `simulate_protocol` runs analyze once and caches the JSON.
+4. Prefer one MCP `simulate_protocol` call: it analyzes once, caches the JSON and returns parsed repair guidance. Do not call it twice or run CLI analyze just to repeat that successful check.
+5. Use the CLI `analyze` / `simulate` commands below only when working without MCP or diagnosing a specific runtime issue.
 6. `logicpass_check` — same protocol. `pass` / `fail` / `unevaluable`. A `fail` issue includes `step_index`.
 7. `flex3d_preflight_check` — Flex protocols only (OT-2 refused). MuJoCo 3D checks: geometry, liquid, targets, clearance; a failing check carries `command_index` matching the LogicPass `step_index` numbering. Degrades with `error: mujoco_missing` (exit 0) when mujoco is not installed — report as optional-unavailable, not a validation failure. `flex3d_open_viewer` starts the interactive browser view.
 8. Pass extra CLI flags after `--`.
@@ -32,11 +26,13 @@ Use `.venv/bin/python` or `uv run python` for all commands.
 
 ## Commands
 
+Run from the plugin root, not the consuming project.
+
 ```bash
-uv run python scripts/verify_protocol.py preflight path/to/protocol.py
-uv run python scripts/verify_protocol.py doctor
-uv run python scripts/verify_protocol.py analyze path/to/protocol.py -- --check
-uv run python scripts/verify_protocol.py simulate path/to/protocol.py
+uv run python skills/opentrons-protocol-verify/scripts/verify_protocol.py preflight path/to/protocol.py
+uv run python skills/opentrons-protocol-verify/scripts/verify_protocol.py doctor
+uv run python skills/opentrons-protocol-verify/scripts/verify_protocol.py analyze path/to/protocol.py -- --check
+uv run python skills/opentrons-protocol-verify/scripts/verify_protocol.py simulate path/to/protocol.py
 ```
 
 ## Limits

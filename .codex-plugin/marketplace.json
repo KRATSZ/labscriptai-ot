@@ -8,12 +8,14 @@
       "name": "labscriptai-ot",
       "source": {
         "source": "local",
-        "path": "."
+        "path": "./"
       },
       "policy": {
         "installation": "AVAILABLE",
         "authentication": "NONE",
-        "products": ["CODEX"]
+        "products": [
+          "CODEX"
+        ]
       },
       "category": "Coding"
     }

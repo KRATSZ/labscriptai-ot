@@ -1,0 +1,31 @@
+name: Release plugin
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: read
+jobs:
+  checks:
+    uses: ./.github/workflows/check.yml
+  release:
+    needs: checks
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: node scripts/lint-manifests.mjs
+      - name: Match tag to package version
+        run: node -e 'const v=require("./.codex-plugin/plugin.json").version; if(process.env.GITHUB_REF_NAME!==`v${v}`) process.exit(1)'
+      - run: python3 scripts/package_labscriptai_ot.py
+      - name: Publish the tested source bundle
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/*.zip dist/release-manifest.json --verify-tag --title "LabscriptAI OT $GITHUB_REF_NAME" --notes "One lightweight package with detailed Flex models. Install once; matching updates reuse dependencies and user records. Version and build are visible in health_check. Citation: Gao et al., bioRxiv 2025, doi:10.1101/2025.09.30.679666."

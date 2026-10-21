@@ -3,6 +3,24 @@
 The vertices are the ones already in the compiled model (enclosure, gantry,
 tips). Playback is the same joint and liquid state the JPEG renderer uses.
 The page does not ask for a new image while the mouse is moving.
+
+view.json schema_version=1 (additive fields are allowed):
+- Units: meters and seconds; right-handed MuJoCo world, Z up.
+- meshes: indexed vertex data; positions=flat xyz, indices=triangle triples,
+  uv=optional flat pairs. textures[].file is relative to the model's assets route.
+- geoms: gid is a MuJoCo geometry ID (not its array index), body is a body ID;
+  pos/quat are body-local, quaternion is [w,x,y,z], rgba is [r,g,b,a].
+  optional roughness/metalness are unitless browser material properties.
+  size follows MuJoCo: box=half extents, cylinder=[radius,half-height,0],
+  sphere=[radius,0,0]. mesh/tex index the corresponding shared arrays or are null.
+- home: string body IDs -> [world x,y,z, row-major 3x3 rotation] (12 numbers).
+- moving: body IDs with varying world transforms; frames[].bodies contains
+  their 12-number transforms. An omitted body uses home.
+- dynamic: geometry IDs; each frames[].dyn entry has 10 body-local numbers
+  [position xyz,size xyz,rgba], aligned by index with dynamic, not geoms.
+- frames: ascending absolute protocol times t (seconds); frame/geom counts
+  depend on the protocol and must not be hardcoded. camera position/target
+  are world-space xyz. See web/viewer.js for the interpolation consumer.
 """
 
 from __future__ import annotations
@@ -120,6 +138,7 @@ def write_view(plan, scene, folder: Path) -> Path:
             {
                 "body": int(model.geom_bodyid[gid]),
                 "gid": gid,
+                "group": int(model.geom_group[gid]),
                 "type": kind,
                 "mesh": mesh_index,
                 "size": _nums(bind_size[gid]),
@@ -130,6 +149,9 @@ def write_view(plan, scene, folder: Path) -> Path:
                 "emission": round(float(model.mat_emission[matid]), 3) if matid >= 0 else 0.0,
             }
         )
+        material = mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_MATERIAL, matid) if matid >= 0 else ""
+        geoms[-1]["roughness"] = round(max(0.28, 1 - float(model.mat_shininess[matid]) ** 0.5), 3) if matid >= 0 else 0.6
+        geoms[-1]["metalness"] = 0.25 if material in {"aluminum", "aluminum_dark", "chrome"} else 0.0
 
     frames = []
     for key, (xpos, xmat, pos, size, rgba) in zip(plan.keys, shots):
@@ -151,8 +173,17 @@ def write_view(plan, scene, folder: Path) -> Path:
     pos = np.asarray(scene.data.cam_xpos[cid], dtype=float)
     forward = -np.asarray(scene.data.cam_xmat[cid], dtype=float).reshape(3, 3)[:, 2]
     look = pos + forward * 2.4
+    from sim.flex_scene import deck_camera_pose
+    deck_pos, deck_look = deck_camera_pose(plan.run.deck)
     payload = {
+        "schema_version": 1,
+        "units": {"length": "m", "time": "s"},
+        "coordinate_system": "mujoco_world_z_up",
         "camera": {"position": _nums(pos, 4), "target": _nums(look, 4)},
+        "cameras": {
+            "deck": {"position": _nums(deck_pos, 4), "target": _nums(deck_look, 4), "fov": 25},
+            "machine": {"position": _nums(pos, 4), "target": _nums(look, 4), "fov": 40},
+        },
         "meshes": meshes,
         "textures": [{"file": item["file"]} for item in textures],
         "moving": moving,

@@ -1,8 +1,12 @@
 import { execFileSync, execSync } from "child_process";
 import fs from "fs";
+import { fileURLToPath } from "node:url";
 
 import { requestRobotJson } from "./http.js";
-import { PLUGIN_ROOT, SESSION_STATE_DIR, firstExistingPath, resolvePythonCandidates } from "./paths.js";
+import { PLUGIN_ROOT, DATA_DIR, SESSION_STATE_DIR, firstExistingPath, resolvePythonCandidates } from "./paths.js";
+import { buildIdentity } from "./build-info.js";
+const CODE_ROOT = fs.realpathSync(fileURLToPath(new URL("../../../", import.meta.url)));
+const LOADED_BUILD = buildIdentity(CODE_ROOT);
 
 export const MCP_RUNTIME_CAPABILITIES = {
   runtime_build: "liquid-source-map-v2",
@@ -40,6 +44,12 @@ export function buildHealthCheck(args = {}) {
     timestamp: new Date().toISOString(),
     mcp_server: {
       status: "ok",
+      ...LOADED_BUILD,
+      plugin_root: CODE_ROOT,
+      configured_root: PLUGIN_ROOT,
+      configuration_matches_loaded_code: CODE_ROOT === PLUGIN_ROOT,
+      ...(CODE_ROOT !== PLUGIN_ROOT ? { configuration_hint: "OPENTRONS_PLUGIN_ROOT points at another copy. Update the client configuration and reload MCP." } : {}),
+      data_dir: DATA_DIR,
       capabilities: MCP_RUNTIME_CAPABILITIES,
     },
     venv: { status: "unknown" },

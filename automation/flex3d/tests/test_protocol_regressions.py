@@ -42,6 +42,59 @@ class ProtocolRegressions(unittest.TestCase):
         planned, scene = self.scene(run, self.folder / 'noop')
         self.assertEqual(check_clearance(planned, scene)[2], 0)
 
+    def test_trash_bin_does_not_spawn_a_second_waste_fixture_in_d3(self):
+        for slot in ['A3', 'D3']:
+            with self.subTest(slot=slot):
+                source = self.folder / f'trash-{slot}.py'
+                source.write_text(f'''from opentrons import protocol_api
+requirements = {{"robotType": "Flex", "apiLevel": "2.24"}}
+def run(p):
+    trash = p.load_trash_bin("{slot}")
+    rack = p.load_labware("opentrons_flex_96_tiprack_50ul", "D1")
+    pip = p.load_instrument("flex_1channel_50", "left", tip_racks=[rack])
+    pip.pick_up_tip()
+    pip.drop_tip(trash)
+''')
+                run = self.analyze(source)
+                self.assertEqual(len(run.trash), 1)
+                self.assertIsNone(run.chute)
+                planned, scene = self.scene(run, self.folder / f'trash-{slot}-model')
+                names = [scene.model.geom(i).name for i in range(scene.model.ngeom)]
+                self.assertEqual(sum(name.startswith('trash_') for name in names), 5)
+                self.assertFalse(any(name.startswith('waste_chute_') for name in names))
+                check_targets(planned, scene)
+                check_clearance(planned, scene)
+
+    def test_no_waste_fixture_is_invented_for_an_empty_or_occupied_d3(self):
+        for occupied in [False, True]:
+            with self.subTest(occupied=occupied):
+                source = self.folder / 'no-waste.py'
+                source.write_text('''from opentrons import protocol_api
+requirements = {"robotType": "Flex", "apiLevel": "2.24"}
+def run(p):
+    ''' + ('p.load_labware("nest_12_reservoir_15ml", "D3")' if occupied else 'pass') + '\n')
+                run = self.analyze(source)
+                self.assertIsNone(run.chute)
+                _, scene = self.scene(run, self.folder / f'no-waste-{occupied}')
+                names = [scene.model.geom(i).name for i in range(scene.model.ngeom)]
+                self.assertFalse(any(name.startswith(('trash_', 'waste_chute_')) for name in names))
+
+    def test_sdk_rejects_waste_fixtures_sharing_an_occupied_slot(self):
+        for other in ['p.load_waste_chute()', 'p.load_labware("nest_12_reservoir_15ml", "D3")']:
+            with self.subTest(other=other):
+                source = self.folder / 'conflicting-waste.py'
+                source.write_text('''from opentrons import protocol_api
+requirements = {"robotType": "Flex", "apiLevel": "2.24"}
+def run(p):
+    p.load_trash_bin("D3")
+    ''' + other + '\n')
+                output = self.folder / 'conflicting.analysis.json'
+                done = subprocess.run([sys.executable, '-m', 'opentrons.cli', 'analyze', '--check',
+                                       '--json-output', str(output), str(source)], capture_output=True, text=True)
+                self.assertNotEqual(done.returncode, 0)
+                with self.assertRaisesRegex(RuntimeError, 'analysis has errors'):
+                    load_analysis(output, self.deck)
+
     def test_serial_templates_preserve_volume_and_twofold_concentration(self):
         sources = ['examples/01-flex-serial-dilution/protocol.py',
                    'examples/02-flex-gradient-dilution/protocol.py',

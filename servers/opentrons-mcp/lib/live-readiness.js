@@ -34,9 +34,9 @@ function buildReadinessCheck({
         phase: "live_readiness",
         error_domain: null,
         error_leaf: null,
-        severity: status === "warn" ? "warning" : status,
+        severity: ["warn", "skipped"].includes(status) ? "warning" : status,
         recoverability: null,
-        requires_human_review: null,
+        requires_human_review: false,
         auto_executable: false,
         default_next_step: null,
         evidence_sources: evidenceSources || [],
@@ -157,11 +157,15 @@ function buildRobotStatusCheck(robotStatusSnapshot = null) {
 
   const blockers = robotStatusSnapshot.blockers || [];
   if (blockers.length === 0) {
+    const notChecked = robotStatusSnapshot.not_checked || [];
     return buildReadinessCheck({
       name: "robot_status",
-      status: "pass",
-      summary: "Robot reports ready_for_physical_action.",
+      status: notChecked.length ? "warn" : "pass",
+      summary: notChecked.length
+        ? `No reported blockers; not checked: ${notChecked.join(", ")}.`
+        : "Robot reports ready_for_physical_action.",
       evidenceSources: ["robot_status"],
+      extra: { not_checked: notChecked },
     });
   }
 
@@ -184,11 +188,13 @@ function buildModuleStatusCheck(moduleStatusSnapshot = null) {
 
   const blockers = moduleStatusSnapshot.blockers || [];
   if (blockers.length === 0) {
+    const notChecked = moduleStatusSnapshot.not_checked || [];
     return buildReadinessCheck({
       name: "module_status",
-      status: "pass",
-      summary: "All observed modules report ready.",
+      status: notChecked.length ? "warn" : "pass",
+      summary: notChecked.length ? `Module state not checked: ${notChecked.join(", ")}.` : "All observed modules report ready.",
       evidenceSources: ["module_status"],
+      extra: { not_checked: notChecked },
     });
   }
 
@@ -218,7 +224,8 @@ function buildHomeSafetyCheck(homeSafety = null) {
     });
   }
 
-  let errorLeaf = "UNKNOWN_NEEDS_HUMAN";
+  const onlyUnchecked = homeSafety.blockers?.length > 0 && homeSafety.blockers.every(name => name.endsWith("_not_checked"));
+  let errorLeaf = onlyUnchecked ? null : "UNKNOWN_NEEDS_HUMAN";
   if ((homeSafety.blockers || []).includes("needs_reconciliation")) {
     errorLeaf = "SESSION_NEEDS_RECONCILIATION";
   } else if ((homeSafety.blockers || []).includes("door_open")) {
@@ -230,7 +237,9 @@ function buildHomeSafetyCheck(homeSafety = null) {
   return buildReadinessCheck({
     name: "home_safety",
     status: "warn",
-    summary: "Home/cleanup is not yet safe; resolve blockers before any motion that implies homing.",
+    summary: onlyUnchecked
+      ? "Separate maintenance homing is not verified; this does not block ordinary protocol play."
+      : "Home/cleanup is not yet safe; resolve blockers before any motion that implies homing.",
     errorLeaf,
     evidenceSources: ["robot_status", "session_state"],
     extra: {
@@ -248,20 +257,26 @@ function buildPreflightGateCheck(preflight = null) {
   const blockingChecks = preflight.blocking_checks || [];
   const warningChecks = preflight.warning_checks || [];
   const primaryCheck = blockingChecks[0] || warningChecks[0] || null;
-  const status = blockingChecks.length > 0 ? "fail" : warningChecks.length > 0 ? "warn" : "pass";
+  const skipped = preflight.skipped === true || preflight.status === "skipped";
+  const status = skipped ? "skipped" : preflight.ok === false || blockingChecks.length > 0
+    ? "fail" : warningChecks.length > 0 || preflight.skipped_checks?.length > 0 ? "warn" : "pass";
   return buildReadinessCheck({
     name: "preflight_gate",
     status,
     summary:
       preflight.summary ||
-      (status === "pass"
+      (status === "skipped"
+        ? "Software preflight skipped by request; not checked."
+        : status === "pass"
         ? "Preflight passed."
         : status === "warn"
           ? "Preflight passed with warnings."
           : "Preflight blocked execution."),
-    errorLeaf: primaryCheck?.error_leaf || null,
+    errorLeaf: skipped ? null : primaryCheck?.error_leaf || (status === "fail" ? "UNKNOWN_NEEDS_HUMAN" : null),
     evidenceSources: ["preflight_run_setup"],
     extra: {
+      skipped,
+      skipped_checks: preflight.skipped_checks || [],
       robot_model: preflight.robot_model || null,
       deck_model: preflight.deck_model || null,
       blocking_check_count: blockingChecks.length,
@@ -304,7 +319,7 @@ function resolveRecommendedNextTools({
   if (byName.module_status?.status === "warn") {
     return ["robot_status"];
   }
-  if (byName.home_safety?.status === "warn") {
+  if (byName.home_safety?.status === "warn" && byName.home_safety.blockers?.some(name => !name.endsWith("_not_checked"))) {
     return ["is_home_safe"];
   }
   if (byName.preflight_gate?.status === "fail") {
@@ -336,7 +351,7 @@ export function buildLiveReadinessReport({
   ].filter(Boolean);
 
   const hasFail = checks.some(check => check.status === "fail");
-  const hasWarn = checks.some(check => check.status === "warn");
+  const hasWarn = checks.some(check => ["warn", "skipped"].includes(check.status));
   const overallStatus = hasFail ? "fail" : hasWarn ? "warn" : "pass";
 
   return {

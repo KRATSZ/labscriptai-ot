@@ -17,6 +17,7 @@ columns, trash bins) and sets cameras and render quality.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from dataclasses import dataclass, field
@@ -74,6 +75,8 @@ class Well:
     shape: str = "circular"
     size_x: float = 0.0
     size_y: float = 0.0
+    # Inner tube profile: (radius, height from well bottom), millimeters; visual only.
+    profile: tuple[tuple[float, float], ...] = ()
 
     def contains(self, dx: float, dy: float, slack: float = 0.0) -> bool:
         """Is (dx, dy) from the labware origin inside this well's opening?"""
@@ -105,6 +108,7 @@ class Labware:
     # labware sinks into a parent, by parent load name or module model.
     on_labware: dict[str, tuple[float, float, float]] = field(default_factory=dict, compare=False)
     on_module: dict[str, tuple[float, float, float]] = field(default_factory=dict, compare=False)
+    is_tuberack: bool = False
 
     @property
     def top(self) -> float:
@@ -166,12 +170,30 @@ def load_deck(path: Path = DECK_PATH) -> Deck:
     )
 
 
-def _well(raw: dict) -> Well:
+def _tube_profile(raw: dict, geometries: dict) -> tuple[tuple[float, float], ...]:
+    """Use the definition's inner profile, aligned to its authoritative well depth."""
+    points = {}
+    for section in geometries.get(raw.get("geometryDefinitionId"), {}).get("sections", []):
+        bottom, top = section.get("bottomHeight", 0), section.get("topHeight", 0)
+        if section.get("shape") == "conical":
+            points[bottom] = section["bottomDiameter"] / 2
+            points[top] = section["topDiameter"] / 2
+        elif section.get("shape") == "spherical":
+            radius = section["radiusOfCurvature"]
+            for height in np.linspace(bottom, top, 5):
+                points[float(height)] = float(np.sqrt(max(0, 2 * radius * height - height * height)))
+    if len(points) < 2 or max(points) <= 0:
+        return ()
+    scale = raw["depth"] / max(points)
+    return tuple((float(radius), float(height) * scale) for height, radius in sorted(points.items()))
+
+
+def _well(raw: dict, geometries: dict | None = None) -> Well:
     if raw.get("shape") == "rectangular":
         sx, sy = float(raw["xDimension"]), float(raw["yDimension"])
         return Well(float(raw["x"]), float(raw["y"]), float(raw["z"]), float(raw["depth"]), min(sx, sy) / 2, "rectangular", sx, sy)
     d = float(raw.get("diameter", 6.0))
-    return Well(float(raw["x"]), float(raw["y"]), float(raw["z"]), float(raw["depth"]), d / 2, "circular", d, d)
+    return Well(float(raw["x"]), float(raw["y"]), float(raw["z"]), float(raw["depth"]), d / 2, "circular", d, d, _tube_profile(raw, geometries or {}))
 
 
 def labware_from_definition(raw: dict) -> Labware:
@@ -190,12 +212,13 @@ def labware_from_definition(raw: dict) -> Labware:
         y=float(dims["yDimension"]),
         z=float(dims["zDimension"]),
         offset=(float(corner["x"]), float(corner["y"]), float(corner["z"])),
-        wells={name: _well(well) for name, well in raw["wells"].items()},
+        wells={name: _well(well, raw.get("innerLabwareGeometry") if raw.get("metadata", {}).get("displayCategory") == "tubeRack" else None) for name, well in raw["wells"].items()},
         grip_z=float(raw.get("gripHeightFromLabwareBottom") or 0.0),
         is_tiprack=bool(params.get("isTiprack")),
         tip_length=float(params.get("tipLength") or 0.0),
         quirks=tuple(params.get("quirks") or ()),
         is_adapter="adapter" in (raw.get("allowedRoles") or ()),
+        is_tuberack=raw.get("metadata", {}).get("displayCategory") == "tubeRack",
         on_labware=offsets(raw.get("stackingOffsetWithLabware")),
         on_module=offsets(raw.get("stackingOffsetWithModule")),
     )
@@ -514,7 +537,9 @@ def camera_axes(pos, target) -> np.ndarray:
 def deck_camera_pose(deck: Deck) -> tuple[tuple[float, float, float], tuple[float, float, float]]:
     """Position and look-at point, metres, of the fixed ``deck`` camera: the main view of the mp4."""
     deck_mid = robot_m(deck, (deck.slots["B2"][0] + deck.slot_size[0] / 2 + 30.0, deck.slots["C2"][1] + deck.slot_size[1] / 2 + 40.0, 0.0))
-    return (deck_mid[0] - 0.09, deck_mid[1] - 1.36, 1.22), (deck_mid[0] + 0.0, deck_mid[1] + 0.0, 0.07)
+    look = (deck_mid[0], deck_mid[1], 0.05)
+    far = (deck_mid[0] - 0.09, deck_mid[1] - 1.36, 1.22)
+    return tuple(b + 0.72 * (a - b) for a, b in zip(far, look)), look
 
 
 RACK_RGBA = "0.19 0.205 0.225 1"
@@ -662,6 +687,69 @@ def _tiprack_geoms(key: str, labware: Labware, tip_mesh: str) -> list[str]:
     return geoms
 
 
+PE_TIPRACKS = {"pe_50a_1_ts_96_tiprack_50ul", "pe_200a_1_ts_96_tiprack_200ul"}
+
+
+def _pe_tiprack_geoms(key: str, labware: Labware, book: flex_shell.AssetBook) -> list[str]:
+    """PE appearance over the original clearance proxies and exact tip origins.
+
+    JSON dimensions, well coordinates and tip length are authoritative. The
+    rounded shell, insert thickness, wall and colours are schematic: no PE CAD
+    was supplied. Reuse the tube insert's through-hole mesher, not a solid cap.
+    """
+
+    from PIL import Image, ImageDraw
+    from sim.tube_rack_assets import write_insert
+
+    mesh = book.tip_mesh(labware.tip_length, 2 * labware.wells["A1"].radius, hollow=True)
+    geoms = _tiprack_geoms(key, labware, mesh)
+    # A hidden proxy must retain alpha > 0 for the clearance sweep. Tip names
+    # stay <key>_<well>, so rack pick-up/return visibility needs no special case.
+    geoms[:2] = [g.replace('<geom ', '<geom group="3" ') for g in geoms[:2]]
+    geoms[2:] = [g.replace(f'rgba="{TIP_RGBA}"', 'material="labware_pe_tip" rgba="0.52 0.59 0.62 0.90"')
+                 for g in geoms[2:]]
+    x, y = labware.x, labware.y
+    seat = labware.top - TIP_SHOW_MM
+
+    def rounded(name, lo, hi, material, radius=0.8):
+        return flex_shell.rbox(book, f"visual_{key}_{name}", tuple(v * MM for v in lo),
+                               tuple(v * MM for v in hi), material, radius * MM, group=0)
+
+    geoms.append(rounded("base", (0, 0, 0), (x, y, 4.2), "labware_pe_rack_base", 1.3))
+    # Open shell: four walls and a floor, with a narrow seam below the insert.
+    geoms.append(rounded("floor", (2, 2, 3), (x - 2, y - 2, 5), "labware_pe_rack_body"))
+    for name, lo, hi in (
+        ("front", (1.5, 1.5, 3.4), (x - 1.5, 4.5, seat - 0.6)),
+        ("back", (1.5, y - 4.5, 3.4), (x - 1.5, y - 1.5, seat - 0.6)),
+        ("left", (1.5, 3.6, 3.4), (4.5, y - 3.6, seat - 0.6)),
+        ("right", (x - 4.5, 3.6, 3.4), (x - 1.5, y - 3.6, seat - 0.6)),
+    ):
+        geoms.append(rounded(name, lo, hi, "labware_pe_rack_body", 1.1))
+    outer = flex_shell.rrect(1.0 * MM, (x - 1) * MM, 1.0 * MM, (y - 1) * MM, 2 * MM, 2 * MM)
+    hole = flex_shell.rrect(5.6 * MM, (x - 5.6) * MM, 5.6 * MM, (y - 5.6) * MM, 1.6 * MM, 1.6 * MM)
+    rim = book.extrusion(f"pe_rim_{x:g}_{y:g}_{seat:g}", outer, hole, 2, (seat - 1) * MM, (seat + 1.4) * MM)
+    geoms.append(flex_shell.mesh_geom(f"visual_{key}_rim", rim, "labware_pe_rack_rim", 0))
+    inset, thickness = 5.0, 1.9
+    openings = [(w.x - inset, w.y - inset, w.radius + 0.70) for w in labware.wells.values()]
+    mesh_key = "pe_insert_" + hashlib.sha256(repr((x, y, openings)).encode()).hexdigest()[:12]
+    insert = book._mesh(mesh_key, lambda p: write_insert(p, (x - 2 * inset) * MM, (y - 2 * inset) * MM,
+                         [tuple(v * MM for v in h) for h in openings], thickness * MM))
+    geoms.append(flex_shell.mesh_geom(f"visual_{key}_insert", insert, "labware_pe_rack_insert", 0,
+                                     (inset * MM, inset * MM, (seat - 0.8) * MM)))
+    # Readable but restrained identification; no unverified mould or latch details.
+    volume = "50" if "50ul" in labware.load_name else "200"
+    label_key = f"labware_pe_label_{volume}"
+    if label_key not in book._materials:
+        image = Image.new("RGB", (512, 120), (226, 232, 232))
+        draw = ImageDraw.Draw(image)
+        draw.text((20, 8), f"PE  /  {volume} uL", fill=(53, 67, 72), font=flex_shell._font(44, bold=True))
+        draw.text((23, 65), f"PE-{volume}A-1-TS    96 TIPS", fill=(88, 103, 107), font=flex_shell._font(24))
+        book.texture(label_key, image, specular=0.15, shininess=0.15)
+    geoms.append(flex_shell.label(book, f"visual_{key}_label", (x / 2 * MM, 1.35 * MM, 27 * MM),
+                                  (43 * MM, 10 * MM), label_key))
+    return geoms
+
+
 def _plate_geoms(key: str, labware: Labware, liquid_wells: set[str], initial: dict[str, tuple[float, str]]) -> list[str]:
     """Plate or reservoir, local frame: bottom pad, four side walls, clear wells, liquid columns.
 
@@ -685,6 +773,86 @@ def _plate_geoms(key: str, labware: Labware, liquid_wells: set[str], initial: di
         geoms.append(_box(f"{key}_side_{name}", tuple(v * MM for v in center), tuple(v * MM for v in size), PLATE_RGBA))
     for name, well in labware.wells.items():
         geoms.append(_well_geom(key, name, well, WELL_RGBA))
+    for name in sorted(liquid_wells):
+        height, rgba = initial.get(name, (0.0, "0 0 0 0"))
+        geoms.append(_liquid_geom(key, name, labware.wells[name], height, rgba))
+    return geoms
+
+
+def _tuberack_geoms(key: str, labware: Labware, liquid_wells, initial, book) -> list[str]:
+    from sim.tube_rack_assets import write_insert
+
+    # The 4-in-1 stand's 73.6 mm base and 78.4 mm assembled height follow the
+    # Opentrons tube-rack drawing. Bevels and tube wall thickness are illustrative.
+    x, y = labware.x, labware.y
+    if min(x, y) < 30 or labware.top < 24 or any(w.shape != "circular" for w in labware.wells.values()):
+        return _plate_geoms(key, labware, liquid_wells, initial)
+    top = min(78.4, labware.top - 1.2)
+    frame = top - 4.8
+    inset = 3.0
+    holes = [(w.x - inset, w.y - inset, w.radius + (1.35 if w.radius < 6 else 1.0 if w.radius < 10 else 0.75))
+             for w in labware.wells.values()]
+    mesh_key = "rack_insert_" + hashlib.sha256(repr((x, y, holes)).encode()).hexdigest()[:12]
+    try:
+        insert = book._mesh(mesh_key, lambda path: write_insert(path, (x - 2 * inset) * MM, (y - 2 * inset) * MM,
+                           [tuple(v * MM for v in h) for h in holes], 4.8 * MM))
+    except ValueError:  # Custom layouts may not fit this stand; retain the generic preview.
+        return _plate_geoms(key, labware, liquid_wells, initial)
+    # Group 3 is hidden by both renderers but retains alpha for the clearance sweep.
+    geoms = [g.replace('<geom ', '<geom group="3" ') for g in _plate_geoms(key, labware, set(), {})]
+
+    def rounded(name, lo, hi, material, radius=1.2):
+        return flex_shell.rbox(book, "visual_" + key + "_" + name, tuple(v * MM for v in lo),
+                               tuple(v * MM for v in hi), material, radius * MM, group=0)
+
+    geoms.append(rounded("base", (1, 1, 0.4), (x - 1, y - 1, 5.2), "labware_rack", 1.5))
+    for side, width, axis, lo in [("front", x, 1, 0), ("back", x, 1, y - 3.2),
+                                  ("left", y, 0, 0), ("right", y, 0, x - 3.2)]:
+        outer = flex_shell.rrect(0, width * MM, 0, frame * MM, 3 * MM, 3 * MM)
+        hole = flex_shell.rrect(8 * MM, (width - 8) * MM, 7 * MM, (frame - 7) * MM, 3 * MM, 5 * MM)
+        # Tapered window gives the stand substantial corners rather than thin rods.
+        hole = [(width * MM / 2 + (u - width * MM / 2) * (1 - 0.16 * v / (frame * MM)), v) for u, v in hole]
+        mesh = book.extrusion(f"rack_window_{axis}_{width:g}_{frame:g}", outer, hole, axis, 0, 3.2 * MM)
+        geoms.append(flex_shell.mesh_geom(f"visual_{key}_window_{side}", mesh, "labware_rack", 0,
+                                           (lo * MM, 0, 0) if axis == 0 else (0, lo * MM, 0)))
+    for side, xx, yy in [("fl", 0, 0), ("fr", x - 6, 0), ("bl", 0, y - 6), ("br", x - 6, y - 6)]:
+        geoms.append(rounded("corner_" + side, (xx, yy, 1), (xx + 6, yy + 6, frame), "labware_rack", 1.4))
+    outer = flex_shell.rrect(1 * MM, (x - 1) * MM, 1 * MM, (y - 1) * MM, 3 * MM, 3 * MM)
+    inner = flex_shell.rrect(inset * MM, (x - inset) * MM, inset * MM, (y - inset) * MM, 0.5 * MM, 0.5 * MM)
+    mesh = book.extrusion(f"rack_rim_{x:g}_{y:g}_{frame:g}", outer, inner, 2, frame * MM, top * MM)
+    geoms.append(flex_shell.mesh_geom(f"visual_{key}_rim", mesh, "labware_rack_insert", 0))
+    # One small shared texture supplies legible well names on the holder surface.
+    label_key = "labware_rack_labels_" + hashlib.sha256(repr((mesh_key, tuple(labware.wells))).encode()).hexdigest()[:12]
+    if label_key not in book._materials:
+        scale = 8
+        width, depth = x - 2 * inset, y - 2 * inset
+        image = flex_shell.Image.new("RGB", (round(width * scale), round(depth * scale)), (41, 47, 51))
+        draw = flex_shell.ImageDraw.Draw(image)
+        font = flex_shell._font(15)
+        for (name, well), (_, _, radius) in zip(labware.wells.items(), holes):
+            flex_shell._text_center(draw, ((well.x - inset) * scale, (depth - (well.y - inset - radius - 2)) * scale),
+                                    name, font, (152, 164, 170))
+        book.texture(label_key, image, specular=0.35, shininess=0.36)
+    geoms.append(flex_shell.mesh_geom(f"visual_{key}_insert", insert, label_key, 0, (inset * MM, inset * MM, frame * MM)))
+    for name, well in labware.wells.items():
+        if well.profile:
+            # One shared hollow mesh per tube profile, with a rounded, open mouth.
+            depth, r = well.depth, well.profile[-1][0]
+            outer = [(0.0, 0.0)] + [(radius + 0.45, z) for radius, z in well.profile if z < depth - 1.1]
+            outer += [(r + 0.45, depth - 1.1), (r + 0.8, depth - 0.85), (r + 0.8, depth - 0.2), (r + 0.35, depth)]
+            profile = [(radius * MM, z * MM) for radius, z in outer + list(reversed(well.profile)) + [(0.0, 0.0)]]
+            mesh_key = "tube_" + hashlib.sha256(repr(profile).encode()).hexdigest()[:12]
+            mesh = book._mesh(mesh_key, lambda path, points=profile: flex_shell.write_lathe(path, points, seg=40))
+            geoms.append(f'<geom name="visual_{key}_tube_{name}" type="mesh" mesh="{mesh}" pos="{_f(well.x * MM)} {_f(well.y * MM)} {_f(well.z * MM)}" material="labware_tube"/>')
+        else:
+            geoms.append(_well_geom("visual_" + key, "tube_" + name, well, "0.48 0.62 0.68 0.22"))
+        # A separate annular rim reads clearly without turning the whole tube white.
+        r, depth = well.radius, well.depth
+        lip = [(r + 0.35, depth - 0.9), (r + 0.8, depth - 0.7), (r + 0.8, depth - 0.25),
+               (r + 0.35, depth), (r, depth), (r, depth - 0.7), (r + 0.35, depth - 0.9)]
+        lip_key = "tube_lip_" + hashlib.sha256(repr(lip).encode()).hexdigest()[:12]
+        mesh = book._mesh(lip_key, lambda path, points=lip: flex_shell.write_lathe(path, [(a * MM, b * MM) for a, b in points], seg=40))
+        geoms.append(f'<geom name="visual_{key}_lip_{name}" type="mesh" mesh="{mesh}" pos="{_f(well.x * MM)} {_f(well.y * MM)} {_f(well.z * MM)}" material="labware_tube_rim"/>')
     for name in sorted(liquid_wells):
         height, rgba = initial.get(name, (0.0, "0 0 0 0"))
         geoms.append(_liquid_geom(key, name, labware.wells[name], height, rgba))
@@ -764,11 +932,12 @@ def labware_xml(deck: Deck, item: Placed, spec: SceneSpec, book: flex_shell.Asse
         h = item.height_mm if item.height_mm is not None else lw.z
         geoms = [_box(f"{item.key}_block", (lw.x / 2 * MM, lw.y / 2 * MM, h / 2 * MM), (lw.x * MM, lw.y * MM, max(h, 0.2) * MM), ADAPTER_RGBA)]
     elif lw.is_tiprack:
-        geoms = _tiprack_geoms(item.key, lw, book.tip_mesh(lw.tip_length, 2 * lw.wells["A1"].radius))
+        geoms = (_pe_tiprack_geoms(item.key, lw, book) if lw.load_name in PE_TIPRACKS else
+                 _tiprack_geoms(item.key, lw, book.tip_mesh(lw.tip_length, 2 * lw.wells["A1"].radius)))
     else:
         wells = {w for k, w in spec.liquid_wells if k == item.key}
         initial = {w: v for (k, w), v in spec.initial_liquid.items() if k == item.key}
-        geoms = _plate_geoms(item.key, lw, wells, initial)
+        geoms = _tuberack_geoms(item.key, lw, wells, initial, book) if lw.is_tuberack else _plate_geoms(item.key, lw, wells, initial)
     body = "\n      ".join(geoms)
     origin = robot_m(deck, item.origin_mm)
     if not item.movable:
@@ -790,8 +959,11 @@ def build_xml(deck: Deck, spec: SceneSpec, assets: Path = ASSETS) -> str:
     book = flex_shell.AssetBook(assets)
     flex_shell.make_textures(book, layout, deck, spec.title, len(spec.placed))
     ranges = layout.joint_ranges()
+    pe_tips = {(lw.labware.tip_length, 2 * lw.labware.wells["A1"].radius)
+               for lw in spec.placed if lw.labware.load_name in PE_TIPRACKS}
     tips = {
-        tool: flex_shell.TipSpec(book.tip_mesh(d.length_mm, d.top_diameter_mm), d.reach_mm, d.length_mm)
+        tool: flex_shell.TipSpec(book.tip_mesh(d.length_mm, d.top_diameter_mm,
+                                hollow=(d.length_mm, d.top_diameter_mm) in pe_tips), d.reach_mm, d.length_mm)
         for tool, d in spec.tips.items()
     }
     faces = {
@@ -871,7 +1043,7 @@ def build_xml(deck: Deck, spec: SceneSpec, assets: Path = ASSETS) -> str:
   <visual>
     <global azimuth="128" elevation="-18" offwidth="1920" offheight="1200"/>
     <quality shadowsize="8192" offsamples="8"/>
-    <headlight ambient="0.45 0.45 0.47" diffuse="0.32 0.32 0.32" specular="0.08 0.08 0.08"/>
+    <headlight ambient="0.28 0.28 0.28" diffuse="0.10 0.10 0.10" specular="0.04 0.04 0.04"/>
     <map znear="0.01" zfar="20" haze="0.25"/>
     <rgba haze="0.96 0.965 0.975 1"/>
   </visual>

@@ -49,10 +49,11 @@ Route to individual skills when the user intent is narrow:
 3. Treat live robot actions as opt-in only.
 4. Treat vision as observation-only; never use it as committed deck truth.
 5. Use `reconcile_state`, `robot_status`, and the robot APIs for actual deck state.
+6. Liquid probing is optional; its environment flag gates probe motion only. Honor explicit scoped software-check waivers using the existing run flags; see `policy/safety-policy.md#operator-selected-checks`.
 
 ## Operator communication
 
-- Reply in the user's language. Lead with the result, then the next action or the reason work is blocked. Keep routine replies short; link protocol/report files instead of pasting logs, status JSON or internal phase traces.
+- Reply in the user's language. Lead with the result and any required next action. Routine completion fits in three short bullets: result, user action if needed, and protocol/preview links. Keep tool names, exit codes, PIDs and check metrics in reports unless they explain a problem.
 - State what was actually checked: local simulation, LogicPass and 3D checks do not establish physical robot readiness or experimental accuracy. Say "local checks passed" rather than "fully safe" or "everything works" when no robot was checked.
 - Do not invent numerical carryover, accuracy, contamination or timing claims. Use supplied measurements or a cited, applicable specification; otherwise describe the uncertainty qualitatively. Fresh tips reduce transfer between samples; they do not guarantee zero contamination or zero concentration error.
 - Ask about missing facts that change the experiment before authoring: well mapping, volumes/concentrations, installed labware/pipettes and contamination constraints. Bundle the minimum questions into one round, explain ambiguous terms with concrete well names, and suggest defaults only for non-critical preferences. Follow up if the answer leaves a blocker unresolved.

@@ -17,6 +17,7 @@ Routes (all under /flex3d):
     GET  /<key>/main.jpg?t&az&el&dist
     GET  /<key>/close.jpg?t&az&el&dist
     GET  /health
+    POST /close                       matching launcher instance -> graceful exit
 """
 
 from __future__ import annotations
@@ -54,6 +55,9 @@ STATIC = {
     "/vendor/OrbitControls.js": WEB / "vendor" / "OrbitControls.js",
 }
 EXAMPLE_KEY = "example"
+# Set by the Node launcher so ownership checks can distinguish this process
+# from a different viewer that reuses the same port later.
+INSTANCE_ID = os.environ.get("FLEX3D_INSTANCE_ID", "").strip()[:128]
 # Elevation stays below zero, so no camera drops under the deck.
 EL_RANGE = (-89.0, -1.0)
 MAIN_DIST = (0.35, 4.0)
@@ -214,8 +218,8 @@ def load_live(registry: Registry, body: bytes) -> Model:
         raw = json.loads(body.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise ValueError(f"body is not JSON: {exc}") from exc
-    if not isinstance(raw, dict) or not isinstance(raw.get("commands"), list) or not raw["commands"]:
-        raise ValueError("analysis has no commands")
+    if not isinstance(raw, dict) or not isinstance(raw.get("commands"), list):
+        raise ValueError("analysis commands must be a list")
     key = hashlib.sha256(body).hexdigest()[:16]
     existing = registry.get(key)
     if existing is not None:
@@ -271,7 +275,15 @@ def make_handler(registry: Registry) -> type[BaseHTTPRequestHandler]:
                 self._bytes(static.read_bytes(), "text/javascript; charset=utf-8")
                 return
             if parsed.path == "/flex3d/health":
-                self._json({"ok": True, "service": "labscriptai-flex3d", "pid": os.getpid(), "models": registry.keys()})
+                self._json(
+                    {
+                        "ok": True,
+                        "service": "labscriptai-flex3d",
+                        "pid": os.getpid(),
+                        "instance": INSTANCE_ID or None,
+                        "models": registry.keys(),
+                    }
+                )
                 return
             asset = ASSET.match(parsed.path)
             if asset is not None:
@@ -310,6 +322,16 @@ def make_handler(registry: Registry) -> type[BaseHTTPRequestHandler]:
                 self._bytes(jpeg, "image/jpeg")
 
         def _post(self) -> None:
+            if urlparse(self.path).path == "/flex3d/close":
+                if not INSTANCE_ID or self.headers.get("X-Flex3d-Instance") != INSTANCE_ID:
+                    self._json({"error": "wrong_instance"}, code=409)
+                    return
+                self._json({"ok": True, "closing": True, "instance": INSTANCE_ID})
+                self.server.stop_requested = True
+                return
+            if INSTANCE_ID and self.headers.get("X-Flex3d-Instance") != INSTANCE_ID:
+                self._json({"error": "wrong_instance", "message": "This request does not belong to the running viewer."}, code=409)
+                return
             if urlparse(self.path).path != "/flex3d/load":
                 self._json({"error": "not_found"}, code=404)
                 return
@@ -393,10 +415,14 @@ def main() -> None:
         f"flex3d {viewer_url}  {label}",
         flush=True,
     )
+    server.timeout = 0.5
     try:
-        server.serve_forever()
+        while not getattr(server, "stop_requested", False):
+            server.handle_request()
     except KeyboardInterrupt:
-        return
+        pass
+    finally:
+        server.server_close()
 
 
 if __name__ == "__main__":

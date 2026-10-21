@@ -39,23 +39,25 @@
     aside { border-left: 0; border-top: 1px solid #d5e6f4; }
   }
   .stage { position: relative; min-height: 0; }
-  canvas { display: block; width: 100%; height: 100%; background: #d7dde2; touch-action: none; }
+  canvas { display: block; width: 100%; height: 100%; background: #fff; touch-action: none; }
   .help { color: #3d4c5c; margin: 4px 0 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .bar {
     display: flex;
     align-items: center;
     flex: none;
-    height: 34px;
+    flex-wrap: wrap;
+    max-width: 100%;
+    min-height: 34px;
     border: 1px solid #c5daf0;
     border-radius: 8px;
     background: #f5f9fd;
     overflow: hidden;
   }
-  .bar button, .bar label {
+  .bar button, .bar label, .bar select {
     display: flex;
     align-items: center;
     gap: 8px;
-    height: 100%;
+    min-height: 34px;
     margin: 0;
     padding: 0 12px;
     border: 0;
@@ -100,6 +102,8 @@
     background: #f6f8fa;
     border-top: 1px solid #e7f2fb;
   }
+  details summary { padding: 10px 12px; cursor: pointer; color: #536574; }
+  .bar select { cursor: pointer; border-left: 1px solid #d5e6f4; }
   .bad { color: #8a1f11; }
 </style>
 <script type="importmap">
@@ -115,6 +119,8 @@
   <div class="bar">
     <button type="button" id="lang">English</button>
     <button type="button" id="play">播放</button>
+    <select id="view" aria-label="视角"><option value="deck">台面</option><option value="machine">整机</option></select>
+    <button type="button" id="reset-view">重置视角</button>
     <label><span id="time-label">时间</span> <input id="time" type="range" min="0" max="1" step="0.01" value="0"></label>
   </div>
 </header>
@@ -122,7 +128,7 @@
   <div class="stage" id="stage"></div>
   <aside>
     <ol id="steps"></ol>
-    <pre id="command">还没有命令。</pre>
+    <details><summary id="details-label">查看步骤参数</summary><pre id="command">还没有命令。</pre></details>
   </aside>
 </main>
 <script type="module" src="/viewer.js"></script>

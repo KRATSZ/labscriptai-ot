@@ -16,7 +16,7 @@ Fix any **fail** items before continuing.
 
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
-| `Cannot find module` / Node error | Dependencies not installed | `cd servers/opentrons-mcp && npm install` |
+| `Cannot find module` / Node error | Dependencies not installed | `node scripts/install-runtime.mjs`, then reload MCP |
 | Wrong paths in tool errors | `OPENTRONS_PLUGIN_ROOT` unset or wrong | Set absolute path to clone root in MCP env |
 | Cursor: server gray / disconnected | Bad path in `.cursor/mcp.json` | Use absolute paths to `index.js` and env vars |
 | `ENOENT` on index.js | Typo in args path | Point to `servers/opentrons-mcp/index.js` |
@@ -38,11 +38,11 @@ Server should stay running on stdio (Ctrl+C to stop). If it prints a stack trace
 
 ### Cursor
 
-Copy [`.cursor/mcp.json`](../../.cursor/mcp.json) and replace `${workspaceFolder}/plugins/labscriptai-ot` with your actual clone path on **both** `args` and `env` fields.
+From the installed plugin folder, run `node scripts/configure-cursor.mjs "/absolute/path/to/your/project"`, then reload Cursor MCP. It writes absolute paths and preserves other servers.
 
 ### Claude Code
 
-Install via marketplace or local plugin source. Confirm `.claude-plugin/mcp.json` is loaded with the plugin.
+For the ZIP, load it with `claude --plugin-dir "/absolute/path/to/labscriptai-ot"` after running the installer there. Marketplace cache folders reuse matching dependencies from the shared user directory. Run the new ZIP's installer once when dependency versions change, then reload.
 
 ### Codex
 
@@ -50,7 +50,7 @@ Local plugin path must be the repository root. MCP config: `.mcp.json` at repo r
 
 Codex desktop may also read `.codex/config.toml` from the repository. Use absolute paths in that file for `args[0]`, `OPENTRONS_PLUGIN_ROOT`, `OPENTRONS_PROTOCOL_LIBRARY_PATH`, and `PLUGIN_DATA`. If `ps` shows `node servers/opentrons-mcp/index.js` started before your latest edits, restart/reload the Codex MCP process; otherwise the active MCP can keep serving old code even when local `verify-setup` is green.
 
-After reload, `health_check` should report `mcp_server.entrypoint` under the same clone root and `mcp_server.required_runtime_tools.all_present=true`.
+After reload, `health_check` should report the expected `mcp_server.version`, `build_id`, and `entrypoint` and `mcp_server.required_runtime_tools.all_present=true`.
 
 ## Required environment variables
 
@@ -58,12 +58,12 @@ After reload, `health_check` should report `mcp_server.entrypoint` under the sam
 |----------|---------|
 | `OPENTRONS_PLUGIN_ROOT` | `/home/user/labscriptai-ot` or `C:\Users\you\labscriptai-ot` |
 | `OPENTRONS_PROTOCOL_LIBRARY_PATH` | `$OPENTRONS_PLUGIN_ROOT/bundled-library` |
-| `PLUGIN_DATA` | Optional; defaults to `.plugin-data` under plugin root |
+| `PLUGIN_DATA` | Optional; defaults to `data/` in the stable LabscriptAI user directory |
 
 ## Still stuck?
 
 1. Re-run installer: `bash install-labscriptai-ot.sh` or `.\install-labscriptai-ot.ps1`
-2. Run MCP tests: `cd servers/opentrons-mcp && OPENTRONS_PLUGIN_ROOT=... npm test`
+2. Rerun the self-check with details: `node scripts/verify-setup.mjs --verbose`
 3. Read [GETTING_STARTED.md](../GETTING_STARTED.md) for platform-specific steps
 
 ## Related

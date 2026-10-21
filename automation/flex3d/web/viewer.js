@@ -3,7 +3,8 @@ import { OrbitControls } from "/vendor/OrbitControls.js";
 
 const UI = {
   zh: {
-    help: "拖动旋转整台机器，滚轮缩放，右键平移。点右侧步骤，左边停在那一步。",
+    help: "本地预览，未连接机器人。拖动旋转，滚轮缩放，右键平移；点步骤查看动作。",
+    viewLabel: "视角", deck: "台面", machine: "整机", reset: "重置视角", details: "查看步骤参数",
     play: "播放",
     pause: "暂停",
     lang: "English",
@@ -24,13 +25,14 @@ const UI = {
     mixDispense: "混匀·打",
     moveToAddressableAreaForDropTip: "移到垃圾桶",
     moveToAddressableArea: "移到",
-    dropTip: "弃枪头",
+    dropTip: "放回枪头",
     moveGrip: "夹爪搬运",
     moveHand: "手动移动",
     loadLiquid: "加载液体",
   },
   en: {
-    help: "Drag to rotate the machine, scroll to zoom, right-drag to pan. Click a step on the right and the left view stops on that step.",
+    help: "Local preview; no robot connection. Drag to rotate, scroll to zoom, right-drag to pan; select a step to inspect it.",
+    viewLabel: "View", deck: "Deck", machine: "Machine", reset: "Reset view", details: "Step parameters",
     play: "Play",
     pause: "Pause",
     lang: "中文",
@@ -51,7 +53,7 @@ const UI = {
     mixDispense: "Mix, dispense",
     moveToAddressableAreaForDropTip: "Move to trash",
     moveToAddressableArea: "Move to",
-    dropTip: "Drop tip",
+    dropTip: "Return tip",
     moveGrip: "Move with gripper",
     moveHand: "Move by hand",
     loadLiquid: "Load liquid",
@@ -94,6 +96,11 @@ function renderChrome() {
   document.getElementById("help").textContent = text.help;
   document.getElementById("time-label").textContent = text.time;
   langBtn.textContent = text.lang;
+  document.querySelector('#view option[value="deck"]').textContent = text.deck;
+  document.querySelector('#view option[value="machine"]').textContent = text.machine;
+  document.getElementById("reset-view").textContent = text.reset;
+  document.getElementById("view").setAttribute("aria-label", text.viewLabel);
+  document.getElementById("details-label").textContent = text.details;
   playBtn.textContent = playing ? text.pause : text.play;
   if (broken === "nokey") {
     titleEl.textContent = text.fail;
@@ -119,7 +126,8 @@ function stepVerb(step) {
   if (step.kind === "aspirate") return mixing ? text.mixAspirate : text.aspirate;
   if (step.kind === "dispense") return mixing ? text.mixDispense : text.dispense;
   if (step.kind === "moveLabware") return raw.includes("夹爪") || raw.includes("Gripper") ? text.moveGrip : text.moveHand;
-  if (step.kind === "dropTip" || step.kind === "dropTipInPlace") return text.dropTip;
+  if (step.kind === "dropTip") return text.dropTip;
+  if (step.kind === "dropTipInPlace") return lang === "zh" ? "丢弃枪头" : "Discard tip";
   return text[step.kind] || step.kind;
 }
 
@@ -133,7 +141,7 @@ function stepTail(step) {
     moveToAddressableAreaForDropTip: /^(?:Move to trash bin|Move to waste chute|移到垃圾桶)/,
     moveToAddressableArea: /^(?:Move to|移到)/,
     dropTipInPlace: /^(?:Drop tip|弃枪头)/,
-    dropTip: /^(?:Drop tip|弃枪头)/,
+    dropTip: /^(?:Return tip to|Drop tip in|Drop tip|放回枪头|弃枪头)/,
     moveLabware: /^(?:Gripper carry|Manual move|夹爪搬运|手动移动)/,
     loadLiquid: /^(?:Load liquid|加载液体)/,
   }[step.kind];
@@ -305,9 +313,12 @@ function followTime() {
 }
 
 function mount(payload) {
+  if (payload.schema_version != null && payload.schema_version !== 1) throw new Error("Unsupported 3D scene format. Update the plugin and reopen the preview.");
   view = payload;
   const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   stage.appendChild(renderer.domElement);
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0xffffff);
@@ -319,9 +330,15 @@ function mount(payload) {
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.target.copy(target);
   controls.enableDamping = true;
-  scene.add(new THREE.AmbientLight(0xffffff, 0.95));
-  const sun = new THREE.DirectionalLight(0xffffff, 1.05);
-  sun.position.set(2, -3, 4);
+  scene.add(new THREE.AmbientLight(0xffffff, 1.4));
+  const sun = new THREE.DirectionalLight(0xffffff, 2.0);
+  sun.position.set(1, -1.2, 2);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(2048, 2048);
+  Object.assign(sun.shadow.camera, { left: -0.9, right: 0.9, top: 0.9, bottom: -0.9, near: 0.1, far: 6 });
+  sun.shadow.bias = -0.0002;
+  sun.shadow.normalBias = 0.0008;
+  sun.shadow.radius = 3;
   scene.add(sun);
   const maps = (payload.textures || []).map((item) => {
     const map = new THREE.TextureLoader().load(`/flex3d/${key}/assets/${item.file}`);
@@ -355,8 +372,8 @@ function mount(payload) {
       opacity: geom.rgba[3],
       transparent: geom.rgba[3] < 0.99,
       depthWrite: geom.rgba[3] > 0.9,
-      roughness: geom.rgba[3] < 0.5 ? 0.05 : 0.55,
-      metalness: 0.04,
+      roughness: geom.roughness ?? (geom.rgba[3] < 0.5 ? 0.05 : 0.55),
+      metalness: geom.metalness ?? 0.04,
       side: THREE.DoubleSide,
     });
     const mesh = new THREE.Mesh(geometry(geom, payload.meshes), material);
@@ -364,6 +381,13 @@ function mount(payload) {
     quat(mesh, geom.quat);
     mesh.userData.kind = geom.type;
     mesh.userData.base = geom.size.slice();
+    mesh.userData.sceneGroup = geom.group || 0;
+    mesh.castShadow = geom.rgba[3] > 0.95 && mesh.userData.sceneGroup === 0;
+    mesh.receiveShadow = geom.rgba[3] > 0.95;
+    if (mesh.userData.sceneGroup === 0 && geom.type === "box" && geom.rgba[3] > 0.95) {
+      mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(mesh.geometry, 35),
+        new THREE.LineBasicMaterial({ color: 0x24313b, transparent: true, opacity: 0.12 })));
+    }
     holder.add(mesh);
     if (dynIndex.has(geom.gid)) dynObjects[dynIndex.get(geom.gid)] = mesh;
     mesh.visible = geom.rgba[3] > 0.02;
@@ -372,15 +396,29 @@ function mount(payload) {
   scene.traverse((obj) => {
     if (obj.isMesh && obj.userData.kind !== "plane" && obj.visible) fit.expandByObject(obj);
   });
-  if (!fit.isEmpty()) {
-    const center = fit.getCenter(new THREE.Vector3());
-    const radius = fit.getSize(new THREE.Vector3()).length() * 0.55;
-    camera.position.copy(center).add(new THREE.Vector3(radius * 0.75, -radius * 1.55, radius * 0.55));
-    camera.near = Math.max(0.01, radius / 100);
-    camera.far = radius * 20;
-    controls.target.set(center.x, center.y - radius * 0.08, center.z);
+  const center = fit.getCenter(new THREE.Vector3());
+  const radius = fit.isEmpty() ? 1 : fit.getSize(new THREE.Vector3()).length() * 0.55;
+  const machinePose = {
+    position: center.clone().add(new THREE.Vector3(radius * 0.75, -radius * 1.55, radius * 0.55)).toArray(),
+    target: [center.x, center.y - radius * 0.08, center.z], fov: 38,
+  };
+  function resetView() {
+    const mode = document.getElementById("view").value;
+    const pose = mode === "deck" ? payload.cameras?.deck || machinePose : machinePose;
+    camera.position.set(...pose.position);
+    camera.fov = pose.fov;
+    camera.near = 0.005;
+    camera.far = Math.max(10, radius * 20);
+    controls.target.set(...pose.target);
+    scene.traverse((obj) => {
+      if (obj.isMesh && obj.userData.sceneGroup > 0) obj.visible = mode === "machine";
+    });
     camera.updateProjectionMatrix();
+    controls.update();
   }
+  document.getElementById("view").addEventListener("change", resetView);
+  document.getElementById("reset-view").addEventListener("click", resetView);
+  resetView();
 
   function resize() {
     const width = stage.clientWidth || 800;
