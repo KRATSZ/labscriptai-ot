@@ -256,7 +256,7 @@ In protocol recovery state, enqueue a fixit pickUpTip on the next viable well an
 
 ### `run_protocol` [L3]
 
-Upload a protocol, create a run (auto-attaching stored labware offsets), optionally play it, then poll until the run reaches a terminal or intervention-required state. Gated: local simulation must pass AND LogicPass final_pass_v2 must be true (outcome=pass) before upload/play; fail or unevaluable blocks execution (skip_logicpass_gate=true to opt out deliberately).
+Upload, create and optionally play a protocol, then poll to a terminal or intervention state. Local simulation is required. LogicPass and software preflight gate by default; honor explicit operator waivers with the corresponding skip flags and record skipped checks. Liquid probing is optional and its enable flag is not required for this tool.
 
 **Parameters:** `robot_ip` (optional), `file_path`, `protocol_kind` (optional), `key` (optional), `run_time_parameters` (optional), `labware_offsets` (optional), `auto_play` (optional), `timeout_ms` (optional), `poll_interval_ms` (optional), `page_length` (optional), `session_id` (optional), `skip_logicpass_gate` (optional), `skip_preflight` (optional), `skip_preflight_deck_diff` (optional), `strict_preflight_labware_slots` (optional), `tiprack_slots` (optional)
 
@@ -312,13 +312,13 @@ Deck vision observation (observation-only; does not mutate session state; compar
 
 ### `flex3d_open_viewer` [L4]
 
-Start the interactive Flex 3D viewer (MuJoCo + Three.js) on 127.0.0.1 and return the browser URL. Requires mujoco in the plugin Python env; degrades with a clear error when missing. Requires protocol_path (analyze JSON or protocol .py); the returned URL carries ?key=example. Online preview only: writes scene assets and a startup log under PLUGIN_DATA, with no rendered images or videos. The viewer stays running after the client exits; pid and log_path allow stopping and diagnosis. Readiness is verified against this viewer process; a failed start is reported and timed-out processes are stopped.
+Open or close the local interactive Flex 3D preview. action=open (default) requires protocol_path (.py or analyze JSON); returns a browser URL and reuses this plugin's running viewer. Different protocols keep separate keyed URLs (up to four loaded models). action=close stops only the verified viewer owned by this plugin's data directory; protocol_path is unnecessary. A foreign port is left untouched with an actionable error. Online preview only; scene assets and private logs stay under PLUGIN_DATA, with no images or video exports. Local simulation only; no robot connection.
 
-**Parameters:** `protocol_path`, `port` (optional), `python_executable` (optional)
+**Parameters:** `action` (optional), `protocol_path` (optional), `port` (optional), `python_executable` (optional)
 
 ### `flex3d_preflight_check` [L4]
 
-Flex 3D physical preflight (MuJoCo). Runs automation/flex3d/scripts/render_protocol_3d.py on an opentrons analyze JSON or protocol .py: geometry, liquid, targets, clearance checks with command_index aligned to LogicPass step_index. Flex only (OT-2 refused). Degrades gracefully (ok=false, error=mujoco_missing) when mujoco is not installed. Returns passed/failed/unknown/not_applicable; failed checks set ok=false. Uses the shared analysis cache. Checks and scene assets stay under PLUGIN_DATA; no image or video export. For a live 3D look at the deck use flex3d_open_viewer, which returns an online preview URL.
+Flex 3D physical preflight (MuJoCo). Runs automation/flex3d/scripts/render_protocol_3d.py on an opentrons analyze JSON or protocol .py: geometry, liquid, targets, clearance checks with command_index aligned to LogicPass step_index. Flex only (OT-2 refused). Degrades gracefully (ok=false, error=mujoco_missing) when mujoco is not installed. Returns passed/failed/unknown/not_applicable; failed checks set ok=false. Includes the complete warnings array and warnings_count. Uses the shared analysis cache. Checks and scene assets stay under PLUGIN_DATA; no image or video export. For a live 3D look at the deck use flex3d_open_viewer, which returns an online preview URL.
 
 **Parameters:** `source`, `out_dir` (optional), `python_executable` (optional)
 

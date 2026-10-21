@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import { dataHome, cachedPython } from "../../../scripts/runtime-paths.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -43,7 +44,7 @@ export const PLUGIN_ROOT = resolvePluginRoot();
 export const SCRIPTS_DIR = path.join(MCP_ROOT, "scripts");
 export const DATA_DIR = firstEnv("PLUGIN_DATA", "OPENTRONS_PLUGIN_DATA")
   ? path.resolve(firstEnv("PLUGIN_DATA", "OPENTRONS_PLUGIN_DATA"))
-  : path.join(PLUGIN_ROOT, ".plugin-data");
+  : path.join(dataHome(), "data");
 export const ARTIFACTS_DIR = path.join(DATA_DIR, "artifacts");
 export const SESSION_STATE_DIR = process.env.OPENTRONS_SESSION_STATE_DIR
   ? path.resolve(process.env.OPENTRONS_SESSION_STATE_DIR)
@@ -57,6 +58,7 @@ export function resolvePythonCandidates(preferredPython = null) {
   const candidates = [
     preferredPython,
     process.env.OPENTRONS_PYTHON,
+    cachedPython(PLUGIN_ROOT),
     path.join(PLUGIN_ROOT, ".venv/Scripts/python.exe"),
     path.join(PLUGIN_ROOT, ".venv/bin/python"),
     path.join(DEV_REPO_ROOT, ".venv/bin/python"),

@@ -10,9 +10,9 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 DETAIL = Path('automation/flex3d/cad/flex/modules/detailed')
-FILES = '''AGENTS.md LICENSE CITATION.cff README.md pyproject.toml uv.lock server.json
+FILES = '''AGENTS.md LICENSE CITATION.cff README.md pyproject.toml uv.lock requirements.lock server.json
 .mcp.json mcp.json install-labscriptai-ot.sh install-labscriptai-ot.ps1
-scripts/install-runtime.mjs scripts/verify-setup.mjs scripts/lint-manifests.mjs
+scripts/install-runtime.mjs scripts/runtime-paths.mjs scripts/verify-setup.mjs scripts/lint-manifests.mjs
 servers/opentrons-mcp/index.js servers/opentrons-mcp/package.json servers/opentrons-mcp/package-lock.json
 servers/opentrons-mcp/scripts/local_simulation.py servers/opentrons-mcp/scripts/logicpass_check.py
 servers/opentrons-mcp/scripts/vision_check.py automation/deck_layout_policy.json automation/verify_pe_tip_pickup.py
@@ -48,7 +48,7 @@ def core_files(root):
                 paths.add(checked(root, rel))
     # Keep the small recovery CLIs referenced by runtime guidance.
     for path in (root / 'scripts').glob('*.mjs'):
-        if path.name not in {'generate-mcp-docs.mjs'} and allowed(path.relative_to(root)):
+        if path.name not in {'generate-mcp-docs.mjs', 'release-smoke.mjs'} and allowed(path.relative_to(root)):
             paths.add(checked(root, path.relative_to(root)))
     return sorted(paths)
 
@@ -67,12 +67,21 @@ def detail_files(root):
 
 
 def write_zip(root, target, paths):
+    digest = hashlib.sha256()
+    for rel in paths:
+        digest.update(rel.as_posix().encode() + b'\0' + (root / rel).read_bytes() + b'\0')
+    version = json.loads((root / '.codex-plugin/plugin.json').read_text())['version']
     with zipfile.ZipFile(target, 'w', zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
         for rel in paths:
             info = zipfile.ZipInfo('labscriptai-ot/' + rel.as_posix(), (2026, 1, 1, 0, 0, 0))
             info.compress_type = zipfile.ZIP_DEFLATED
             info.external_attr = (0o100755 if rel.suffix == '.sh' else 0o100644) << 16
             archive.writestr(info, (root / rel).read_bytes(), compresslevel=9)
+        identity = zipfile.ZipInfo('labscriptai-ot/build-info.json', (2026, 1, 1, 0, 0, 0))
+        identity.compress_type = zipfile.ZIP_DEFLATED
+        identity.external_attr = 0o100644 << 16
+        archive.writestr(identity,
+                         json.dumps({'version': version, 'build_id': digest.hexdigest()[:16], 'content_sha256': digest.hexdigest()}, sort_keys=True) + '\n')
 
 
 def build(root=ROOT, out=None):
@@ -90,7 +99,7 @@ def build(root=ROOT, out=None):
             archive = stage / name
             write_zip(root, archive, paths)
             assets.append({'name': name, 'bytes': archive.stat().st_size,
-                           'sha256': hashlib.sha256(archive.read_bytes()).hexdigest(), 'files': len(paths)})
+                           'sha256': hashlib.sha256(archive.read_bytes()).hexdigest(), 'files': len(paths) + 1})
         result = {'version': version, 'assets': assets}
         (stage / 'release-manifest.json').write_text(json.dumps(result, indent=2) + '\n')
         out.mkdir(parents=True, exist_ok=True)

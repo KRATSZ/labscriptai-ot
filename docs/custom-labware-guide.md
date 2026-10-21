@@ -59,3 +59,9 @@ Agent 会在 `.py` 里写 `load_labware(..., namespace="custom_beta")`，上传�
 - `automation/labware/pe_tiprack_config.json` — 尺寸配置示例
 - `automation/labware/build_pe_tipracks.py` — 生成 JSON 的脚本示例
 - `automation/verify_pe_tip_pickup.py` — 上机验证示例
+
+## 试管和管架
+
+先提供**管子型号/货号 + 管架型号或孔距/高度**。官方已有 4×6（24 位）1.5/2 mL 管架，以及 6×15 mL + 4×50 mL 混合管架；它们是不同的耗材定义，不能只换管子名称就共用坐标。参考[官方管架说明](https://docs.opentrons.com/flex/labware/types/#tubes-and-tube-racks)。
+
+3D 预览会按定义生成管型，共享同款网格。孔位、口径和深度来自耗材定义；管架轮廓参考[官方尺寸图](https://insights.opentrons.com/hubfs/Products/Consumables%20and%20Reagents/Tube%20Rack%20White%20Paper.pdf)，倒角及管壁厚度为外观示意。公开 CAD 可在核对型号、单位及使用许可后补充外观，实际移液仍以定义和校准为准。

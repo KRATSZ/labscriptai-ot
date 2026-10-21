@@ -1,9 +1,8 @@
 ---
 name: opentrons-protocol-author
 description: Write or revise Opentrons Python protocols for OT-2 or Flex robots — deck setup, labware, pipette, runtime parameters, camera capture.
-type: prompt-only
-entry: assets/flex_protocol_template.py
-mcp_tools: []
+metadata:
+  entry: assets/flex_protocol_template.py
 ---
 
 # Protocol Author
@@ -45,6 +44,10 @@ mcp_tools: []
   To dispose of liquid waste: `pipette.dispense(vol, location=trash_bin)` or
   `pipette.blow_out(location=trash_bin)`. To drop tips: `pipette.drop_tip(trash_bin)`.
   You CANNOT `aspirate()` from a TrashBin.
+- Give a liquid-waste reservoir its own deck slot; do not share or stack it with
+  samples, reagents or tip racks. Match the actual waste fixture: a trash bin in
+  D3 and a waste chute cannot occupy D3 together. Keep a confirmed user layout;
+  ask about an occupied waste slot instead of silently moving other labware.
 - Do not claim validated unless verify tooling ran or user provided validated result.
 - **Questions may omit essential assay steps.** Ask about missing assay-specific volumes, reagents or incubation conditions; do not invent them. Implement steps established by the user's instructions or applicable SOP and record that basis.
 - **Implement known limitations.** If your draft protocol has steps you know are
@@ -79,7 +82,7 @@ mcp_tools: []
 
 **Flex — Liquid Presence Detection (capacitive LLD):** When source fill height is uncertain, reservoir levels are low, or recovery needs liquid confirmation, use `liquid_presence_detection=True` and `detect_liquid_presence` / `require_liquid_presence` / `measure_liquid_height`. See `references/liquid-presence-detection-flex.md` and `assets/flex_liquid_probe_example.py`. Default RTP `use_liquid_probe=False`; live MCP probing uses `liquid_source_map(action=critical_targets)` → `probe_wells` + `apply_liquid_probe_results` (opt-in). Record critical sources in `record_liquid_source_map` with `critical: true` or roles like `wash_buffer` / `enzyme`.
 
-**Per-aspirate LPD (required for multi-draw from one source):** Do **not** call `require_liquid_presence` only once before a loop of several aspirates/transfers from the same well. Guard **each** aspirate (or each `transfer_with_liquid_class` iteration). A single pre-loop probe can pass, then later draws aspirate air with no error — runtime STOP never fires. Pattern in `references/liquid-presence-detection-flex.md`.
+**Per-aspirate LPD (when LPD is enabled):** Do **not** call `require_liquid_presence` only once before a loop of several aspirates/transfers from the same well. When the operator has selected LPD, guard **each** aspirate (or each `transfer_with_liquid_class` iteration). Do not add mandatory probing to a protocol with `use_liquid_probe=False` or after the operator declines it. A single pre-loop probe can pass, then later draws aspirate air with no error — runtime STOP never fires. Pattern in `references/liquid-presence-detection-flex.md`.
 
 ## Pipette range (Flex default path)
 

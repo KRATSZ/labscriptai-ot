@@ -2,33 +2,21 @@
 set -euo pipefail
 
 PLUGIN_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-MCP_ROOT="$PLUGIN_ROOT/servers/opentrons-mcp"
-
-cd "$MCP_ROOT"
-npm ci --omit=dev --no-audit --no-fund
-
-cd "$PLUGIN_ROOT"
-node scripts/install-runtime.mjs
-
 export OPENTRONS_PLUGIN_ROOT="$PLUGIN_ROOT"
+
+if ! command -v node >/dev/null || ! command -v npm >/dev/null; then
+  echo "Install Node.js 18+ (including npm) from https://nodejs.org/, then rerun this installer." >&2
+  exit 1
+fi
+node -e 'if (Number(process.versions.node.split(".")[0]) < 18) { console.error("Node.js 18+ is required. Update Node.js and rerun the installer."); process.exit(1); }'
+
+node "$PLUGIN_ROOT/scripts/install-runtime.mjs"
 node "$PLUGIN_ROOT/scripts/verify-setup.mjs" || VERIFY_EXIT=$?
 
 cat <<EOF
 
-LabscriptAI OT installation finished. See the verification result above.
-
-Set these variables in your client if it does not inject them:
-  OPENTRONS_PLUGIN_ROOT=$PLUGIN_ROOT
-  OPENTRONS_PROTOCOL_LIBRARY_PATH=$PLUGIN_ROOT/bundled-library
-
-Optional writable state directory:
-  PLUGIN_DATA=$PLUGIN_ROOT/.plugin-data
-
-Optional deck vision (lab-trained YOLO):
-  Weights: vision/models/weights/deck_v2_best.pt
-  Setup (installs ultralytics + opencv on purpose): docs/deck-vision.md
-
-Next steps: docs/GETTING_STARTED.md
+Next: enable the plugin in your client using docs/GETTING_STARTED.md.
+First task: "Check my protocol locally; do not connect to a robot."
 EOF
 
 exit "${VERIFY_EXIT:-0}"

@@ -66,13 +66,13 @@ Before outputting your final protocol, verify each item below. Fix any issues fo
 7. **Tip count**: Does the protocol have enough tips for all operations? Calculate explicitly and document in design-notes (`pick_up_tip_count` when known).
 8. **Dead volume**: Have you accounted for dead volume in source wells/tubes? Total loaded volume = transfer volume + dead volume.
 9. **Liquid class**: On Flex, did you use verified liquid classes (`water` / `ethanol_80` / `glycerol_50`) or document why not? On OT-2, are `rate=` / flow_rate overrides justified per liquid?
-10. **Trash bin**: Flex protocols MUST call `protocol.load_trash_bin("A3")`. OT-2 protocols do not need this.
+10. **Waste placement**: Use the actual Flex trash bin or waste chute when discarding tips; do not always force a trash bin into A3. A liquid-waste reservoir gets its own slot, without samples, reagents or tip racks stacked on it. A D3 trash bin and the waste chute cannot share D3. OT-2 protocols do not need `load_trash_bin()`.
 11. **RTP choices format**: Any `add_str(..., choices=...)` must use `{"display_name": ..., "value": ...}` dicts, NOT plain strings.
 12. **transfer_with_liquid_class 1:many**: When transferring from one source to many destinations with a liquid class, you MUST loop per destination. `transfer_with_liquid_class` does NOT support `distribute` mode.
 13. **Dry-run switch**: Does `dry_run_on` default to `False`, and does every
     tip-release path call the common helper? If enabled for a physical run,
     verify the deck is liquid-free and quarantine the returned-tip rack afterward.
-14. **Per-aspirate LPD**: For multiple aspirates/transfers from the same source well, is `require_liquid_presence` (or equivalent) called **inside** the loop — not only once before the loop?
+14. **Per-aspirate LPD, if enabled**: For multiple aspirates/transfers from the same source well, is `require_liquid_presence` (or equivalent) called **inside** the loop — not only once before the loop?
 15. **Primary / reserve annotation**: If a same-identity reserve exists, are both wells documented with liquid identity and minimum usable volume?
 16. **Time window**: If a phase is time-critical after a prior phase, is `max_hold_minutes` (or `hold_tolerant: true`) written in comments and/or design-notes?
 

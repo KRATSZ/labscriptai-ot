@@ -133,6 +133,24 @@ export function buildPreflightRunSetupResult({
     }
   }
 
+  const notChecked = [...(robotStatusSnapshot.not_checked || []), ...(moduleStatusSnapshot.not_checked || [])];
+  for (const name of notChecked) {
+    const item = {
+      code: `${name}_not_checked`,
+      message: `${name} state was not available from the robot API; this is not a detected fault.`,
+    };
+    warnings.push(item);
+    warningChecks.push({
+      ...buildPreflightCheck("warn", item, { evidenceSources: [name.startsWith("module:") ? "module_status" : "robot_status"] }),
+      error_domain: null,
+      error_leaf: null,
+      severity: "warning",
+      recoverability: null,
+      requires_human_review: false,
+      default_next_step: null,
+    });
+  }
+
   const moduleBlockers = moduleStatusSnapshot.blockers || [];
   if (Array.isArray(moduleBlockers) && moduleBlockers.length > 0) {
     const item = {
@@ -148,7 +166,7 @@ export function buildPreflightRunSetupResult({
     robotStatusSnapshot,
     sessionState,
   });
-  if (homeSafety.auto_home_allowed === false) {
+  if (homeSafety.auto_home_allowed === false && homeSafety.blockers.some(name => !name.endsWith("_not_checked"))) {
     const item = {
       code: "home_not_auto_safe",
       blockers: homeSafety.blockers || [],
@@ -220,7 +238,8 @@ export function buildPreflightRunSetupResult({
     robot_model: robotModel,
     deck_model: inferDeckModel(robotType),
     declared_loads: declaredLoads,
-    deck_diff: deckDiff,
+    deck_diff: skipDeckDiff ? { status: "skipped", reason: "requested" } : deckDiff,
+    skipped_checks: skipDeckDiff ? ["deck_diff"] : [],
     home_safety: {
       auto_home_allowed: homeSafety.auto_home_allowed,
       blockers: homeSafety.blockers || [],
@@ -230,8 +249,11 @@ export function buildPreflightRunSetupResult({
     warning_checks: warningChecks,
     errors,
     warnings,
+    warnings_count: warnings.length,
+    not_checked: notChecked,
     summary: ok
-      ? "Preflight passed; review warnings before play if any."
+      ? (warnings.length ? "Preflight allows play with warnings; see warnings and not_checked."
+        : skipDeckDiff ? "Preflight allows play; deck comparison skipped by request." : "Preflight passed.")
       : `Preflight blocked: ${errors.map(e => e.code || e.message).join("; ")}`,
   };
 }

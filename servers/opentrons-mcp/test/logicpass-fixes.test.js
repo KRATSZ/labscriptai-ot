@@ -9,13 +9,14 @@ import { fileURLToPath } from "url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const pluginRoot = path.resolve(here, "../../..");
-const python = path.join(pluginRoot, ".venv/bin/python");
+const python = process.env.OPENTRONS_PYTHON || path.join(pluginRoot, ".venv/bin/python");
 const bridge = path.join(pluginRoot, "servers/opentrons-mcp/scripts/logicpass_check.py");
 const entry = path.join(pluginRoot, "servers/opentrons-mcp/index.js");
 
 import { buildLogicpassGateBlock } from "../lib/logicpass.js";
 import { analyzeProtocolOnce } from "../lib/analyze-once.js";
 import { TOOL_HANDLERS } from "../index.js";
+import { ARTIFACTS_DIR } from "../lib/paths.js";
 
 function runBridge(args) {
   return spawnSync(python, [bridge, ...args], { encoding: "utf8" });
@@ -158,7 +159,7 @@ test("stale analyze cache self-heals when the analysis JSON was deleted", { time
   fs.writeFileSync(
     protocol,
     [
-      "metadata = {'protocolName': 'stale-cache-probe'}",
+      `metadata = {'protocolName': 'stale-cache-probe-${crypto.randomUUID()}'}`,
       "requirements = {'robotType': 'Flex', 'apiLevel': '2.24'}",
       "def run(context):",
       "    context.load_trash_bin('A3')",
@@ -172,7 +173,7 @@ test("stale analyze cache self-heals when the analysis JSON was deleted", { time
   );
   // Seed a lying cache entry: meta says ok, but the analysis JSON is gone.
   const hash = crypto.createHash("sha256").update(fs.readFileSync(protocol)).digest("hex").slice(0, 20);
-  const cacheDir = path.join(pluginRoot, ".plugin-data/artifacts/analyze-cache");
+  const cacheDir = path.join(ARTIFACTS_DIR, "analyze-cache");
   fs.mkdirSync(cacheDir, { recursive: true });
   const metaPath = path.join(cacheDir, `${hash}.meta.json`);
   fs.writeFileSync(

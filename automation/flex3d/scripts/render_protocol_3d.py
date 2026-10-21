@@ -24,8 +24,16 @@ if str(ROOT) not in sys.path:
 
 FLEX_ROBOTS = {"OT-3 Standard", "Flex"}
 
+# Latest plan built by this process. Preflight always reports every warning the
+# plan has, including when scene construction or a later check fails.
+_ACTIVE_PLAN = None
 
-def emit(payload: dict) -> None:
+
+def emit(payload: dict, plan=None) -> None:
+    plan = plan if plan is not None else _ACTIVE_PLAN
+    warnings = list(plan.warnings) if plan is not None else []
+    payload["warnings"] = warnings
+    payload["warnings_count"] = len(warnings)
     payload.setdefault("status", "unknown")
     sys.stdout.reconfigure(encoding="utf-8")
     json.dump(payload, sys.stdout, ensure_ascii=False)
@@ -77,6 +85,8 @@ def load_raw(path: Path) -> dict:
 
 
 def main() -> None:
+    global _ACTIVE_PLAN
+    _ACTIVE_PLAN = None
     parser = argparse.ArgumentParser(description="Flex 3D checks for one analysis")
     parser.add_argument("source", type=Path, help="analysis JSON or protocol .py")
     parser.add_argument("--out", type=Path, default=None)
@@ -149,6 +159,7 @@ def main() -> None:
         deck = load_deck()
         run = load_analysis(source, deck)
         plan = make_plan(run)
+        _ACTIVE_PLAN = plan
         xml = write_model(deck, scene_spec(plan), out)
         model = load_model(xml)
         data = mujoco.MjData(model)
@@ -213,7 +224,13 @@ def main() -> None:
 
     files: list[dict] = []
     trace = out / f"{source.stem}_checks.json"
-    trace.write_text(json.dumps({"robot_type": kind, "checks": checks}, indent=2), encoding="utf-8")
+    warnings = list(plan.warnings)
+    trace.write_text(json.dumps({
+        "robot_type": kind,
+        "warnings": warnings,
+        "warnings_count": len(warnings),
+        "checks": checks,
+    }, indent=2), encoding="utf-8")
     files.append({"kind": "checks", "path": str(trace)})
 
     # No video branch here on purpose: a 3D request is served by the online

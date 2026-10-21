@@ -528,15 +528,15 @@ test("live_liquid_recovery_gate warns when c3_d3_liquid_recovery source identity
     );
     assert.match(
       identityCheck.operator_guidance.generate_draft_command,
-      /--template-md-out \S*runs\/self-recovery\/artifacts\/liquid-source-identity-draft\.md/,
+      /--template-md-out .*runs\/self-recovery\/artifacts\/liquid-source-identity-draft\.md/,
     );
     assert.match(
       identityCheck.operator_guidance.validate_markdown_command,
-      /--validate-template-md \S*runs\/self-recovery\/artifacts\/liquid-source-identity-draft\.md/,
+      /--validate-template-md .*runs\/self-recovery\/artifacts\/liquid-source-identity-draft\.md/,
     );
     assert.match(
       identityCheck.operator_guidance.apply_markdown_command,
-      /--apply-template-md \S*runs\/self-recovery\/artifacts\/liquid-source-identity-draft\.md/,
+      /--apply-template-md .*runs\/self-recovery\/artifacts\/liquid-source-identity-draft\.md/,
     );
     assert.ok(result.data.next_steps.some(step => step.includes("liquid-source-identity-draft.md")));
   } finally {

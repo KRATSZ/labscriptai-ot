@@ -70,7 +70,7 @@ export function buildLogicpassGateBlock({ verdict = null, gateError = null, doct
   }
   const reasonText = reasonParts.join(" | ") || "LogicPass 没有给出可用结论。";
   const error = new Error(
-    `LogicPass gate blocked real execution: outcome=${outcome}; final_pass_v2=false. 原因: ${reasonText}`,
+    `LogicPass gate blocked real execution: outcome=${outcome}; final_pass_v2=false. 原因: ${reasonText}. Explicit operator waiver: run_protocol(skip_logicpass_gate=true); local simulation still required.`,
   );
   error.toolContext = {
     data: {
@@ -81,6 +81,7 @@ export function buildLogicpassGateBlock({ verdict = null, gateError = null, doct
       parsed_simulation_output: parsed,
       logicpass_gate: {
         outcome,
+        operator_override: { tool: "run_protocol", arguments: { skip_logicpass_gate: true }, requires_explicit_operator_request: true },
         logic_pass: Boolean(verdict?.logic_pass),
         final_pass_v2: false,
         issues: verdict?.issues || [],

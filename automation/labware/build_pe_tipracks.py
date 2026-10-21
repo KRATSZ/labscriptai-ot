@@ -11,19 +11,11 @@ import sys
 from copy import deepcopy
 from pathlib import Path
 
+from opentrons_shared_data import get_shared_data_root
+
 LABWARE_DIR = Path(__file__).resolve().parent
 CONFIG_PATH = LABWARE_DIR / "pe_tiprack_config.json"
-SHARED_DATA = (
-    Path(__file__).resolve().parents[2]
-    / ".venv"
-    / "Lib"
-    / "site-packages"
-    / "opentrons_shared_data"
-    / "data"
-    / "labware"
-    / "definitions"
-    / "2"
-)
+SHARED_DATA = get_shared_data_root() / "labware" / "definitions" / "2"
 
 
 def _reference_path(load_name: str) -> Path:

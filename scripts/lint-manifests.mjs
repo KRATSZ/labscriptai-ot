@@ -49,6 +49,16 @@ for (const [name, file] of Object.entries(MANIFESTS)) {
 }
 
 const versions = new Set(Object.values(loaded).map((m) => m.version).filter(Boolean));
+for (const file of ["servers/opentrons-mcp/package.json", "servers/opentrons-mcp/package-lock.json"]) {
+  versions.add(readJson(path.join(ROOT, file)).version);
+}
+versions.add(readJson(path.join(ROOT, ".claude-plugin/marketplace.json")).plugins[0].version);
+for (const file of ["pyproject.toml", "uv.lock"]) {
+  const text = fs.readFileSync(path.join(ROOT, file), "utf8");
+  const match = file === "uv.lock" ? text.match(/name = "labscriptai-ot"\s+version = "([^"]+)"/) : text.match(/^version = "([^"]+)"/m);
+  if (!match) err(`Missing version: ${file}`);
+  else versions.add(match[1]);
+}
 if (versions.size > 1) {
   err(`Version mismatch: ${[...versions].join(", ")}`);
 } else if (versions.size === 1) {
@@ -63,6 +73,11 @@ if (names.size > 1) {
 }
 
 for (const [platform, manifest] of Object.entries(loaded)) {
+  // Claude uses its own manifest schema, not the Codex/Cursor interface block.
+  if (platform === "claude") {
+    if (manifest.interface) err("claude: interface is not portable to supported Claude Code versions");
+    continue;
+  }
   const iface = manifest.interface || {};
   for (const field of REQUIRED_INTERFACE) {
     if (iface[field] === undefined || iface[field] === null || iface[field] === "") {

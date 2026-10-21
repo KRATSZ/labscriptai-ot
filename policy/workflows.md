@@ -6,37 +6,36 @@ This file is the **single source of truth** for end-to-end and tool-order workfl
 
 ```
 user intent / SOP
-  →  (optional) one blocking clarification round
+  →  (optional) bundled questions for facts that block the current decision
   →  protocol-author draft (+ critical_sources in liquid source map)
   →  validate_virtual_lab_state_steps (session_id/initial_state, steps) — pure software gate
-  →  health_check(scope=local) → simulate_protocol (virtual_lab_steps) → simulate_protocol
+  →  health_check(scope=local) → simulate_protocol (virtual_lab_steps when available) → logicpass_check
   →  (fix loop if failed)
-  →  Phase 3a dashboard: health_check → live_readiness_check → robot_status → robot_status → reconcile_state (if needed)
+  →  Phase 3a dashboard: health_check → live_readiness_check → robot_status(include_modules=true) → reconcile_state (if needed)
        → machine-judged: passed | blocked | needs_operator_physical_action (no verbal re-confirm)
   →  Phase 3b deck vision: deck_vision_check (YOLO → optional Ark VLM) OR capture_image(mode=preview) → deck_vision_check(mode=local) → analyze_image(provider=ark)
        → sensor-aligned (e.g. VLM agrees) → passed; uncertainty → auto_fixable (reconcile first); mismatch needing hands → needs_operator_physical_action
-  →  Phase 3c critical probe: liquid_source_map(action=critical_targets) → probe_wells simulate
-       → OPENTRONS_ENABLE_PROBE_WELLS=1 hard gate (blocked if unset; not a verbal subgate confirm)
-       → probe_wells execute_on_robot → apply_liquid_probe_results → live_liquid_recovery_gate
+  →  Phase 3c optional probe, only when selected: critical_targets → simulate probe → authorize live probe
+       → OPENTRONS_ENABLE_PROBE_WELLS=1 → probe_wells execute_on_robot → apply_liquid_probe_results → live_liquid_recovery_gate
+       → otherwise record skipped/not_checked and continue (no probe flag needed for a normal run)
   →  return status: passed (subgates) | auto_fixable | needs_operator_physical_action | blocked
-       | needs_confirmation (final go-live only — HumanConfirmBudget)
-  →  run_protocol (robot_ip, file_path, session_id) only after that single confirmation — quiet execution, no vision during run
+       | needs_confirmation (before the first authorized motion — HumanConfirmBudget)
+  →  run_protocol (robot_ip, file_path, session_id) after required checks pass or named software gates are explicitly waived, with authorization covering this run — quiet execution
   →  runtime_watch(mode=loop) (run_id) until COMPLETE/BLOCKED
 ```
 
 ## HumanConfirmBudget (go-live)
 
-Phase **3a / 3b / 3c** statuses are machine-judged. Agents must **not** verbally re-confirm each passed subgate.
+Read-only preflight checks do not need verbal re-confirmation. Before the first physical motion (including a live probe), obtain explicit authorization for the named action and confirm a person is at the robot. An environment flag alone is not consent.
 
-The **only** go-live verbal confirmation is the final `run_protocol` / play confirmation. It may bundle `dry_run_on` and whether the live-probe env opt-in is already set. Do **not** remove the `OPENTRONS_ENABLE_PROBE_WELLS=1` (or equivalent) hard gate — unset env → `blocked`, not a chat substitute.
+One prompt can authorize both selected probing and the planned run, and include the resolved `dry_run_on` value and any unavailable checks. If this scope was already explicitly authorized in the conversation, do not ask again. If consent covers probing only, obtain authorization before running the experiment. A failed probe, changed protocol/deck or changed recovery action stops this sequence and requires review of the changed scope.
 
-Escalate vs auto-fix: `auto_fixable` (agent tools, prefer reconcile) → `needs_operator_physical_action` (hands-on) → `needs_confirmation` (final live only) → `blocked`. See [output-contract.md](output-contract.md).
-
+An unset `OPENTRONS_ENABLE_PROBE_WELLS` blocks only requested live probing. It does not block an ordinary run without probing. Honor an explicit request to skip the ledger with `skip_logicpass_gate=true`; honor a software-preflight waiver with `skip_preflight=true` (or `skip_preflight_deck_diff=true` for that diff only). Reuse existing authorization for the unchanged scope, record omissions, and continue without another permission question. See [safety-policy.md](safety-policy.md#operator-selected-checks) and [output-contract.md](output-contract.md).
 
 ## Protocol validation only (no live robot)
 
 ```
-health_check(scope=local) → simulate_protocol → simulate_protocol
+health_check(scope=local) → simulate_protocol → logicpass_check
 ```
 Script equivalent: `verify_protocol.py doctor` then `verify_protocol.py analyze <file>`.
 
@@ -46,10 +45,10 @@ If the user only wants validation or labware inspection, stop after the check an
 ## User-facing defaults
 
 - If code exists and is runnable, simulate is the default next action.
-- Ask at most one clarification round before drafting.
+- Bundle blocking questions; follow up only if a required fact remains unresolved. Do not guess to meet a one-round limit.
 - Only block on missing information that would change safety, deck truth, robot compatibility, or module choice.
 - New protocols expose `dry_run_on=false`. Before a physical run, report the
-  resolved value as part of the **single** final go-live confirmation (HumanConfirmBudget).
+  resolved value within the scoped motion authorization (HumanConfirmBudget).
   If true, that confirm must cover clean/liquid-free deck and labware; returned tips
   must be segregated or replaced before a wet run.
 
@@ -65,7 +64,7 @@ parse_error (robot_ip, run_id) → suggest_recovery_action (error_category, targ
 ```
 health_check
   → live_readiness_check (robot_ip, session_id?, file_path?, run_id?)
-  → robot_status → robot_status
+  → robot_status(include_modules=true)
   → reconcile_state (if guidance.reconcile_first or deck drift)
   → if fail: stop and follow recommended_next_tools
   → if pass/warn: continue to Phase 3b deck vision
@@ -101,15 +100,16 @@ Escalate to VLM when YOLO reports low confidence, ambiguity, or layout mismatche
 
 ## Critical-source liquid probe — Phase 3c (no VLM)
 
-Probe only critical source wells (wash buffer, enzyme, etc.) — not full-plate scan. Machine-judged; do not add a separate verbal “confirm probe?” before the final go-live confirm.
+Optional: probe selected critical source wells (wash buffer, enzyme, etc.), never a full-plate scan by default. If not selected, unavailable or declined, record skipped/not_checked and continue without probing. A critical-source list alone does not enable this step. For a selected live probe, simulate first and use the scoped authorization described in HumanConfirmBudget.
 
 ```
 liquid_source_map(action=critical_targets) (session_id, critical_sources?)
   → probe_wells (execute_on_robot=false, wells=[...]) → parse simulation
-  → require OPENTRONS_ENABLE_PROBE_WELLS=1 (hard gate; blocked if unset)
+  → require OPENTRONS_ENABLE_PROBE_WELLS=1 for this live probe only
+  → explicit scoped authorization + person at robot
   → probe_wells (execute_on_robot=true) → apply_liquid_probe_results
   → live_liquid_recovery_gate
-  → continue; final verbal confirm only at run_protocol / play (HumanConfirmBudget)
+  → continue the run if the existing authorization covers it; a declined probe needs no probe flag
 ```
 
 Bookkeeping only until `execute_on_robot=true`. See [probe-wells-live-validation.md](../docs/runbooks/probe-wells-live-validation.md).
@@ -127,7 +127,7 @@ After `parse_error` → `suggest_recovery_action`, follow `recovery_channel`:
 
 | Channel | Error leaves (examples) | Next tools |
 |---------|-------------------------|------------|
-| dashboard | DOOR_OPEN, ESTOP_ENGAGED, MODULE_NOT_READY, ROBOT_UNREACHABLE | robot_status, robot_status, live_readiness_check |
+| dashboard | DOOR_OPEN, ESTOP_ENGAGED, MODULE_NOT_READY, ROBOT_UNREACHABLE | robot_status(include_modules=true), live_readiness_check |
 | vision | LABWARE_MISMATCH, DESTINATION_UNAVAILABLE, SLOT_NOT_ADDRESSABLE | deck_vision_check, reconcile_state |
 | reconcile | SESSION_NEEDS_RECONCILIATION, STATE_MISMATCH | reconcile_state first (not camera/VLM-first) |
 | manual | DECK_COLLISION (hard-stop) | stop; physical check; re-run live_readiness_check — does **not** enter vision channel |
@@ -146,11 +146,12 @@ Use during recovery or when source fill is uncertain after a run has started. **
 
 ```
 probe_wells (execute_on_robot=false) → parse simulation
-  → require OPENTRONS_ENABLE_PROBE_WELLS=1 (hard gate; blocked if unset)
+  → require OPENTRONS_ENABLE_PROBE_WELLS=1 for this live probe only
+  → explicit scoped authorization + person at robot
   → probe_wells (execute_on_robot=true, auto_apply_to_session=true optional)
   → apply_liquid_probe_results (if not auto-applied)
   → live_liquid_recovery_gate
-  → run_protocol only after gate pass + final go-live confirmation (HumanConfirmBudget)
+  → run_protocol only after gate pass + authorization covering that run (HumanConfirmBudget)
 ```
 
 Bookkeeping only until `execute_on_robot=true`: `apply_liquid_probe_results` never moves the robot. See [probe-wells-live-validation.md](../docs/runbooks/probe-wells-live-validation.md).
@@ -170,18 +171,17 @@ camera_settings(action=status) → capture_image(mode=preview) → deck_vision_c
 
 ```
 safe_next_action (session_id, robot_ip?)   # same data as safe_next_action(detail=full) + recommended_next_tool / operator_steps
-  OR safe_next_action(detail=full) (session_id, robot_ip?)
   → reconcile_state (if reconcile_first)
-  → robot_status → robot_status → is_home_safe (before any home)
+  → robot_status(include_modules=true) → is_home_safe (before any home)
 ```
 
-`safe_next_action` is a thin wrapper: one call returns full `safe_next_action(detail=full)` data plus `safe_next_action.recommended_next_tool` (usually `reconcile_state` or `robot_status`) and numbered `operator_steps`. Atomic tools are unchanged.
+One `safe_next_action` call returns resume guidance plus `safe_next_action.recommended_next_tool` (usually `reconcile_state` or `robot_status`) and numbered `operator_steps`. Atomic tools are unchanged.
 
 ## Active runtime recovery monitor
 
 ```
 runtime_recovery_monitor (session_id, robot_ip?, run_id?, self_fix_mode=observe)
-  → L1: self-test + health_check + robot_status + robot_status
+  → L1: self-test + health_check + robot_status(include_modules=true)
   → L2: run observer; use self_fix_mode=l0 only for runtime_watch(mode=poll) whitelist fixes
   → L3: safe_next_action + optional live_liquid_recovery_gate + prepared recovery bundle summary
   → L4: report whether guarded L0 execution is blocked, ready, or already applied
@@ -227,7 +227,7 @@ run_protocol → (run_id)
 ## Check robot status (quick)
 
 ```
-robot_status → robot_status → reconcile_state (if anything looks wrong)
+robot_status(include_modules=true) → reconcile_state (if anything looks wrong)
 ```
 
 ## Protocol Reference Library

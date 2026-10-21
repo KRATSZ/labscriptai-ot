@@ -8,6 +8,8 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath, pathToFileURL } from "url";
 import { execSync, spawnSync } from "child_process";
+import { cachedPython, cachedNodeModules } from "./runtime-paths.mjs";
+import { buildIdentity } from "../servers/opentrons-mcp/lib/build-info.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PLUGIN_ROOT = path.resolve(process.env.OPENTRONS_PLUGIN_ROOT || path.join(__dirname, ".."));
@@ -61,7 +63,7 @@ function checkNode() {
 
 function checkMcpDependencies() {
   const pkgJson = path.join(MCP_ROOT, "package.json");
-  const nodeModules = path.join(MCP_ROOT, "node_modules", "@modelcontextprotocol", "sdk");
+  const nodeModules = path.join(cachedNodeModules(PLUGIN_ROOT) || path.join(MCP_ROOT, "node_modules"), "@modelcontextprotocol", "sdk");
 
   if (!fs.existsSync(pkgJson)) {
     fail("MCP package.json", `Missing ${pkgJson}`, "Clone the full repository.");
@@ -223,6 +225,7 @@ function checkMcpManifestPaths() {
 function checkPython() {
   const candidates = [
     process.env.OPENTRONS_PYTHON,
+    cachedPython(PLUGIN_ROOT),
     path.join(PLUGIN_ROOT, ".venv", process.platform === "win32" ? "Scripts/python.exe" : "bin/python"),
     "python3",
     "python",
@@ -423,6 +426,7 @@ async function checkHealth(pythonExe) {
       fail("health_check: MCP server", JSON.stringify(report.mcp_server), "Reinstall MCP dependencies.");
     }
 
+    if (!report.mcp_server.consistent) fail("Loaded version", "Build metadata and package version differ", "Extract a complete release ZIP, then reload the plugin.");
     const runtimeBuild = report.mcp_server?.capabilities?.runtime_build || null;
     if (runtimeBuild === EXPECTED_RUNTIME_BUILD) {
       pass("health_check: runtime capabilities", runtimeBuild);
@@ -533,10 +537,12 @@ function printReport() {
   const icons = { pass: "✓", fail: "✗", warn: "!", skip: "–" };
   console.log("");
   console.log("LabscriptAI OT setup verification");
+  const identity = buildIdentity(PLUGIN_ROOT);
+  console.log(`Version: ${identity.version} · build ${identity.build_id}`);
   console.log(`Plugin root: ${PLUGIN_ROOT}`);
   console.log("─".repeat(60));
 
-  for (const c of checks) {
+  for (const c of checks.filter(c => process.argv.includes("--verbose") || c.status !== "pass")) {
     const icon = icons[c.status];
     console.log(`[${icon}] ${c.name}`);
     if (c.detail) console.log(`    ${c.detail}`);
@@ -548,7 +554,7 @@ function printReport() {
   console.log(`Result: ${passed} passed, ${warnCount} warning(s), ${failCount} failure(s)`);
 
   if (failCount === 0 && warnCount === 0) {
-    console.log("\nAll checks passed. See docs/GETTING_STARTED.md for next steps.");
+    console.log("\nLocal setup ready. Enable your client using docs/GETTING_STARTED.md. Add --verbose for check details.");
   } else if (failCount === 0) {
     console.log("\nSetup is usable; resolve warnings before live robot work.");
     console.log("Next: docs/GETTING_STARTED.md");

@@ -1,6 +1,8 @@
 """Release contents and determinism; all output stays in temporary directories."""
 import hashlib
 import json
+import posixpath
+import re
 from pathlib import Path
 import shutil
 import tempfile
@@ -31,6 +33,16 @@ class ReleasePackage(unittest.TestCase):
             self.assertEqual(a.read_bytes(), b.read_bytes())
             self.assertEqual(hashlib.sha256(a.read_bytes()).hexdigest(), asset['sha256'])
             with zipfile.ZipFile(a) as z:
+                self.assertEqual(len(z.namelist()), asset['files'])
+                identity = json.loads(z.read('labscriptai-ot/build-info.json'))
+                digest = hashlib.sha256()
+                for name in z.namelist():
+                    if name.endswith('/build-info.json'):
+                        continue
+                    digest.update(name.removeprefix('labscriptai-ot/').encode() + b'\0' + z.read(name) + b'\0')
+                self.assertEqual(identity['content_sha256'], digest.hexdigest())
+                self.assertEqual(identity['build_id'], digest.hexdigest()[:16])
+                self.assertEqual(identity['version'], first['version'])
                 paths = {Path(n).relative_to('labscriptai-ot') for n in z.namelist()}
                 self.assertTrue(all(allowed(p) for p in paths))
                 self.assertIn(Path('LICENSE'), paths)
@@ -42,6 +54,25 @@ class ReleasePackage(unittest.TestCase):
                 self.assertTrue({Path(p) for p in FILES} <= paths)
                 self.assertFalse(any('ROADMAP' in str(p) or 'deepseek' in str(p) for p in paths))
                 self.assertIn(Path('automation/flex3d/web/vendor/three.module.js'), paths)
+
+    def test_download_quickstart_links_and_setup_helper_are_usable(self):
+        built = build(out=self.folder / 'docs')
+        with zipfile.ZipFile(self.folder / 'docs' / built['assets'][0]['name']) as z:
+            names = set(z.namelist())
+            self.assertIn('labscriptai-ot/scripts/configure-cursor.mjs', names)
+            for document in ['README.md', 'docs/GETTING_STARTED.md']:
+                name = 'labscriptai-ot/' + document
+                content = z.read(name).decode()
+                for target in re.findall(r'\]\(([^\s)]+)\)', content):
+                    if target.startswith(('https:', 'http:', '#', 'mailto:')):
+                        continue
+                    resolved = posixpath.normpath(posixpath.join(posixpath.dirname(name), target.split('#')[0]))
+                    self.assertTrue(resolved in names or any(n.startswith(resolved.rstrip('/') + '/') for n in names),
+                                    f'{document}: missing download target {target}')
+                if document.startswith('docs/'):
+                    for script in re.findall(r'(?:node|bash) (scripts/[\w.-]+\.(?:mjs|sh))', content):
+                        self.assertIn('labscriptai-ot/' + script, names)
+                    self.assertNotIn('test/fixtures/', content)
 
     def test_missing_runtime_file_fails_before_creating_archives(self):
         root = self.folder / 'broken'

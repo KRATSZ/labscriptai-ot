@@ -1,5 +1,6 @@
 name: Plugin checks
 on:
+  workflow_call:
   push:
     branches: [main]
   pull_request:
@@ -11,7 +12,13 @@ permissions:
   contents: read
 jobs:
   check:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      LABSCRIPTAI_HOME: ${{ github.workspace }}/.ci-runtime
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -20,10 +27,23 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: bash install-labscriptai-ot.sh
+      - uses: astral-sh/setup-uv@v6
       - run: node scripts/lint-manifests.mjs
-      - run: npm --prefix servers/opentrons-mcp test
-      - run: .venv/bin/python -m unittest discover -s automation/flex3d/tests -v
-        env:
-          PYTHONPATH: automation/flex3d
-      - run: python3 -m unittest discover -s scripts -p 'test_package_labscriptai_ot.py' -v
+      - name: Fresh install from the download
+        shell: bash
+        run: |
+          python scripts/package_labscriptai_ot.py --out .ci-package
+          python -c "import pathlib,zipfile; zipfile.ZipFile(next(pathlib.Path('.ci-package').glob('*.zip'))).extractall('.ci-extracted')"
+          node .ci-extracted/labscriptai-ot/scripts/install-runtime.mjs
+          node .ci-extracted/labscriptai-ot/scripts/verify-setup.mjs
+          node scripts/release-smoke.mjs .ci-extracted/labscriptai-ot
+      - name: Locate shared Python
+        shell: bash
+        run: node --input-type=module -e 'import {cachedPython} from "./scripts/runtime-paths.mjs"; import fs from "node:fs"; fs.appendFileSync(process.env.GITHUB_ENV, `OPENTRONS_PYTHON=${cachedPython(process.cwd())}\n`)'
+      - if: runner.os == 'Linux'
+        run: npm --prefix servers/opentrons-mcp test
+      - if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          PYTHONPATH=automation/flex3d "$OPENTRONS_PYTHON" -m unittest discover -s automation/flex3d/tests
+          "$OPENTRONS_PYTHON" -m unittest discover -s scripts -p 'test_package_labscriptai_ot.py'

@@ -116,7 +116,7 @@ Use `live_readiness_check` as the read-only gate before `create_run` or `play`.
 - `live_readiness_check` is the operator-facing live gate.
 - `preflight_run_setup` remains the final protocol-aware check before play.
 
-**HumanConfirmBudget (go-live):** Phase 3a/3b/3c machine outcomes do not each require a verbal human confirm. Recovery `manual_confirmation_required` / destination human-review still apply inside the recovery pipeline and are separate from stacking preflight subgate confirms. Final go-live verbal confirm is only at `run_protocol` / play — see [output-contract.md](output-contract.md).
+**HumanConfirmBudget (go-live):** Phase 3a/3b/3c machine outcomes do not each require a verbal human confirm. Recovery `manual_confirmation_required` / destination human-review still apply inside the recovery pipeline and are separate from stacking preflight subgate confirms. Before any physical motion, including live probing, require authorization covering that action and a person at the robot. One prompt may cover selected probing and the planned run, including named software-check waivers — see [output-contract.md](output-contract.md).
 
 Current rollout is **Flex-first**. OT-2 deck-diff modeling is still explicitly skipped in this build; OT-2 support should not be implied by the new taxonomy alone.
 
@@ -139,22 +139,22 @@ After door/module recovery, re-run Phase 3a dashboard before resume. Deck appear
 
 ## Agent FIX/STOP decision gates
 
-Channel routing selects tools; these gates select **FIX vs STOP** before any recovery motion or resume. Agents following `opentrons-experiment-run` must apply them even when a tool returns `auto_executable: true`, and even when the operator casually asks to continue.
+Use the following defaults to choose a practical recovery. Distinguish physical faults from experiment-quality choices. Respect the operator’s explicit recovery plan and previously accepted limitations; do not describe their request as pressure or demand repeated confirmation.
 
 | Gate | STOP when | FIX when |
 |------|-----------|----------|
-| Tip budget | `usable_tips_remaining < remaining_tip_pickups` | Tip missing **and** remaining tips cover all remaining pickups → `recover_tip_pickup` / L0 retry |
-| Time / hold window | Elapsed hold exceeds protocol `max_hold_minutes` / strict window | Hold-tolerant or elapsed ≤ window → status check then resume |
-| Contamination | Sample/waste-wet tip would enter common stock | Drop tip → fresh tip → then stock; same-reagent continue only when explicitly allowed |
-| Precious mid-fault | Partial aliquot already in precious/quantitative well | Never blind top-up; escalate only |
+| Tip budget | Too few tips to finish the requested scope | Refill, use an agreed shorter protocol, or recover pickup when the remaining budget permits |
+| Time / hold window | A specified time limit was exceeded and no continuation choice is known | Explain the quality limitation; continue if already accepted, or offer re-preparation / discard |
+| Contamination | The next step conflicts with the agreed tip/contamination policy | Default to a fresh tip for common stock; follow an explicitly selected reuse plan without silently changing it |
+| Partial dispense | The delivered amount is unknown and the next step depends on it | Explain the unknown amount; use a measured amount or an explicit operator recovery choice, not a guessed top-up |
 | Waste / discard clog | Cleanup collision / tip budget exhausted | Drop clogged tip safely → fresh tip → retry discard only |
-| Volume / primary empty | No same-identity reserve **or** reserve volume short | Propose `liquid_source_substitution(action=plan)` candidate after operator confirm; never auto-swap |
+| Source empty | No usable source for the remaining requested transfers | Refill, use an approved same-liquid reserve, or revise the run scope; keep sample identity correct |
 
 **Tip recovery invariant:** Do not call `recover_tip_pickup` solely because the next candidate well looks free. Re-check tip budget against remaining protocol pickups first (`tip_wells(action=list)` / `estimate_tip_budget` / rack bookkeeping).
 
-**Resume invariant:** `control_run(play)` after pause is not automatic. Run the time-window and contamination gates; default STOP on strict timeout with explicit operator options (discard / re-prep / accepted-risk override).
+**Resume:** Check the interruption and current state, then use the agreed continuation plan. If a time/quality limitation was already explicitly accepted for this scope, do not ask again.
 
-**Substitution invariant (unchanged):** Source-map entries and `liquid_source_substitution(action=plan)` do **not** authorize automatic well changes or automatic resume. Agents must still present the FIX proposal and obtain confirmation. Short reserve → STOP.
+**Substitution:** A recorded source map alone does not authorize changing wells. Use the operator’s approved reserve plan, including permission already given. If the reserve is short, offer refill or a shorter scope.
 
 **Cleanup invariant:** Maintenance `drop_attached_tip` defaults to trash-centered drop (`alternate_drop_location=false`). Stall/collision during cleanup remains a hard stop.
 
@@ -162,7 +162,7 @@ Channel routing selects tools; these gates select **FIX vs STOP** before any rec
 
 These rules are implemented in `servers/opentrons-mcp/` and covered by tests under `servers/opentrons-mcp/test/`.
 
-1. **Simulation gate is blocking.** Runtime execution must not bypass `health_check(scope=local)` → `simulate_protocol` → `simulate_protocol`.
+1. **Local simulation is blocking.** Run `health_check(scope=local)` → `simulate_protocol`. LogicPass is the default additional check; an explicit operator waiver uses `run_protocol(skip_logicpass_gate=true)` and records skipped, never passed. Optional probing does not gate an ordinary run; see [safety-policy.md](safety-policy.md#operator-selected-checks).
 2. **Reconciliation beats history.** When session state says `needs_reconciliation`, reconcile before autonomous motion even if historical logs show success.
 3. **Result logs stay audit-only.** `query_history(scope=experiment_logs)` is narrative evidence, not live deck truth.
 

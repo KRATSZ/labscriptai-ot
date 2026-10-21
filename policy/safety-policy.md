@@ -7,9 +7,9 @@ This file is the **single source of truth** for safety rules and hard bans in th
 1. **Simulation gate is blocking before unattended live execution.** If `simulate_protocol` or `health_check(scope=local)` fails, fix the protocol or environment before live play. Read-only diagnostics may still run to understand the robot state.
 2. **Live execution prefers MCP, with HTTP fallback as a formal route.** Use MCP `run_protocol` by default. Use `opentrons-robot-lan` / robot HTTP when MCP is unavailable, when debugging MCP itself, or when the operator explicitly chooses the HTTP route. Do not run MCP and HTTP control commands against the same robot at the same time.
 3. **Hardware errors → MCP recovery pipeline.** `parse_error` → `suggest_recovery_action` → `execute_protocol_recovery`. No improvised commands.
-4. **Logs are audit-only.** `query_history(scope=experiment_logs)` is post-hoc review. Current deck truth: `reconcile_state`, `robot_status`, `robot_status`.
+4. **Logs are audit-only.** `query_history(scope=experiment_logs)` is post-hoc review. Current deck truth: `reconcile_state` and `robot_status`.
 5. **No parallel MCP + HTTP/scripts on the same robot.**
-6. **Hard stops require human review.** `HARDWARE_FAULT`, `DECK_COLLISION`, `UNKNOWN` always escalate.
+6. **Actual hardware stops require review.** Do not blindly retry a collision, hardware fault or unknown runtime error. Unsupported software analysis and unavailable optional readings are not hardware faults.
 
 ## Additional safety rules
 
@@ -28,9 +28,16 @@ This file is the **single source of truth** for safety rules and hard bans in th
 
 Vision / `deck_vision_check(mode=local)` / `deck_vision_check` is **observation-only**. It does not mutate session state or override `reconcile_state`. Never treat vision as committed deck truth — always compare with robot APIs and reconciled deck state.
 
-**Optional Phase 3b uses observation-only vision** when configured or requested (`OPENTRONS_PREFLIGHT_VISION=on`). An unavailable vision check is reported as not checked; include deck-layout confirmation in the final go-live check. Ad-hoc vision outside preflight remains available when useful (see [workflows.md](workflows.md)).
+**Optional Phase 3b uses observation-only vision** when configured or requested (`OPENTRONS_PREFLIGHT_VISION=on`). An unavailable vision check is reported as not checked; include deck-layout confirmation in the scoped motion authorization. Ad-hoc vision outside preflight remains available when useful (see [workflows.md](workflows.md)).
 
 On vision uncertainty or soft mismatch: prefer **auto-reconcile** (`reconcile_state`, re-check APIs) before any human ask. Sensor-aligned agreement (e.g. VLM agrees with expected layout) is a machine **pass**, not a prompt to confirm the subgate. See HumanConfirmBudget in [output-contract.md](output-contract.md).
+
+## Operator-selected checks
+
+- Liquid probing and deck vision are optional. A critical-source list recommends probe targets; it does not mandate probing. If probing is disabled, unavailable or declined, record `not_checked` / `skipped` and continue the ordinary run workflow. `OPENTRONS_ENABLE_PROBE_WELLS=1` gates **live probe motion only**, not `run_protocol`. Do not ask to enable it when the operator has declined probing.
+- LogicPass `unevaluable` means unsupported analysis, not an observed liquid-handling fault. Report the reason once. When the operator explicitly says to skip the ledger for this run/test, use `run_protocol(skip_logicpass_gate=true)`. When they explicitly waive the software preflight, use `skip_preflight=true`; use `skip_preflight_deck_diff=true` for a deck-diff-only waiver. Apply only the requested scope. These existing tool options are supported actions, not forbidden workarounds.
+- “Skip these checks and start this test; I will stop it manually” authorizes that unchanged run and the named omissions. Do not require special wording, another risk-acceptance prompt, or a probe environment flag. Record what was skipped without changing it to passed. “Test” does not imply `dry_run_on=true` or justify silently editing the protocol.
+- A missing door/estop reading is `not_checked`, not closed/clear and not a detected fault. Surface it briefly for operator awareness. Known hardware faults, an engaged estop and robot interlocks retain their actual state; never disable interlocks or fabricate a successful check. Local simulation remains required by `run_protocol`.
 
 ## Runtime defaults
 
@@ -40,9 +47,9 @@ On vision uncertainty or soft mismatch: prefer **auto-reconcile** (`reconcile_st
 
 ## Interaction defaults
 
-- Default operator experience: one input → at most one blocking clarification round → **one** confirmation before live execution (final `run_protocol` / play only).
-- Do **not** stack verbal confirms on passed Phase 3a / 3b / 3c machine subgates. Env / opt-in hard gates (e.g. `OPENTRONS_ENABLE_PROBE_WELLS=1`) remain mandatory and are not replaced by chat.
-- Escalate vs auto-fix: `auto_fixable` → agent tools; `needs_operator_physical_action` → physical fix; `needs_confirmation` → final live only; `blocked` → stop with reason.
+- Default operator experience: bundle blocking questions, then use scoped authorization before the first physical motion, including a live probe; see [HumanConfirmBudget](workflows.md#humanconfirmbudget-go-live). Follow up if a required fact remains unknown.
+- Do **not** stack verbal confirms on passing checks or repeat authorization for the same protocol/deck/action. Follow explicit operator choices about optional checks; see below.
+- Escalate vs auto-fix: `auto_fixable` → agent tools; `needs_operator_physical_action` → physical fix; `needs_confirmation` → authorization before uncovered motion; `blocked` → stop with reason.
 - If a runnable protocol exists, simulation is the default next step.
 - Only block on missing information that changes safety, deck truth, robot type, labware compatibility, or required modules.
 - Safety refusals must include a compliant alternative path.
@@ -51,5 +58,4 @@ On vision uncertainty or soft mismatch: prefer **auto-reconcile** (`reconcile_st
 
 - Workflows: [workflows.md](workflows.md)
 - Error taxonomy and recovery: [error-response.md](error-response.md)
-- Experiment-type heuristics: [experiment-sop.md](../guides/experiment-sop.md)
-- Operator UX: [agent-behavior.md](../guides/agent-behavior.md)
+- Operator UX: [output-contract.md](output-contract.md)

@@ -410,7 +410,10 @@ export function suggestNextTipWell({
 }
 
 export function buildHomeSafetyResult({ robotStatusSnapshot, sessionState } = {}) {
-  const blockers = [...(robotStatusSnapshot?.blockers || [])];
+  const blockers = [
+    ...(robotStatusSnapshot?.blockers || []),
+    ...(robotStatusSnapshot?.not_checked || []).map(name => `${name}_not_checked`),
+  ];
   const minimumCleanupActions = [...(sessionState?.cleanup?.pending_actions || [])];
 
   for (const instrument of robotStatusSnapshot?.instruments_summary || []) {

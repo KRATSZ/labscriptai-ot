@@ -1,9 +1,8 @@
 ---
 name: opentrons-protocol-library
 description: Search 833 reference protocols, find code examples, browse the bundled protocol catalog.
-type: script-backed
-entry: scripts/search_protocols.py
-mcp_tools: []
+metadata:
+  entry: scripts/search_protocols.py
 ---
 
 # Opentrons Protocol Library

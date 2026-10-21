@@ -1,17 +1,8 @@
 ---
 name: opentrons-robot-lan
 description: Fallback HTTP API when MCP is unavailable — direct LAN access to OT-2 or Flex robot.
-type: script-backed
-entry: scripts/opentrons_robot_api.py
-mcp_tools:
-  - robot_status
-  - robot_status
-  - reconcile_state
-  - run_protocol
-  - safe_next_action(detail=full)
-  - is_home_safe
-  - camera_settings(action=status)
-  - capture_image(mode=preview)
+metadata:
+  entry: scripts/opentrons_robot_api.py
 ---
 
 # Robot LAN (MCP-absent fallback)
@@ -20,7 +11,7 @@ MCP is primary path. This skill's scripts are fallback when MCP is not wired.
 
 ## MCP Tool Order (when available)
 
-`robot_status` -> `robot_status` -> `reconcile_state` ->
+`robot_status(include_modules=true)` -> `reconcile_state` ->
 `deck_slots(action=occupation)` / `tip_wells(action=list)` / `is_home_safe` ->
 `create_run_context` ->
 command tools (`load_pipette`, `load_labware`, `load_module`,
@@ -42,7 +33,7 @@ camera tools (`camera_settings(action=status)`, `capture_image(mode=preview)`, `
 - Before `home`: use `is_home_safe`.
 - `probe_wells` = experimental. Simulate first. Live use still requires
   `OPENTRONS_ENABLE_PROBE_WELLS=1` + explicit opt-in, but fold that into the
-  single go-live / `run_protocol` confirmation — do not stack a separate chat
+  scoped motion authorization before probing or running — do not stack a separate chat
   confirm after every preflight subgate when tools already returned `passed`.
 - Preview images: save to file, reference path in response.
 - Do not infer liquid state from camera output without separate analysis.

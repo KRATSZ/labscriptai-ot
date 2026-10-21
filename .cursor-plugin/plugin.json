@@ -1,7 +1,7 @@
 {
   "name": "labscriptai-ot",
   "displayName": "LabscriptAI OT",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Opentrons MCP server, safety rules, skills, and a curated protocol library in one plugin.",
   "author": {
     "name": "gaoyuan",
@@ -42,6 +42,6 @@
       "Check whether this Opentrons protocol can pass local simulation safely",
       "What state is the robot in? Run safety checks before any recovery action"
     ],
-    "postInstallMessage": "LabscriptAI OT installed. Run node scripts/verify-setup.mjs from the plugin root, then read docs/GETTING_STARTED.md for platform setup and your first command."
+    "postInstallMessage": "LabscriptAI OT installed. Run node scripts/install-runtime.mjs once, then node scripts/verify-setup.mjs. Updates reuse the runtime. See docs/GETTING_STARTED.md."
   }
 }

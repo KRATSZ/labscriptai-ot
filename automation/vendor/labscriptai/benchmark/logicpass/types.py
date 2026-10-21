@@ -31,7 +31,10 @@ from typing import Any, Literal, Mapping, Protocol, runtime_checkable
 # deliberately follows the P0 evaluation policy and is not a claim about the
 # physical residual volume expelled by a real pipette.
 ADAPTER_SCHEMA_VERSION = "logicpass.analyze_adapter.v2"
-ALLOWLIST_REVISION = "phase3_modules_touchtip_v2_blowout_mix_state_holding"
+ALLOWLIST_REVISION = (
+    "phase3_modules_touchtip_v2_blowout_mix_state_holding_"
+    "movelabware_thermocycler"
+)
 PHYSICAL_SETUP_SCHEMA_VERSION = "logicpass.physical_setup.v0_audited"
 SetupBasis = Literal["assumed", "evaluator"]
 OT_VERSION_PROBE_BASELINE = "8.8.1"
@@ -81,12 +84,15 @@ SUPPORTED_LEAF_COMMANDS: frozenset[str] = frozenset(
 # stays allowlisted because it has no volume transfer in the L1/L4 model.
 #
 # Conservative exclusions that remain LP-L5: transfer/consolidate/distribute,
-# aspirateInPlace, liquidProbe, moveLabware, setTipState, custom.
+# aspirateInPlace, liquidProbe, setTipState, custom.
 # ``dispenseInPlace`` into trash / waste chute / trash_bin is a discard
 # (empty the tip; same family as dropTipInPlace), not LP-L5.
 # ``mix`` is *not* a compound parent here — same zero-net-volume
 # family as blowout (PE 8.8.1 expands ``pipette.mix`` to aspirate/dispense).
-# Note: ``moveLabware`` is *not* allowlisted → disposition ``lp_l5``.
+# ``moveLabware`` is allowlisted because it changes deck position, not the
+# stable ``labwareId:well`` liquid identity or volume. It is not a claim about
+# gripper/labware safety. Thermocycler temperature/lid/profile commands below
+# touch no well or tip and have no liquid-ledger volume effect.
 ALLOWLISTED_NON_STATE_COMMANDS: frozenset[str] = frozenset(
     {
         # Phase-0 freeze base
@@ -104,6 +110,8 @@ ALLOWLISTED_NON_STATE_COMMANDS: frozenset[str] = frozenset(
         "comment",
         "setRailLights",
         "setStatusBar",
+        # Position-only movement; stable labwareId:well liquid state is unchanged.
+        "moveLabware",
         # Phase-3: PE pipette helper with no L1/L4 volume effect modeled
         "touchTip",
         # Phase-3: common module ops (no well/tip liquid ledger mutation)
@@ -119,8 +127,19 @@ ALLOWLISTED_NON_STATE_COMMANDS: frozenset[str] = frozenset(
         "heaterShaker/setTargetTemperature",
         "heaterShaker/waitForTemperature",
         "heaterShaker/deactivateHeater",
+        # Thermocycler controls touch no well or tip and transfer no liquid.
         "thermocycler/openLid",
         "thermocycler/closeLid",
+        "thermocycler/setTargetBlockTemperature",
+        "thermocycler/waitForBlockTemperature",
+        "thermocycler/setTargetLidTemperature",
+        "thermocycler/waitForLidTemperature",
+        "thermocycler/deactivateBlock",
+        "thermocycler/deactivateLid",
+        "thermocycler/runProfile",
+        "thermocycler/runExtendedProfile",
+        "thermocycler/startRunExtendedProfile",
+        "thermocycler/awaitProfileComplete",
     }
 )
 
@@ -155,7 +174,6 @@ UNSUPPORTED_LIQUID_AFFECTING_EXAMPLES: frozenset[str] = frozenset(
         "aspirateInPlace",
         "configureForVolume",
         "liquidProbe",
-        "moveLabware",
         "setTipState",
         "custom",
         *PARENT_OR_COMPOUND_COMMANDS,

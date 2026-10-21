@@ -419,3 +419,91 @@ test("run_protocol proceeds to upload/play when LogicPass passes (comment-only p
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
 });
+
+test("explicit ledger waiver runs without probing when door/estop APIs are unavailable", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "opentrons-override-"));
+  const file = path.join(dir, "test.py");
+  fs.writeFileSync(file, "def run(protocol):\n    protocol.comment('operator test')\n");
+  const python = createFakeSimulationRunner(dir);
+  const original = { fetch: global.fetch, ledger: TOOL_HANDLERS.logicpass_check, probe: TOOL_HANDLERS.probe_wells, env: process.env.OPENTRONS_ENABLE_PROBE_WELLS };
+  const requests = [];
+  let ledgerCalls = 0;
+  delete process.env.OPENTRONS_ENABLE_PROBE_WELLS;
+  TOOL_HANDLERS.logicpass_check = async () => {
+    ledgerCalls++;
+    return { data: { outcome: "unevaluable", final_pass_v2: false, issues: [{ code: "LP-L5", detail_text: "unsupported command" }] } };
+  };
+  TOOL_HANDLERS.probe_wells = async () => { throw new Error("The operator declined probing"); };
+  global.fetch = async (url, options = {}) => {
+    const pathname = new URL(url).pathname;
+    requests.push([options.method || "GET", pathname]);
+    if (pathname === "/robot/door/status") return jsonResponse({ error: "not supported" }, 404);
+    if (pathname === "/robot/control/estopStatus") return jsonResponse({ error: "unavailable" }, 503);
+    return mockRobotFetch()(url, options);
+  };
+  const args = { file_path: file, robot_ip: "robot.invalid", python_executable: python, timeout_ms: 10, poll_interval_ms: 1 };
+  try {
+    await assert.rejects(() => TOOL_HANDLERS.run_protocol(args), error => {
+      assert.equal(error.toolContext.data.logicpass_gate.outcome, "unevaluable");
+      assert.deepEqual(error.toolContext.data.logicpass_gate.operator_override.arguments, { skip_logicpass_gate: true });
+      return true;
+    });
+    assert.equal(requests.length, 0, "default gate stops before upload");
+    const result = await TOOL_HANDLERS.run_protocol({ ...args, skip_logicpass_gate: true });
+    assert.equal(ledgerCalls, 1, "explicit waiver does not re-run the unsupported check");
+    assert.equal(result.data.final_status, "succeeded");
+    assert.deepEqual(result.data.simulation_gate.logicpass, { skipped: true, outcome: "skipped", logic_pass: null, final_pass_v2: null });
+    assert.equal(result.data.preflight_gate.allowed_to_play, true);
+    assert.deepEqual(result.data.preflight_gate.not_checked, ["door", "estop"]);
+    assert.equal(result.data.preflight_gate.warnings_count, 2);
+    assert.equal(result.data.preflight_gate.home_safety.auto_home_allowed, false, "unknown state does not authorize separate maintenance homing");
+    assert.equal(result.hardwareSnapshot.door_status.unavailable, true);
+    assert.equal(requests.filter(([method, route]) => method === "POST" && route.endsWith("/actions")).length, 1);
+
+    const deckWaived = await TOOL_HANDLERS.run_protocol({ ...args, skip_logicpass_gate: true, skip_preflight_deck_diff: true });
+    assert.equal(deckWaived.data.final_status, "succeeded");
+    assert.deepEqual(deckWaived.data.preflight_gate.skipped_checks, ["deck_diff"]);
+    assert.equal(deckWaived.data.preflight_gate.deck_diff.status, "skipped");
+
+    const waived = await TOOL_HANDLERS.run_protocol({ ...args, skip_logicpass_gate: true, skip_preflight: true });
+    assert.equal(waived.data.preflight_gate.skipped, true);
+    assert.equal(waived.data.preflight_gate.ok, null, "skipped is not passed");
+    assert.equal(waived.data.preflight_gate.allowed_to_play, true);
+  } finally {
+    global.fetch = original.fetch;
+    TOOL_HANDLERS.logicpass_check = original.ledger;
+    TOOL_HANDLERS.probe_wells = original.probe;
+    if (original.env === undefined) delete process.env.OPENTRONS_ENABLE_PROBE_WELLS;
+    else process.env.OPENTRONS_ENABLE_PROBE_WELLS = original.env;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a ledger waiver does not waive simulation or a known preflight hardware blocker", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "opentrons-override-blocker-"));
+  const file = path.join(dir, "test.py");
+  fs.writeFileSync(file, "def run(protocol):\n    pass\n");
+  const originalFetch = global.fetch;
+  const requests = [];
+  global.fetch = async (url, options = {}) => {
+    const pathname = new URL(url).pathname;
+    requests.push([options.method || "GET", pathname]);
+    if (pathname === "/robot/control/estopStatus") return jsonResponse({ data: { status: "physicallyEngaged" } });
+    return mockRobotFetch()(url, options);
+  };
+  const args = { file_path: file, robot_ip: "robot.invalid", skip_logicpass_gate: true, timeout_ms: 10, poll_interval_ms: 1 };
+  try {
+    await assert.rejects(() => TOOL_HANDLERS.run_protocol({ ...args, skip_preflight: true, python_executable: createFakeSimulationRunner(dir, { simulatePass: false }) }), /Simulation gate blocked/);
+    assert.equal(requests.length, 0);
+    fs.appendFileSync(file, "# revised protocol with a passing local analysis\n");
+    await assert.rejects(() => TOOL_HANDLERS.run_protocol({ ...args, python_executable: createFakeSimulationRunner(dir) }), error => {
+      assert.equal(error.toolContext.data.gate_stage, "preflight_run_setup");
+      assert.ok(error.toolContext.data.preflight_run_setup.errors.some(item => item.blockers?.includes("estop_engaged")));
+      return true;
+    });
+    assert.equal(requests.some(([method, route]) => method === "POST" && route.endsWith("/actions")), false);
+  } finally {
+    global.fetch = originalFetch;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

@@ -477,7 +477,7 @@ def write_extrusion(
 
 
 def write_lathe(path: Path, profile: list[tuple[float, float]], seg: int = 28) -> None:
-    """Surface of revolution about z. ``profile`` is (radius, z) from bottom to top, both ends on the axis."""
+    """Revolve an ordered (radius, z) contour; close at the axis or with a hollow wall loop."""
 
     mesh = _MeshBuilder()
     rings: list[list[int]] = []
@@ -531,6 +531,18 @@ def tip_profile(length_mm: float, top_diameter_mm: float) -> list[tuple[float, f
         (0.0, L),
     ]
     return [(r * MM, z * MM) for r, z in points_mm]
+
+
+def tip_visual_profile(length_mm: float, top_diameter_mm: float) -> list[tuple[float, float]]:
+    """Open, thin-wall appearance only; ``tip_profile`` still defines liquid volume.
+
+    The exterior and end planes are unchanged. Wall thickness and the collar
+    are illustrative, not a manufacturer CAD or a measured PE bore.
+    """
+
+    outer = tip_profile(length_mm, top_diameter_mm)[1:-1]
+    inner = [(max(0.10 * MM, r - min(0.35 * MM, 0.45 * r)), z) for r, z in outer]
+    return outer + list(reversed(inner)) + [outer[0]]
 
 
 def write_label(path: Path, width: float, height: float, thickness: float = 0.0004) -> None:
@@ -602,11 +614,14 @@ class AssetBook:
     def extrusion(self, name: str, outer, hole, axis: int, lo: float, hi: float) -> str:
         return self._mesh(f"ex_{name}", lambda p: write_extrusion(p, outer, hole, axis, lo, hi))
 
-    def tip_mesh(self, length_mm: float, top_diameter_mm: float) -> str:
+    def tip_mesh(self, length_mm: float, top_diameter_mm: float, hollow: bool = False) -> str:
         """Tip whose mesh origin is its end; the top is ``length_mm`` above."""
 
         key = f"tip_{round(length_mm * 100)}_{round(top_diameter_mm * 100)}"
-        return self._mesh(key, lambda p: write_lathe(p, tip_profile(length_mm, top_diameter_mm)))
+        if hollow:
+            key += "_open"
+        profile = tip_visual_profile if hollow else tip_profile
+        return self._mesh(key, lambda p: write_lathe(p, profile(length_mm, top_diameter_mm), seg=40 if hollow else 28))
 
     def label_mesh(self, size: tuple[float, float]) -> str:
         key = f"lbl_{round(size[0] * 1e4)}_{round(size[1] * 1e4)}"
@@ -727,7 +742,7 @@ def _screen(title: str, labware_count: int) -> Image.Image:
     draw = ImageDraw.Draw(img)
     pad = 26
     draw.rectangle((pad, pad, w - pad, h - pad), fill=(246, 247, 249))
-    draw.text((pad + 26, pad + 22), "Prepare to run", font=_font(26), fill=(110, 116, 124))
+    draw.text((pad + 26, pad + 22), "LOCAL PREVIEW", font=_font(26), fill=(110, 116, 124))
     title_font = _font(36, bold=True, cjk=not title.isascii())
     while draw.textlength(title, font=title_font) > w - 2 * pad - 230 and len(title) > 4:
         title = title.rstrip("\u2026")[:-1].rstrip() + "\u2026"
@@ -740,10 +755,10 @@ def _screen(title: str, labware_count: int) -> Image.Image:
     draw.ellipse((bx - r, ry - r, bx + r, ry + r), fill=(0, 108, 250))
     draw.polygon([(bx - 8, ry - 13), (bx - 8, ry + 13), (bx + 14, ry)], fill=(255, 255, 255))
     rows = (
-        ("Instruments", "Calibrated", (198, 240, 206), (20, 160, 70)),
-        ("Modules", "Connected", (198, 240, 206), (20, 160, 70)),
+        ("Instruments", "Protocol model", (226, 232, 237), None),
+        ("Modules", "Protocol model", (226, 232, 237), None),
         ("Labware", f"{labware_count} on deck", (226, 229, 233), None),
-        ("Labware Position Check", "Optional", (226, 229, 233), None),
+        ("Robot connection", "Not checked", (226, 229, 233), None),
     )
     y = pad + 128
     for title, status, fill, dot in rows:
@@ -790,7 +805,7 @@ def make_textures(book: AssetBook, layout: Layout, deck, title: str = "Flex Tran
     px_per_m = 2000
     w = round((layout.ix1 - layout.ix0) * px_per_m)
     h = round((layout.iy1 - layout.iy0) * px_per_m)
-    deck_img = Image.new("RGB", (w, h), (24, 25, 27))
+    deck_img = Image.new("RGB", (w, h), (44, 48, 52))
     draw = ImageDraw.Draw(deck_img)
     font = _font(44, True)
     slot_w, slot_d = deck.slot_size
@@ -815,7 +830,16 @@ def make_textures(book: AssetBook, layout: Layout, deck, title: str = "Flex Tran
 
 def materials_xml() -> str:
     return """
-    <texture name="sky" type="skybox" builtin="gradient" rgb1="0.98 0.98 0.99" rgb2="0.78 0.81 0.86" width="512" height="512"/>
+    <texture name="sky" type="skybox" builtin="flat" rgb1="1 1 1" rgb2="1 1 1" width="512" height="512"/>
+    <material name="labware_rack" rgba="0.095 0.112 0.125 1" specular="0.24" shininess="0.20"/>
+    <material name="labware_rack_insert" rgba="0.16 0.185 0.20 1" specular="0.35" shininess="0.36"/>
+    <material name="labware_tube" rgba="0.62 0.69 0.72 0.14" specular="0.6" shininess="0.66"/>
+    <material name="labware_tube_rim" rgba="0.59 0.66 0.69 0.55" specular="0.45" shininess="0.42"/>
+    <material name="labware_pe_rack_base" rgba="0.31 0.36 0.38 1" specular="0.25" shininess="0.28"/>
+    <material name="labware_pe_rack_body" rgba="0.62 0.67 0.68 1" specular="0.34" shininess="0.38"/>
+    <material name="labware_pe_rack_rim" rgba="0.78 0.81 0.81 1" specular="0.40" shininess="0.42"/>
+    <material name="labware_pe_rack_insert" rgba="0.30 0.40 0.43 1" specular="0.30" shininess="0.30"/>
+    <material name="labware_pe_tip" rgba="0.52 0.59 0.62 1" specular="0.12" shininess="0.18"/>
     <material name="floor" rgba="0.87 0.88 0.895 1" reflectance="0.10" specular="0.1" shininess="0.2"/>
     <material name="piano_black" rgba="0.047 0.051 0.055 1" specular="0.5" shininess="0.8"/>
     <material name="satin_black" rgba="0.078 0.082 0.09 1" specular="0.25" shininess="0.3"/>
@@ -832,7 +856,7 @@ def materials_xml() -> str:
     <material name="white" rgba="0.93 0.94 0.95 1" specular="0.35" shininess="0.35"/>
     <material name="chrome" rgba="0.86 0.88 0.90 1" specular="0.9" shininess="0.85" reflectance="0.2"/>
     <material name="glass" rgba="0.70 0.80 0.88 0.10" specular="0.9" shininess="0.95"/>
-    <material name="tint" rgba="0.16 0.19 0.22 0.30" specular="0.8" shininess="0.9"/>
+    <material name="tint" rgba="0.68 0.72 0.75 0.08" specular="0.35" shininess="0.6"/>
     <material name="led_blue" rgba="0.06 0.40 1.0 1" emission="0.65" specular="0"/>
     <material name="led_white" rgba="1 1 1 1" emission="0.9"/>
     <material name="accent_blue" rgba="0.12 0.45 0.90 1" specular="0.3" emission="0.15"/>
@@ -1076,8 +1100,10 @@ def _mounted_tip(prefix: str, x: float, y: float, tip: TipSpec) -> list[str]:
     """Hidden tip, the liquid inside it, and the end site, for one nozzle at (x, y, 0)."""
 
     end = -tip.reach_mm * MM
+    appearance = ('material="labware_pe_tip" rgba="0.52 0.59 0.62 0"'
+                  if tip.mesh.endswith("_open") else f'rgba="{TIP_RGBA}"')
     return [
-        f'<geom name="{prefix}" type="mesh" mesh="{tip.mesh}" pos="{_v(x, y, end)}" rgba="{TIP_RGBA}" group="0"/>',
+        f'<geom name="{prefix}" type="mesh" mesh="{tip.mesh}" pos="{_v(x, y, end)}" {appearance} group="0"/>',
         f'<geom name="{prefix}_liquid" type="cylinder" pos="{_v(x, y, end + 0.002)}" size="{_v(TIP_LIQUID_R, 0.0005)}" rgba="{TIP_LIQUID_RGBA}" group="0"/>',
     ]
 
@@ -1244,6 +1270,6 @@ def scene_lighting(layout: Layout) -> str:
 
     cx = layout.center_x
     return f"""
-    <light name="key" pos="{_v(cx + 1.0, -1.3, 2.0)}" dir="-0.40 0.55 -0.75" directional="true" diffuse="0.68 0.68 0.65" specular="0.32 0.32 0.32" castshadow="true"/>
-    <light name="fill" pos="{_v(cx - 1.2, -1.0, 1.2)}" dir="0.50 0.65 -0.30" directional="true" diffuse="0.38 0.40 0.43" specular="0.10 0.10 0.10" castshadow="false"/>
-    <light name="rim" pos="{_v(cx, 1.6, 1.6)}" dir="0 -0.70 -0.55" directional="true" diffuse="0.24 0.24 0.26" specular="0.16 0.16 0.16" castshadow="false"/>    """
+    <light name="key" pos="{_v(cx + 1.0, -1.3, 2.0)}" dir="-0.40 0.55 -0.75" directional="true" diffuse="0.52 0.52 0.52" specular="0.32 0.32 0.32" castshadow="true"/>
+    <light name="fill" pos="{_v(cx - 1.2, -1.0, 1.2)}" dir="0.50 0.65 -0.30" directional="true" diffuse="0.24 0.24 0.24" specular="0.10 0.10 0.10" castshadow="false"/>
+    <light name="rim" pos="{_v(cx, 1.6, 1.6)}" dir="0 -0.70 -0.55" directional="true" diffuse="0.12 0.12 0.12" specular="0.16 0.16 0.16" castshadow="false"/>    """

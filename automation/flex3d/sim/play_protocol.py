@@ -792,7 +792,7 @@ class Renderer:
         """One frame of the video: the main view is the fixed deck camera."""
         self._set_main_pose(None)
         state, step = self._advance(t, smooth_focus)
-        self.main.update_scene(self.scene.data, camera="deck")
+        self.main.update_scene(self.scene.data, camera="deck", scene_option=self.xray)
         return self._compose(t, state, step, Image.fromarray(self.main.render()))
 
     def build_track(self, fps: int = 30) -> None:
@@ -810,7 +810,7 @@ class Renderer:
         """Main view for the web page: the video's deck camera, moved to ``orbit`` (azimuth, elevation, distance) if given."""
         self._set_main_pose(orbit)
         self.scene.at(t)
-        self.main.update_scene(self.scene.data, camera="deck")
+        self.main.update_scene(self.scene.data, camera="deck", scene_option=self.xray)
         return Image.fromarray(self.main.render())
 
     def web_close(self, t: float, orbit: tuple = CLOSE_DEFAULT_ORBIT) -> Image.Image:
@@ -835,7 +835,7 @@ class Renderer:
         _, state = self.scene.at(t)
         step = step_at(self.plan, t)
         self.focus = self.track[self._track_index(t)]
-        self.main.update_scene(self.scene.data, camera="deck")
+        self.main.update_scene(self.scene.data, camera="deck", scene_option=self.xray)
         return self._compose(t, state, step, Image.fromarray(self.main.render()))
 
     def _track_index(self, t: float) -> int:
@@ -865,20 +865,53 @@ class Renderer:
         }
 
 
-def render_video(plan: Plan, renderer: Renderer, path: Path, fps: int) -> int:
-    frames = int(math.ceil(plan.duration * fps)) + 1
+def render_video(
+    plan: Plan, renderer: Renderer, path: Path, fps: int, t0: float | None = None, t1: float | None = None
+) -> int:
+    whole = t0 is None and t1 is None
+    start = 0.0 if t0 is None else t0
+    end = plan.duration if t1 is None else t1
+    if fps <= 0:
+        raise ValueError("fps must be greater than zero")
+    if not whole and not (math.isfinite(start) and math.isfinite(end) and 0 <= start < end <= plan.duration):
+        raise ValueError("video range must satisfy 0 <= start < end <= duration")
+    if whole:
+        frames = int(math.ceil(plan.duration * fps)) + 1
+    else:
+        frames = int(math.ceil((end - start) * fps))
+        # Floating-point span/fps products sit just above an integer at exact
+        # frame boundaries; adjust so every sampled time is strictly before end.
+        while frames > 0 and start + (frames - 1) / fps >= end:
+            frames -= 1
+        while start + frames / fps < end:
+            frames += 1
     cmd = [
         "ffmpeg", "-y", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "rgb24",
         "-s", f"{FRAME_W}x{FRAME_H}", "-r", str(fps), "-i", "-",
         "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "20", "-preset", "medium", "-movflags", "+faststart", str(path),
     ]
     proc = subprocess.Popen(cmd, stdin=subprocess.PIPE)
-    renderer.focus = None
-    for i in range(frames):
-        proc.stdin.write(renderer.frame(min(i / fps, plan.duration)).tobytes())
-    proc.stdin.close()
-    if proc.wait() != 0:
-        raise RuntimeError("ffmpeg failed")
+    try:
+        renderer.focus = None
+        for i in range(frames):
+            t = min(i / fps, plan.duration) if whole else start + i / fps
+            proc.stdin.write(renderer.frame(t).tobytes())
+        proc.stdin.close()
+        if proc.wait() != 0:
+            raise RuntimeError("ffmpeg failed")
+    finally:
+        if proc.stdin and not proc.stdin.closed:
+            try:
+                proc.stdin.close()
+            except OSError:
+                pass
+        if proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait()
     return frames
 
 
@@ -1030,7 +1063,20 @@ def main() -> None:
     parser.add_argument("--video", action="store_true", help="also write an MP4 (slow; off by default)")
     parser.add_argument("--fps", type=int, default=30)
     parser.add_argument("--frame", type=float, action="append", help="render only the frame at this time (s); repeatable")
+    parser.add_argument("--from", dest="start", type=float, metavar="SECONDS", help="video clip start on the protocol timeline (requires --video)")
+    parser.add_argument("--to", dest="end", type=float, metavar="SECONDS", help="video clip end on the protocol timeline (requires --video)")
     args = parser.parse_args()
+
+    ranged = args.start is not None or args.end is not None
+    if ranged:
+        if args.frame:
+            parser.error("--from/--to cannot be combined with --frame")
+        if args.view:
+            parser.error("--from/--to cannot be combined with --view")
+        if not args.video:
+            parser.error("--from/--to require --video")
+    if args.video and args.fps <= 0:
+        parser.error("--fps must be greater than zero")
 
     source = args.protocol.resolve()
     analysis = analyze(source) if source.suffix == ".py" else source
@@ -1041,6 +1087,17 @@ def main() -> None:
         plan = make_plan(run)
     except ProtocolError as exc:
         raise SystemExit(f"cannot animate {analysis.name}: {exc}")
+    t0 = 0.0 if args.start is None else args.start
+    t1 = plan.duration if args.end is None else args.end
+    if ranged:
+        if not (math.isfinite(t0) and math.isfinite(t1)):
+            parser.error("--from/--to must be finite seconds")
+        if t0 < 0 or t1 < 0:
+            parser.error("--from/--to must be nonnegative seconds")
+        if not t0 < t1:
+            parser.error("--from must be less than --to")
+        if t1 > plan.duration:
+            parser.error(f"--to must not exceed the protocol duration ({plan.duration:g} s)")
     folder = OUT_ROOT / name
     xml = write_model(deck, scene_spec(plan), folder)
     model = load_model(xml)
@@ -1107,11 +1164,12 @@ def main() -> None:
         "duration_s": round(plan.duration, 2),
     }
     if args.video:
-        video = folder / f"{name}.mp4"
+        video = folder / (f"{name}_clip_{t0:06.2f}-{t1:06.2f}.mp4" if ranged else f"{name}.mp4")
         started = time.monotonic()
-        frames = render_video(plan, renderer, video, args.fps)
+        frames = render_video(plan, renderer, video, args.fps, t0 if ranged else None, t1 if ranged else None)
         print(f"Video: {video} ({frames} frames, {time.monotonic() - started:.0f} s to render)")
         extra["video"] = video.name
+        extra["video_range"] = {"from_s": t0, "to_s": t1, "fps": args.fps, "frames": frames}
     trace = folder / f"{name}_trace.json"
     write_trace(plan, hits, liquid, trace, extra)
     print(f"Trace: {trace}")

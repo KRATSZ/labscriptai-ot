@@ -30,16 +30,17 @@ Then enable the plugin in your client. **Start here:** [docs/GETTING_STARTED.md]
 
 MuJoCo-based 3D preflight and an interactive browser viewer for **Flex protocols** (OT-2 is refused). The installer includes the required Python dependencies.
 
-- MCP tool `flex3d_preflight_check` — runs geometry / liquid / targets / clearance checks on an analyze JSON or protocol `.py`; failing checks carry `command_index` aligned with LogicPass `step_index`. Degrades gracefully when mujoco is missing. Returns `status=passed/failed/unknown/not_applicable`; a failed check sets `ok=false`. Analysis, check reports and scene assets stay under `PLUGIN_DATA`. No images or videos are rendered.
-- MCP tool `flex3d_open_viewer` — starts the interactive viewer and returns the browser URL (with the `?key=` the page needs). This is the 3D preview path: **online only**, no video rendering and only scene assets and a startup log are written. A bare `/viewer.html` is redirected to the loaded model.
+- MCP tool `flex3d_preflight_check` — runs geometry / liquid / targets / clearance checks on an analyze JSON or protocol `.py`; failing checks carry `command_index` aligned with LogicPass `step_index`. Degrades gracefully when mujoco is missing. Returns `status=passed/failed/unknown/not_applicable`; a failed check sets `ok=false`. Analysis, check reports and scene assets stay under `PLUGIN_DATA`. The JSON and saved check report include the full ordered `warnings` array and `warnings_count`. No images or videos are rendered.
+- MCP tool `flex3d_open_viewer` — opens or reuses the interactive viewer and returns its keyed browser URL. Use `action=close` to stop it without a shell command. This is the 3D preview path: **online only**, no video rendering and only scene assets and a startup log are written. A bare `/viewer.html` is redirected to the loaded model.
 - CLI: `python automation/flex3d/scripts/render_protocol_3d.py <analysis.json|protocol.py> [--out DIR]` prints one JSON object (checks only, no video).
-- CLI: `python -m sim.play_protocol <analysis.json|protocol.py>` prints the checks and writes a trace. Rendering is opt-in and off by default: `--stills` adds still PNGs plus a contact sheet, `--video` adds an MP4, `--frame T` renders single frames, `--view` opens the MuJoCo window.
+- CLI (from `automation/flex3d/`, using the plugin Python environment): `python -m sim.play_protocol <analysis.json|protocol.py>` prints the checks and writes a trace. Rendering is opt-in and off by default: `--stills` adds still PNGs plus a contact sheet, `--video` adds an MP4 (`--from 12 --to 16` exports only seconds 12–16 on the original timeline), `--frame T` renders single frames, `--view` opens the MuJoCo window.
+- Browser `view.json` uses `schema_version: 1`; units, transforms and shared mesh/frame fields are documented in [the exporter](automation/flex3d/sim/view_scene.py). Scene size and frame/geometry counts vary with the protocol.
 - `node scripts/verify-setup.mjs` verifies the core runtime. Vision and external VLM services are optional and off by default.
-- Drawn and checked: Heater-Shaker, Temperature Module GEN2, Magnetic Block, Thermocycler GEN2 (lid open/closed), Absorbance Plate Reader, and schema-2 labware stacked on adapters or modules (positions follow the Opentrons engine's stacking offsets). Waste-chute drop locations are supported. Flex Stacker and off-deck moves are not drawn.
+- Drawn and checked: Heater-Shaker, Temperature Module GEN2, Magnetic Block, Thermocycler GEN2 (lid open/closed), Absorbance Plate Reader, and schema-2 labware stacked on adapters or modules (positions follow the Opentrons engine's stacking offsets). Tube racks use definition-based tube profiles (24-place EP and mixed 15/50 mL racks); rack supports are illustrative. Waste-chute drop locations are supported. Flex Stacker and off-deck moves are not drawn.
 
 ## Lightweight downloads
 
-One `labscriptai-ot-<version>.zip` works across all three clients. It includes the 52-tool MCP server, skills, protocol library and detailed Flex module models, used automatically by the 3D preview. Dependencies install locally; training weights, tests, developer notes, Blender sources and duplicate model exports stay out of the download.
+One `labscriptai-ot-<version>.zip` works across all three clients. It includes the 52-tool MCP server, skills, protocol library and detailed Flex module models, used automatically by the 3D preview. Dependencies install once in a shared user directory and are reused across matching updates; training weights, tests, developer notes, Blender sources and duplicate model exports stay out of the download.
 
 No separate model download is needed. Enable deck vision only after following [its setup guide](docs/deck-vision.md).
 
@@ -63,4 +64,4 @@ Paper: https://doi.org/10.1101/2025.09.30.679666
 
 LabscriptAI Research Citation License v1.0 — not MIT. Citation is mandatory for public use. Commercial use requires written permission from `gaoyuanbio@qq.com`. See [LICENSE](LICENSE).
 
-Release packaging: [PUBLISHING.md](PUBLISHING.md)
+Release packaging: [publishing guide](https://github.com/KRATSZ/labscriptai-ot/blob/main/PUBLISHING.md)
