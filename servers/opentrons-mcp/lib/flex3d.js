@@ -237,7 +237,11 @@ export async function startFlex3dViewer({ protocolPath, port = FLEX3D_DEFAULT_PO
         const identity = { instance, pid: child.pid, port, log_path: logPath, models: { [hash]: FLEX3D_EXAMPLE_KEY } };
         const deadline = Date.now() + 45000;
         while (child.exitCode === null && child.signalCode === null && Date.now() < deadline) {
-          if (owned(identity, await health(port))) {
+          const report = await health(port);
+          // Windows venv redirectors launch Python under a different PID.
+          // The fresh instance token identifies the server; retain its real PID.
+          if (owned({ ...identity, pid: report?.pid }, report)) {
+            identity.pid = report.pid;
             try { saveOwnership(identity); } catch (error) { child.kill(); throw error; }
             child.unref();
             return result(identity, FLEX3D_EXAMPLE_KEY, protocol, false);

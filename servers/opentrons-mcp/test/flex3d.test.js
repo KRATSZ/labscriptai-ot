@@ -191,6 +191,33 @@ test("viewer starts headless, survives its launching client, and stops cleanly",
   assert.equal(already.already_stopped, true);
 });
 
+test("viewer records the verified server PID when its launcher creates another process", { skip: process.platform === "win32" }, async t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "flex3d-redirector-"));
+  const port = await freePort();
+  t.after(async () => {
+    await ensureStopped(port);
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+  const source = path.join(dir, "empty.analysis.json");
+  fs.writeFileSync(source, JSON.stringify({ robotType: "OT-3 Standard", commands: [] }));
+  const pidFile = path.join(dir, "launcher.pid");
+  const launcher = path.join(dir, "python-launcher");
+  const quote = value => `'${value.replaceAll("'", "'\\''")}'`;
+  fs.writeFileSync(launcher, `#!/bin/sh\nprintf '%s' "$$" > ${quote(pidFile)}\n${quote(python)} "$@" &\nwait\n`, { mode: 0o755 });
+
+  const { startFlex3dViewer, stopFlex3dViewer } = await flex3d();
+  const info = await startFlex3dViewer({ protocolPath: source, port, preferredPython: launcher });
+  assert.equal(info.ok, true, JSON.stringify(info));
+  assert.notEqual(info.pid, Number(fs.readFileSync(pidFile, "utf8")));
+  const health = await fetch(`http://127.0.0.1:${port}/flex3d/health`).then(r => r.json());
+  assert.equal(info.pid, health.pid);
+  const reused = await startFlex3dViewer({ protocolPath: source, port, preferredPython: launcher });
+  assert.equal(reused.reused, true);
+  assert.equal(reused.pid, info.pid);
+  assert.equal((await stopFlex3dViewer({ port })).stopped, true);
+  assert.ok(await viewerIsDown(port));
+});
+
 test("viewer reuses one process, preserves older models, stops, and reopens", async t => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "flex3d-reuse-"));
   const port = await freePort();
