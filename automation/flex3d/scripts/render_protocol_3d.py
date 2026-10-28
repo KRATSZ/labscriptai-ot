@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""One-shot Flex 3D checks. Always prints a single JSON object.
+"""One-shot OT-2/Flex 3D checks. Always prints a single JSON object.
 
 Reads an opentrons analyze JSON (or a .py, which is analyzed first).
-OT-2 is refused before MuJoCo starts. A missing mujoco install prints
+Unknown robot types are refused before MuJoCo starts. A missing mujoco install prints
 a degraded error and exits 0 so the caller can keep going.
 """
 
@@ -22,7 +22,9 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-FLEX_ROBOTS = {"OT-3 Standard", "Flex"}
+from sim.machines import RobotTypeError, machine_for, robot_type
+sys.path.insert(0, str(ROOT.parents[1] / "servers/opentrons-mcp/scripts"))
+from protocol_runtime import select_python
 
 # Latest plan built by this process. Preflight always reports every warning the
 # plan has, including when scene construction or a later check fails.
@@ -39,21 +41,6 @@ def emit(payload: dict, plan=None) -> None:
     json.dump(payload, sys.stdout, ensure_ascii=False)
     sys.stdout.write("\n")
     raise SystemExit(0)
-
-
-def robot_type(raw: dict) -> str | None:
-    if not isinstance(raw, dict):
-        return None
-    value = raw.get("robotType")
-    if value:
-        return str(value)
-    metadata = raw.get("metadata")
-    if isinstance(metadata, dict) and metadata.get("robotType"):
-        return str(metadata["robotType"])
-    config = raw.get("config")
-    if isinstance(config, dict) and config.get("robotType"):
-        return str(config["robotType"])
-    return None
 
 
 def command_index(message: str, plan=None) -> int | None:
@@ -87,7 +74,7 @@ def load_raw(path: Path) -> dict:
 def main() -> None:
     global _ACTIVE_PLAN
     _ACTIVE_PLAN = None
-    parser = argparse.ArgumentParser(description="Flex 3D checks for one analysis")
+    parser = argparse.ArgumentParser(description="OT-2/Flex 3D checks for one analysis")
     parser.add_argument("source", type=Path, help="analysis JSON or protocol .py")
     parser.add_argument("--out", type=Path, default=None)
     args = parser.parse_args()
@@ -99,7 +86,7 @@ def main() -> None:
     export = args.out or os.environ.get("FLEX3D_EXPORT") or Path(os.environ.get("PLUGIN_DATA", ROOT.parents[1] / ".plugin-data")) / "flex3d"
     os.environ["FLEX3D_EXPORT"] = str(Path(export).resolve())
     if source.suffix == ".py":
-        python = os.environ.get("OPENTRONS_PYTHON", sys.executable)
+        python = select_python(os.environ.get("OPENTRONS_PYTHON", sys.executable), source)
         produced = Path(export) / "analyses" / f"{source.stem}-{hashlib.sha256(source.read_bytes()).hexdigest()[:12]}.analysis.json"
         produced.parent.mkdir(parents=True, exist_ok=True)
         done = subprocess.run(
@@ -124,24 +111,15 @@ def main() -> None:
     except (OSError, json.JSONDecodeError) as exc:
         emit({"ok": False, "error": "bad_analysis", "message": str(exc), "checks": [], "files": []})
 
-    kind = robot_type(raw)
-    if kind and kind not in FLEX_ROBOTS:
-        emit({
-            "ok": False,
-            "supported": False,
-            "status": "not_applicable",
-            "error": "ot2_not_supported",
-            "robot_type": kind,
-            "message": f"the 3D preview only supports Flex; this protocol is {kind}",
-            "checks": [],
-            "files": [],
-        })
+    try:
+        kind = robot_type(raw)
+    except RobotTypeError as exc:
+        emit({"ok": False, "supported": False, "status": "not_applicable",
+              "error": "unsupported_robot", "message": str(exc), "checks": [], "files": []})
 
     try:
         import mujoco
-        from sim.flex_protocol import ProtocolError, load_analysis, plan as make_plan, scene_spec
-        from sim.flex_scene import EXPORT, load_deck, load_model, write_model
-        from sim.play_protocol import Scene, check_clearance, check_liquid, check_targets
+        machine = machine_for(kind)
     except ImportError as exc:
         emit({
             "ok": False,
@@ -156,21 +134,21 @@ def main() -> None:
     out = Path(os.environ["FLEX3D_EXPORT"]) / source.stem.replace(".analysis", "")
     out.mkdir(parents=True, exist_ok=True)
     try:
-        deck = load_deck()
-        run = load_analysis(source, deck)
-        plan = make_plan(run)
+        deck = machine.load_deck()
+        run = machine.load_analysis(source, deck)
+        plan = machine.plan(run)
         _ACTIVE_PLAN = plan
-        xml = write_model(deck, scene_spec(plan), out)
-        model = load_model(xml)
+        xml = machine.write_model(deck, machine.scene_spec(plan), out)
+        model = machine.load_model(xml)
         data = mujoco.MjData(model)
-        scene = Scene(plan, model, data)
-    except ProtocolError as exc:
+        scene = machine.scene(plan, model, data)
+    except machine.protocol_error as exc:
         message = str(exc)
         unsupported = "not a Flex" in message or "robotType" in message
         emit({
             "ok": False,
             "supported": False if unsupported else None,
-            "error": "ot2_not_supported" if unsupported else "protocol_error",
+            "error": "unsupported_robot" if unsupported else "protocol_error",
             "robot_type": kind,
             "message": message,
             "checks": [],
@@ -189,7 +167,7 @@ def main() -> None:
 
     checks: list[dict] = []
     try:
-        _hits, worst_json, worst_sim = check_targets(plan, scene)
+        _hits, worst_json, worst_sim = machine.check_targets(plan, scene)
         checks.append(check_item("geometry", "pass", f"JSON vs labware definition worst {worst_json:.3f} mm"))
         checks.append(check_item("targets", "pass", f"MuJoCo tip vs JSON worst {worst_sim:.3f} mm"))
     except RuntimeError as exc:
@@ -202,7 +180,7 @@ def main() -> None:
             checks.append(check_item("targets", "fail", message, plan))
 
     try:
-        clearance, tightest, samples = check_clearance(plan, scene)
+        clearance, tightest, samples = machine.check_clearance(plan, scene)
         checks.append(check_item(
             "clearance",
             "pass" if samples else "not_applicable",
@@ -212,7 +190,7 @@ def main() -> None:
         checks.append(check_item("clearance", "fail", str(exc), plan))
 
     try:
-        liquid = check_liquid(plan)
+        liquid = machine.check_liquid(plan)
         short = next((item for item in plan.warnings if "asked for" in item), None)
         if short:
             checks.append(check_item("liquid", "fail", short, plan))
@@ -245,7 +223,7 @@ def main() -> None:
         "advisory": True,
         "robot_type": kind or "OT-3 Standard",
         "analysis_path": str(source),
-        "export_dir": str(EXPORT),
+        "export_dir": str(Path(os.environ["FLEX3D_EXPORT"])),
         "failed_checks": failed,
         "checks": checks,
         "files": files,

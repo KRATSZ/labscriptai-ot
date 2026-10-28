@@ -45,7 +45,7 @@
       "prompt": "先别动手，给我讲讲这个插件能做什么、不能做什么。我手里有一台 Flex 和一台 OT-2，两台机器的能力差别在哪里？",
       "expected_tools": [],
       "must_not_do": ["run_protocol", "fabricate robot status"],
-      "route_note": "纯咨询：应说明能力边界与支持矩阵（3D 预检仅 Flex、OT-2 会被拒绝等），不乱调工具、不虚构状态。"
+      "route_note": "纯咨询：应说明能力边界与支持矩阵（OT-2/Flex 均支持已有范围的三维检查与预览；OT-2 使用独立 8.8.2 分析环境，Flex 夹爪与液体探测不可套用到 OT-2），不乱调工具、不虚构状态。"
     },
     {
       "id": "flex3d-preview",

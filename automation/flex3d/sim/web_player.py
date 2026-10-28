@@ -1,4 +1,4 @@
-"""Interactive Flex view for the local chat site.
+"""Interactive OT-2/Flex view for the local chat site.
 
 Serves the MuJoCo machine on 127.0.0.1 for the web page. The page shows two
 images that it can request at any time t (the main view and the follow
@@ -29,6 +29,8 @@ import json
 import math
 import os
 import re
+import subprocess
+import sys
 from collections import OrderedDict
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
@@ -40,6 +42,8 @@ from sim.flex_protocol import ProtocolError, load_analysis, plan as make_plan, s
 from sim.flex_scene import EXPORT, ROOT, deck_camera_pose, load_deck, load_model, write_model
 from sim.play_protocol import CLOSE_DEFAULT_ORBIT, CLOSE_WEB_H, CLOSE_WEB_W, FRAME_H, MAIN_W, Renderer, Scene, analyze
 from sim.view_scene import write_view
+from sim.machines import RobotTypeError, machine_for, robot_type
+from sim.ot2_runtime.flex_protocol import ProtocolError as Ot2ProtocolError
 
 HOST = "127.0.0.1"
 PORT = 8791
@@ -70,23 +74,25 @@ class Model:
     """One protocol: its MuJoCo model, the renderers, and the step list the page shows."""
 
     def __init__(self, key: str, analysis: Path, folder: Path) -> None:
-        deck = load_deck()
-        run = load_analysis(analysis, deck)
-        plan = make_plan(run)
-        xml = write_model(deck, scene_spec(plan), folder)
-        model = load_model(xml)
+        machine = machine_for(robot_type(json.loads(analysis.read_text(encoding="utf-8"))))
+        deck = machine.load_deck()
+        run = machine.load_analysis(analysis, deck)
+        plan = machine.plan(run)
+        xml = machine.write_model(deck, machine.scene_spec(plan), folder)
+        model = machine.load_model(xml)
         data = mujoco.MjData(model)
+        self.machine = machine
         self.key = key
         self.title = run.title
         self.duration = float(plan.duration)
         self.analysis_path = analysis
         self.folder = folder
-        posed = Scene(plan, model, data)
-        self.view_path = write_view(plan, posed, folder)
+        posed = machine.scene(plan, model, data)
+        self.view_path = write_view(plan, posed, folder, camera_pose=machine.camera_pose, timed_geoms=machine.timed_geoms)
         self.plan, self.scene = plan, posed
         self._renderer = None
         # Browser meshes need no server-side OpenGL context. JPEG routes opt in.
-        pos, look = deck_camera_pose(deck)
+        pos, look = machine.camera_pose(deck)
         offset = [b - a for a, b in zip(pos, look)]
         distance = math.sqrt(sum(v * v for v in offset))
         self.main_default = {
@@ -115,6 +121,9 @@ class Model:
     def info(self) -> dict:
         return {
             "key": self.key,
+            "robot_type": self.machine.robot_type,
+            "warnings": list(self.plan.warnings),
+            "warnings_count": len(self.plan.warnings),
             "title": self.title,
             "duration": round(self.duration, 3),
             "pipettes": self.pipettes,
@@ -145,7 +154,7 @@ class Model:
     @property
     def renderer(self):
         if self._renderer is None:
-            self._renderer = Renderer(self.plan, self.scene)
+            self._renderer = self.machine.renderer(self.plan, self.scene)
             self._renderer.build_track(FPS)
         return self._renderer
 
@@ -161,8 +170,17 @@ class Model:
 
     def close(self) -> None:
         if self._renderer is not None:
-            for renderer in (self._renderer.main, self._renderer.close, self._renderer.close_web):
-                renderer.close()
+            closed = set()
+            for target in (self._renderer.main, self._renderer.close, self._renderer.close_web):
+                owner = getattr(target, "_renderer", target)
+                if id(owner) in closed:
+                    continue
+                closed.add(id(owner))
+                context = getattr(owner, "_gl_context", None)
+                if context is not None:
+                    context.make_current()
+                target.close()
+            self._renderer = None
 
 
 class Registry:
@@ -288,7 +306,7 @@ def make_handler(registry: Registry) -> type[BaseHTTPRequestHandler]:
             asset = ASSET.match(parsed.path)
             if asset is not None:
                 model = registry.get(asset["key"])
-                root = (model.folder / "flex_assets").resolve() if model is not None else None
+                root = (model.folder if model.machine.timed_geoms else model.folder / "flex_assets").resolve() if model is not None else None
                 path = (root / asset["file"]).resolve() if root is not None else None
                 if path is None or not path.is_file() or root not in path.parents:
                     self._json({"error": "not_found"}, code=404)
@@ -346,10 +364,13 @@ def make_handler(registry: Registry) -> type[BaseHTTPRequestHandler]:
             body = self.rfile.read(length)
             try:
                 model = load_live(registry, body)
+            except RobotTypeError as exc:
+                self._json({"error": "unsupported", "message": str(exc)}, code=422)
+                return
             except ValueError as exc:
                 self._json({"error": "bad_analysis", "message": str(exc)}, code=400)
                 return
-            except ProtocolError as exc:
+            except (ProtocolError, Ot2ProtocolError) as exc:
                 self._json({"error": "unsupported", "message": str(exc)}, code=422)
                 return
             except Exception as exc:  # the page shows the message; the server keeps running
@@ -387,12 +408,20 @@ def resolve_analysis(protocol: Path) -> Path:
     if not protocol.exists():
         raise SystemExit(f"protocol not found: {protocol}")
     if protocol.suffix == ".py":
-        return analyze(protocol)
+        sys.path.insert(0, str(ROOT.parents[1] / "servers/opentrons-mcp/scripts"))
+        from protocol_runtime import select_python
+        python = select_python(os.environ.get("OPENTRONS_PYTHON", sys.executable), protocol)
+        out = EXPORT / "analyses" / f"{protocol.stem}-{hashlib.sha256(protocol.read_bytes()).hexdigest()[:12]}.analysis.json"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        done = subprocess.run([python, "-m", "opentrons.cli", "analyze", "--check", "--json-output", str(out), str(protocol)], capture_output=True, text=True)
+        if done.returncode or not out.is_file():
+            raise SystemExit(f"opentrons analyze failed: {done.stderr or done.stdout}")
+        return out
     return protocol
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Serve interactive Flex protocol views on 127.0.0.1")
+    parser = argparse.ArgumentParser(description="Serve interactive OT-2/Flex protocol views on 127.0.0.1")
     parser.add_argument("--host", default=HOST)
     parser.add_argument("--port", type=int, default=PORT)
     parser.add_argument("--protocol", type=Path, default=None, help="optional analysis or protocol to preload")

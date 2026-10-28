@@ -37,9 +37,9 @@ jobs:
           node .ci-extracted/labscriptai-ot/scripts/install-runtime.mjs
           node .ci-extracted/labscriptai-ot/scripts/verify-setup.mjs
           node scripts/release-smoke.mjs .ci-extracted/labscriptai-ot
-      - name: Locate shared Python
+      - name: Locate isolated Flex and OT-2 analyzers
         shell: bash
-        run: node --input-type=module -e 'import {cachedPython} from "./scripts/runtime-paths.mjs"; import fs from "node:fs"; fs.appendFileSync(process.env.GITHUB_ENV, `OPENTRONS_PYTHON=${cachedPython(process.cwd())}\n`)'
+        run: node --input-type=module -e 'import {cachedPython,cachedOt2Python} from "./scripts/runtime-paths.mjs"; import fs from "node:fs"; const flex=cachedPython(process.cwd()),ot2=cachedOt2Python(process.cwd()); if(!flex||!ot2) throw new Error("Both analyzers must be installed"); fs.appendFileSync(process.env.GITHUB_ENV, `OPENTRONS_PYTHON=${flex}\nOPENTRONS_OT2_PYTHON=${ot2}\nOT2_GEOMETRY=1\n`)'
       - if: runner.os == 'Linux'
         run: npm --prefix servers/opentrons-mcp test
       - if: runner.os == 'Linux'

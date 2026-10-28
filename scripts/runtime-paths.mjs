@@ -36,9 +36,9 @@ export function dataHome(env = process.env, platform = process.platform, home = 
   return join(platform, base, "labscriptai-ot");
 }
 
-function readRequirementsFingerprint(root) {
+function readRequirementsFingerprint(root, file = "requirements.lock") {
   try {
-    return hash(fs.readFileSync(path.join(root, "requirements.lock")));
+    return hash(fs.readFileSync(path.join(root, file)));
   } catch {
     // A missing lock is a stable state, but never key a cache on the plugin path.
     return hash("missing:requirements.lock");
@@ -66,14 +66,20 @@ export function runtimePaths(root, env = process.env) {
   const arch = process.arch;
   const nodeMajor = process.versions.node.split(".")[0];
   const pythonKey = `python-${platform}-${arch}-${readRequirementsFingerprint(root).slice(0, 20)}`;
+  const ot2PythonKey = `python-ot2-${platform}-${arch}-${readRequirementsFingerprint(root, "requirements-ot2.lock").slice(0, 20)}`;
   const nodeKey = `node-${platform}-${arch}-node${nodeMajor}-${readNodeFingerprint(root).slice(0, 20)}`;
   const pythonDir = path.join(runtimes, pythonKey);
   const nodeDir = path.join(runtimes, nodeKey);
+  const ot2PythonDir = path.join(runtimes, ot2PythonKey);
+  const ot2Python = path.join(ot2PythonDir, platform === "win32" ? "Scripts" : "bin", platform === "win32" ? "python.exe" : "python");
   const python = path.join(pythonDir, platform === "win32" ? "Scripts" : "bin", platform === "win32" ? "python.exe" : "python");
 
   return {
     home,
     pythonKey,
+    ot2PythonKey,
+    ot2PythonDir,
+    ot2Python,
     nodeKey,
     pythonDir,
     nodeDir,
@@ -144,3 +150,9 @@ export function cachedNodeModules(root, env = process.env) {
 }
 
 export { atomicWrite };
+
+export function cachedOt2Python(root, env = process.env) {
+  const paths = runtimePaths(root, env);
+  if (!hasReadyMarker(paths.ot2PythonDir, { kind: "python-ot2", key: paths.ot2PythonKey })) return null;
+  return fs.existsSync(paths.ot2Python) ? paths.ot2Python : null;
+}

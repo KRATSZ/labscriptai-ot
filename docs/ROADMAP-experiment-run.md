@@ -82,7 +82,7 @@
 - `servers/opentrons-mcp/index.js` **8,470 行**，工具注册与业务逻辑混杂，继续膨胀。
 - 状态分散在 session state、result-log、runtime-outbox 等多处，**没有 Experiment/Run 这个把"定义"与"过程"钉住的对象**，跨阶段追溯靠约定而非结构。
 - 安装链路割裂：安装器主要配 Node/MCP，Python（`uv sync`，opentrons>=9,<10）与 MuJoCo 需用户自行补装。
-- 3D 预检仅支持 Flex（OT-2 被拒绝），但支持矩阵没有集中、显式的声明。
+- 原 3D 预检仅支持 Flex 的缺口已于 2026-10-28 接入已有 OT-2 运行时；两机型仍需按 README 中的动作/模块范围判断，不把数字检查视为实机验证。
 - 报告生成与模板复用完全缺失。
 - **中间产物曾经直接写进仓库树**：8 个根目录 CLI 脚本默认把每次调用的 JSON 摘要写到 `runs/self-recovery/artifacts/`（曾有多达 10 个此类文件被提交进 git）。已改为默认写 `PLUGIN_DATA`（2026-10），但"每次调用落一个 UUID 文件"的产物模型仍需收敛为 Run 内的记录。
 - **面向用户的输出偏底层**：工具返回大段原始 JSON，结论埋在字段里；修复类场景缺少读文件能力时，agent 倾向整份重写协议而非最小修改（真实 LLM 测试观察到的行为）。

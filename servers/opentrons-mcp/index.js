@@ -1203,7 +1203,7 @@ const TOOL_DEFINITIONS = [
   {
     name: "flex3d_preflight_check",
     description:
-      "Flex 3D physical preflight (MuJoCo). Runs automation/flex3d/scripts/render_protocol_3d.py on an opentrons analyze JSON or protocol .py: geometry, liquid, targets, clearance checks with command_index aligned to LogicPass step_index. Flex only (OT-2 refused). Degrades gracefully (ok=false, error=mujoco_missing) when mujoco is not installed. Returns passed/failed/unknown/not_applicable; failed checks set ok=false. Includes the complete warnings array and warnings_count. Uses the shared analysis cache. Checks and scene assets stay under PLUGIN_DATA; no image or video export. For a live 3D look at the deck use flex3d_open_viewer, which returns an online preview URL.",
+      "OT-2/Flex 3D digital preflight (MuJoCo). Runs automation/flex3d/scripts/render_protocol_3d.py on an opentrons analyze JSON or protocol .py: geometry, liquid, targets, clearance checks with command_index aligned to LogicPass step_index. Selects the existing OT-2 or Flex runtime from analysis robotType; unknown/mismatched types are refused. Degrades gracefully (ok=false, error=mujoco_missing) when mujoco is not installed. Returns passed/failed/unknown/not_applicable; failed checks set ok=false. Includes the complete warnings array and warnings_count. Uses the shared analysis cache. Checks and scene assets stay under PLUGIN_DATA; no image or video export. For a live 3D look at the deck use flex3d_open_viewer, which returns an online preview URL.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1226,7 +1226,7 @@ const TOOL_DEFINITIONS = [
   {
     name: "flex3d_open_viewer",
     description:
-      "Open or close the local interactive Flex 3D preview. action=open (default) requires protocol_path (.py or analyze JSON); returns a browser URL and reuses this plugin's running viewer. Different protocols keep separate keyed URLs (up to four loaded models). action=close stops only the verified viewer owned by this plugin's data directory; protocol_path is unnecessary. A foreign port is left untouched with an actionable error. Online preview only; scene assets and private logs stay under PLUGIN_DATA, with no images or video exports. Local simulation only; no robot connection.",
+      "Open or close the local interactive OT-2/Flex 3D preview. action=open (default) requires protocol_path (.py or analyze JSON); returns a browser URL and reuses this plugin's running viewer. Different protocols keep separate keyed URLs (up to four loaded models). action=close stops only the verified viewer owned by this plugin's data directory; protocol_path is unnecessary. A foreign port is left untouched with an actionable error. Online preview only; scene assets and private logs stay under PLUGIN_DATA, with no images or video exports. Local simulation only; no robot connection.",
     inputSchema: {
       type: "object",
       properties: {

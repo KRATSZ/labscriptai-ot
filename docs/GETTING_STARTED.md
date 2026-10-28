@@ -69,7 +69,7 @@ Codex loads a cached copy and reuses the shared runtime. After reloading, ask th
 
 Copy this as your first message (attach the protocol or give its path):
 
-> Check this Opentrons protocol locally. Explain any problems, run simulation and liquid-volume checks, and show a 3D preview if it is a Flex protocol. Do not connect to a robot.
+> Check this Opentrons protocol locally. Explain any problems, run simulation and liquid-volume checks, and show an OT-2 or Flex 3D preview as appropriate. Do not connect to a robot.
 
 Or start a new protocol:
 
@@ -77,7 +77,7 @@ Or start a new protocol:
 
 Expect a short result, a protocol/report link, and any question that still blocks the work. The agent should ask when mapping, volume, installed equipment or sample-handling requirements are unclear.
 
-For a bundled example, use [the Flex serial dilution walkthrough](../examples/01-flex-serial-dilution/README.md). The 3D preview starts on the deck; use **Machine** for the enclosure and **Reset view** to return to the default angle. Raw step parameters are collapsed. It is a local browser page; you can ask the agent to close it when finished. OT-2 protocols support local validation, but the 3D viewer is Flex-only.
+For a bundled example, use [the Flex serial dilution walkthrough](../examples/01-flex-serial-dilution/README.md). The 3D preview starts on the deck; use **Machine** for the enclosure and **Reset view** to return to the default angle. Raw step parameters are collapsed. It is a local browser page; you can ask the agent to close it when finished. OT-2 and Flex protocols both support local validation and 3D preview; the analyzed robot type selects the model.
 
 ## What a passing result means
 
@@ -105,3 +105,9 @@ These results do not measure pipetting accuracy or verify the physical deck. A l
 [MCP startup help](runbooks/mcp-wont-start.md) · [Optional deck vision](deck-vision.md) · [Advanced liquid-probe/recovery diagnostics](runbooks/probe-wells-live-validation.md) · [Tool reference](MCP_TOOLS.md) · [Workflow policy](../policy/workflows.md)
 
 Public use requires the citation in [LICENSE](../LICENSE) and [CITATION.cff](../CITATION.cff).
+
+## OT-2 and Flex 3D runtime
+
+The installer sets up Flex's Opentrons 9.x environment and a separate OT-2 analyzer pinned to the accepted 8.8.2 baseline. It does not downgrade Flex. The existing `flex3d_preflight_check` and `flex3d_open_viewer` tools accept either robot's protocol/analysis; their names are kept for compatibility. The viewer selects the model from the analyzed robot type. A missing/unknown/conflicting robot type is an explicit error, never a Flex fallback.
+
+For source development, `uv sync` alone only creates the Flex environment. Run `node scripts/install-runtime.mjs` for both, or set `OPENTRONS_OT2_PYTHON` to an existing OT-2 analyzer. Both analyzers are local-only; 3D preview does not connect to a robot. See [OT-2 supported model scope](../automation/flex3d/cad/ot2/ORIGIN.md).

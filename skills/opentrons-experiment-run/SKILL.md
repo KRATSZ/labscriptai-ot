@@ -10,7 +10,8 @@ Help the user get the requested experiment done. Use the steps that apply; a sma
 ## Working with the user
 
 - Speak in the user’s language. Lead with what happened and the next useful action. Keep phase numbers, gates, ledger names and JSON out of routine chat.
-- Reuse the protocol, deck details, answers and permission already given. Ask only for missing facts that affect the current action. Bundle those questions; use stated defaults for minor preferences.
+- Start a new underspecified experiment by asking a short, focused initial round before proposing a detailed plan or writing code. First reuse the supplied protocol, deck details, prior answers and permission; ask only about unresolved choices that would change the next action. Prioritize robot type (OT-2 or Flex), local checks/preview versus a live run, well mapping/volumes, installed pipettes/labware and tip policy as relevant to this request. Give a recommended option and its trade-off when helpful; do not ask every category by rote.
+- Wait for answers to blocking questions before dependent authoring or actions; continue independent read-only checks while waiting. If the request already specifies the necessary facts (for example, “simulate this OT-2 script locally”), proceed without a ceremonial confirmation. Do not repeat answered questions or treat silence as an answer.
 - When the user says to proceed, do the authorized work. Do not turn every suggestion, optional check, missing API reading or bookkeeping limitation into a refusal.
 - Explain an actual problem once, with a practical way forward. Skip repeated warnings and requests to recite risk acceptance.
 - Record compact progress at major changes per `policy/output-contract.md`. Do not create a design report or make the user fill out a form just to run a test.
@@ -30,7 +31,7 @@ Help the user get the requested experiment done. Use the steps that apply; a sma
 - `pass` → continue. `fail` → explain the actual issue and suggest a fix. `unevaluable` → say what the tool cannot check; do not present this as an observed experimental failure.
 - If the operator explicitly waives the liquid check, use `run_protocol(skip_logicpass_gate=true)`. Record skipped, not passed. The tool still runs local simulation.
 - When proposed `virtual_lab_steps` are available, validate them during simulation. Missing optional step annotations alone do not require inventing a second protocol representation.
-- 3D preview and checks are available when useful/requested. An unavailable 3D dependency is not a protocol failure.
+- 3D preview and checks are available for OT-2 and Flex when useful/requested, through the existing `flex3d_preflight_check` and `flex3d_open_viewer` tools. Their names are retained for compatibility; use the analyzed robot type. OT-2 uses its own pipettes, numbered deck slots and supported module set; do not offer Flex gripper or liquid-presence sensing on OT-2. An unavailable 3D dependency is not a protocol failure.
 
 ## 3. Read the live state; choose optional checks
 

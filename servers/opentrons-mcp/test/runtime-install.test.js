@@ -9,6 +9,7 @@ import {
   READY_MARKER,
   cachedNodeModules,
   cachedPython,
+  cachedOt2Python,
   dataHome,
   readReadyMarker,
   runtimePaths,
@@ -118,6 +119,24 @@ test("runtime paths support spaces and keep runtimes inside the data home", (t) 
   for (const value of [paths.pythonDir, paths.nodeDir, paths.nodeModules, paths.python, paths.stateFile]) {
     assert.ok(value.startsWith(`${home}${path.sep}`), value);
   }
+});
+
+test("OT-2 runtime is keyed independently and cannot use a Flex ready marker", t => {
+  const root = fixture(t);
+  const env = { LABSCRIPTAI_HOME: temp(t, "ot2-home") };
+  fs.writeFileSync(path.join(root, "requirements-ot2.lock"), "opentrons==8.8.2\n");
+  const first = runtimePaths(root, env);
+  fs.mkdirSync(path.dirname(first.ot2Python), { recursive: true });
+  fs.writeFileSync(first.ot2Python, "fixture");
+  writeReadyMarker(first.ot2PythonDir, { kind: "python", key: first.pythonKey });
+  assert.equal(cachedOt2Python(root, env), null);
+  writeReadyMarker(first.ot2PythonDir, { kind: "python-ot2", key: first.ot2PythonKey });
+  assert.equal(cachedOt2Python(root, env), first.ot2Python);
+  fs.writeFileSync(path.join(root, "requirements-ot2.lock"), "opentrons==8.8.1\n");
+  const next = runtimePaths(root, env);
+  assert.equal(first.pythonKey, next.pythonKey);
+  assert.notEqual(first.ot2PythonKey, next.ot2PythonKey);
+  assert.equal(cachedOt2Python(root, env), null);
 });
 
 test("ready markers and cached runtimes reject incomplete or mismatched caches", (t) => {

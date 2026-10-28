@@ -10,6 +10,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Sequence
+from protocol_runtime import RuntimeSelectionError, select_python
 
 
 @dataclass(frozen=True)
@@ -275,7 +276,7 @@ def handle_simulate(args: argparse.Namespace) -> int:
         if args.shared_data_root
         else None,
     )
-    python_executable = choose_python(args.python)
+    python_executable = select_python(choose_python(args.python), args.protocol)
     probe = probe_module(python_executable, paths, "opentrons.simulate")
     protocol_path = str(Path(args.protocol).resolve())
 
@@ -333,7 +334,7 @@ def handle_analyze(args: argparse.Namespace) -> int:
         if args.shared_data_root
         else None,
     )
-    python_executable = choose_python(args.python)
+    python_executable = select_python(choose_python(args.python), args.protocol)
     probe = probe_module(python_executable, paths, "opentrons.simulate")
     protocol_path = str(Path(args.protocol).resolve())
     output = Path(args.json_output)
@@ -438,7 +439,13 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    return args.handler(args)
+    try:
+        return args.handler(args)
+    except RuntimeSelectionError as exc:
+        print(json.dumps({"ok": False, "error": {"error_type": "RuntimeSelectionError", "error": str(exc)},
+                          "stderr": str(exc), "stdout": "", "exit_code": None,
+                          "analysis_path": None, "protocol": getattr(args, "protocol", None)}))
+        return 0
 
 
 if __name__ == "__main__":

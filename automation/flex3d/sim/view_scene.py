@@ -18,6 +18,7 @@ view.json schema_version=1 (additive fields are allowed):
   their 12-number transforms. An omitted body uses home.
 - dynamic: geometry IDs; each frames[].dyn entry has 10 body-local numbers
   [position xyz,size xyz,rgba], aligned by index with dynamic, not geoms.
+  OT-2 appends a local quaternion [w,x,y,z] (14 numbers) for rotating module skins.
 - frames: ascending absolute protocol times t (seconds); frame/geom counts
   depend on the protocol and must not be hardcoded. camera position/target
   are world-space xyz. See web/viewer.js for the interpolation consumer.
@@ -63,14 +64,17 @@ def _texture_index(model, matid: int, textures: list[dict]) -> int | None:
     return len(textures) - 1
 
 
-def write_view(plan, scene, folder: Path) -> Path:
+def write_view(plan, scene, folder: Path, *, camera_pose=None, timed_geoms=False) -> Path:
     model = scene.model
     bind_pos = model.geom_pos.copy()
     bind_size = model.geom_size.copy()
     bind_rgba = model.geom_rgba.copy()
     shots = []
     for key in plan.keys:
-        scene.apply(key.q, key.state)
+        if timed_geoms:
+            scene.apply(key.q, key.state, key.t)
+        else:
+            scene.apply(key.q, key.state)
         shots.append(
             (
                 scene.data.xpos.copy(),
@@ -78,6 +82,7 @@ def write_view(plan, scene, folder: Path) -> Path:
                 model.geom_pos.copy(),
                 model.geom_size.copy(),
                 model.geom_rgba.copy(),
+                model.geom_quat.copy(),
             )
         )
     scene.at(0.0)
@@ -87,7 +92,7 @@ def write_view(plan, scene, folder: Path) -> Path:
     for body in range(model.nbody):
         if any(
             np.max(np.abs(xpos[body] - x0[body])) > 1e-5 or np.max(np.abs(mat[body] - m0[body])) > 1e-5
-            for xpos, mat, _, _, _ in shots
+            for xpos, mat, _, _, _, _ in shots
         ):
             moving.append(body)
 
@@ -97,7 +102,8 @@ def write_view(plan, scene, folder: Path) -> Path:
             np.max(np.abs(pos[gid] - bind_pos[gid])) > 1e-6
             or np.max(np.abs(size[gid] - bind_size[gid])) > 1e-6
             or np.max(np.abs(rgba[gid] - bind_rgba[gid])) > 1e-4
-            for _, _, pos, size, rgba in shots
+            or (timed_geoms and np.max(np.abs(quat[gid] - shots[0][5][gid])) > 1e-6)
+            for _, _, pos, size, rgba, quat in shots
         ):
             dynamic.append(gid)
 
@@ -154,7 +160,7 @@ def write_view(plan, scene, folder: Path) -> Path:
         geoms[-1]["metalness"] = 0.25 if material in {"aluminum", "aluminum_dark", "chrome"} else 0.0
 
     frames = []
-    for key, (xpos, xmat, pos, size, rgba) in zip(plan.keys, shots):
+    for key, (xpos, xmat, pos, size, rgba, quat) in zip(plan.keys, shots):
         frames.append(
             {
                 "t": round(float(key.t), 4),
@@ -163,7 +169,8 @@ def write_view(plan, scene, folder: Path) -> Path:
                 for body in moving
             },
                 "dyn": [
-                    _nums(list(pos[gid][:3]) + list(size[gid][:3]) + list(rgba[gid]), 4)
+                    _nums(list(pos[gid][:3]) + list(size[gid][:3]) + list(rgba[gid])
+                          + (list(quat[gid]) if timed_geoms else []), 6 if timed_geoms else 4)
                     for gid in dynamic
                 ],
             }
@@ -174,7 +181,7 @@ def write_view(plan, scene, folder: Path) -> Path:
     forward = -np.asarray(scene.data.cam_xmat[cid], dtype=float).reshape(3, 3)[:, 2]
     look = pos + forward * 2.4
     from sim.flex_scene import deck_camera_pose
-    deck_pos, deck_look = deck_camera_pose(plan.run.deck)
+    deck_pos, deck_look = (camera_pose or deck_camera_pose)(plan.run.deck)
     payload = {
         "schema_version": 1,
         "units": {"length": "m", "time": "s"},

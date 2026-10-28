@@ -10,11 +10,11 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 DETAIL = Path('automation/flex3d/cad/flex/modules/detailed')
-FILES = '''AGENTS.md LICENSE CITATION.cff README.md pyproject.toml uv.lock requirements.lock server.json
+FILES = '''AGENTS.md LICENSE CITATION.cff README.md pyproject.toml uv.lock requirements.lock requirements-ot2.lock server.json
 .mcp.json mcp.json install-labscriptai-ot.sh install-labscriptai-ot.ps1
 scripts/install-runtime.mjs scripts/runtime-paths.mjs scripts/verify-setup.mjs scripts/lint-manifests.mjs
 servers/opentrons-mcp/index.js servers/opentrons-mcp/package.json servers/opentrons-mcp/package-lock.json
-servers/opentrons-mcp/scripts/local_simulation.py servers/opentrons-mcp/scripts/logicpass_check.py
+servers/opentrons-mcp/scripts/local_simulation.py servers/opentrons-mcp/scripts/protocol_runtime.py servers/opentrons-mcp/scripts/logicpass_check.py
 servers/opentrons-mcp/scripts/vision_check.py automation/deck_layout_policy.json automation/verify_pe_tip_pickup.py
 automation/flex3d/viewer.html automation/flex3d/scripts/render_protocol_3d.py
 docs/GETTING_STARTED.md docs/GLOSSARY.md docs/MCP_TOOLS.md docs/custom-labware-guide.md docs/deck-vision.md'''.split()
@@ -26,6 +26,8 @@ SUFFIXES = {'.pyc', '.pyo', '.pt', '.blend', '.blend1', '.glb', '.stl', '.mp4', 
 
 
 def allowed(rel):
+    if rel in {Path(f'automation/flex3d/cad/ot2/stl/OT-2 Reference Model {name}.STL') for name in ('Basic', 'Detailed')}:
+        return True
     return not (set(rel.parts) & EXCLUDE or any(p.startswith('.env') for p in rel.parts)
                 or rel.suffix.lower() in SUFFIXES or rel.name == '.DS_Store')
 
@@ -46,6 +48,10 @@ def core_files(root):
             rel = path.relative_to(root)
             if path.is_file() and not path.is_symlink() and allowed(rel) and not rel.is_relative_to(DETAIL):
                 paths.add(checked(root, rel))
+    # These two reference STLs are runtime inputs for the accepted OT-2 model.
+    # Do not relax the general ban on development model exports.
+    for name in ('Basic', 'Detailed'):
+        paths.add(checked(root, Path(f'automation/flex3d/cad/ot2/stl/OT-2 Reference Model {name}.STL')))
     # Keep the small recovery CLIs referenced by runtime guidance.
     for path in (root / 'scripts').glob('*.mjs'):
         if path.name not in {'generate-mcp-docs.mjs', 'release-smoke.mjs'} and allowed(path.relative_to(root)):

@@ -81,17 +81,17 @@ test("render_protocol_3d.py reports a structured JSON for a missing source (no m
   assert.equal(parsed.warnings_count, 0);
 });
 
-test("render_protocol_3d.py refuses OT-2 protocols before importing mujoco", () => {
+test("render_protocol_3d.py refuses unknown robot types before importing mujoco", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "flex3d-"));
   const source = path.join(dir, "ot2.analysis.json");
-  fs.writeFileSync(source, JSON.stringify({ robotType: "OT-2 Standard" }));
+  fs.writeFileSync(source, JSON.stringify({ robotType: "unknown robot" }));
 
   const done = run([source]);
   assert.equal(done.status, 0, done.stderr);
   const parsed = JSON.parse(done.stdout);
   assert.equal(parsed.ok, false);
-  assert.equal(parsed.error, "ot2_not_supported");
-  assert.equal(parsed.robot_type, "OT-2 Standard");
+  assert.equal(parsed.error, "unsupported_robot");
+  assert.equal(parsed.status, "not_applicable");
 });
 
 test("runFlex3dCheck wrapper returns degraded structured results", async t => {

@@ -4,7 +4,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
-import { READY_MARKER, runtimePaths, cachedPython, cachedNodeModules, writeReadyMarker, atomicWrite, systemPath } from './runtime-paths.mjs';
+import { READY_MARKER, runtimePaths, cachedPython, cachedOt2Python, cachedNodeModules, writeReadyMarker, atomicWrite, systemPath } from './runtime-paths.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const paths = runtimePaths(root);
@@ -81,23 +81,29 @@ function installNode() {
   }, 'node', paths.nodeKey);
   log('Node dependencies installed.');
 }
-function installPython() {
-  if (cachedPython(root) && pythonHealth(paths.python)) { log('Python dependencies ready (reused).'); return; }
-  replaceRuntime(paths.pythonDir, () => {
-    const requirements = path.join(root, 'requirements.lock');
+function installPython(ot2 = false) {
+  const python = ot2 ? paths.ot2Python : paths.python;
+  const pythonDir = ot2 ? paths.ot2PythonDir : paths.pythonDir;
+  const pythonKey = ot2 ? paths.ot2PythonKey : paths.pythonKey;
+  const healthy = () => ot2
+    ? run(python, ['-c', 'import opentrons; assert opentrons.__version__ == "8.8.2"'], { timeout: 60000 }).status === 0
+    : pythonHealth(python);
+  if ((ot2 ? cachedOt2Python(root) : cachedPython(root)) && healthy()) { log('Python dependencies ready (reused).'); return; }
+  replaceRuntime(pythonDir, () => {
+    const requirements = path.join(root, ot2 ? 'requirements-ot2.lock' : 'requirements.lock');
     if (run('uv', ['--version'], { timeout: 10000 }).status === 0) {
-      checked('uv', ['venv', '--python', '3.12', paths.pythonDir]);
-      checked('uv', ['pip', 'sync', '--python', paths.python, '--require-hashes', requirements]);
+      checked('uv', ['venv', '--python', '3.12', pythonDir]);
+      checked('uv', ['pip', 'sync', '--python', python, '--require-hashes', requirements]);
     } else {
       const candidates = process.platform === 'win32' ? [['py', '-3'], ['python'], ['python3']] : [['python3.13'], ['python3.12'], ['python3.11'], ['python3'], ['python']];
       const selected = candidates.find(([cmd, ...args]) => run(cmd, [...args, '-c', 'import sys; sys.exit(0 if (3,11) <= sys.version_info[:2] < (3,14) else 1)'], { timeout: 10000 }).status === 0);
       if (!selected) throw new Error('Install uv or Python 3.11–3.13, then rerun the installer.');
       const [cmd, ...args] = selected;
-      checked(cmd, [...args, '-m', 'venv', paths.pythonDir]);
-      checked(paths.python, ['-m', 'pip', 'install', '--require-hashes', '--no-input', '--disable-pip-version-check', '-r', requirements]);
+      checked(cmd, [...args, '-m', 'venv', pythonDir]);
+      checked(python, ['-m', 'pip', 'install', '--require-hashes', '--no-input', '--disable-pip-version-check', '-r', requirements]);
     }
-    if (!pythonHealth(paths.python)) throw new Error('Installed Python dependencies failed import validation.');
-  }, 'python', paths.pythonKey);
+    if (!healthy()) throw new Error('Installed Python dependencies failed import validation.');
+  }, ot2 ? 'python-ot2' : 'python', pythonKey);
   log('Python dependencies installed.');
 }
 function migrateData() {
@@ -113,8 +119,8 @@ let unlock;
 try {
   if (Number(process.versions.node.split('.')[0]) < 18) throw new Error('Node.js 18+ is required.');
   unlock = acquireLock();
-  installNode(); installPython(); migrateData();
-  atomicWrite(paths.stateFile, JSON.stringify({ schema: 1, python: paths.python, nodeModules: paths.nodeModules }) + '\n');
+  installNode(); installPython(); installPython(true); migrateData();
+  atomicWrite(paths.stateFile, JSON.stringify({ schema: 1, python: paths.python, ot2Python: paths.ot2Python, nodeModules: paths.nodeModules }) + '\n');
   log(`Runtime ready. User directory: ${paths.home}`);
 } catch (error) { log(error.message); process.exitCode = 1; }
 finally { unlock?.(); }

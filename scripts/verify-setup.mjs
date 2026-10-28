@@ -8,7 +8,7 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath, pathToFileURL } from "url";
 import { execSync, spawnSync } from "child_process";
-import { cachedPython, cachedNodeModules } from "./runtime-paths.mjs";
+import { cachedPython, cachedOt2Python, cachedNodeModules } from "./runtime-paths.mjs";
 import { buildIdentity } from "../servers/opentrons-mcp/lib/build-info.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -341,7 +341,7 @@ function checkFlex3d(pythonExe) {
 
   if (!fs.existsSync(scriptPath)) {
     warn(
-      "Flex 3D preview",
+      "OT-2/Flex 3D preview",
       "Missing automation/flex3d/scripts/render_protocol_3d.py",
       "Reinstall the plugin; the flex3d bundle ships with it."
     );
@@ -350,7 +350,7 @@ function checkFlex3d(pythonExe) {
 
   if (!pythonExe) {
     warn(
-      "Flex 3D preview",
+      "OT-2/Flex 3D preview",
       "Skipped (no Python interpreter)",
       "3D preview is optional; mujoco/pillow are pinned in pyproject.toml: run `uv sync` in the repo root"
     );
@@ -364,14 +364,26 @@ function checkFlex3d(pythonExe) {
   );
 
   if (flex3dCheck.status === 0) {
-    pass("Flex 3D preview", "mujoco + pillow importable; flex3d_preflight_check / flex3d_open_viewer usable");
+    pass("OT-2/Flex 3D preview", "mujoco + pillow importable; flex3d_preflight_check / flex3d_open_viewer usable");
   } else {
     warn(
-      "Flex 3D preview",
+      "OT-2/Flex 3D preview",
       "mujoco not importable — 3D checks and viewer will degrade (optional feature)",
       "Run `uv sync` in the repo root (mujoco/pillow are pinned in pyproject.toml)"
     );
   }
+}
+
+function checkOt2Analyzer() {
+  const local = path.join(PLUGIN_ROOT, ".venv-ot2", process.platform === "win32" ? "Scripts/python.exe" : "bin/python");
+  const python = process.env.OPENTRONS_OT2_PYTHON || cachedOt2Python(PLUGIN_ROOT) || (fs.existsSync(local) ? local : null);
+  if (!python) {
+    warn("OT-2 analyzer", "Dedicated OT-2 environment is not installed", "Run node scripts/install-runtime.mjs to install both analyzers.");
+    return;
+  }
+  const done = spawnSync(python, ["-c", 'import opentrons; assert opentrons.__version__ == "8.8.2"; print(opentrons.__version__)'], { encoding: "utf8", timeout: 20000 });
+  if (done.status === 0) pass("OT-2 analyzer", `Isolated ${done.stdout.trim()}; Flex environment retained`);
+  else warn("OT-2 analyzer", "Dedicated analyzer unavailable or outside the accepted 8.8.2 baseline", "Check OPENTRONS_OT2_PYTHON or rerun node scripts/install-runtime.mjs.");
 }
 
 function checkArkVlm() {
@@ -573,6 +585,7 @@ async function main() {
   const pythonExe = checkPython();
   checkVision(pythonExe);
   checkFlex3d(pythonExe);
+  checkOt2Analyzer();
   checkArkVlm();
   await checkHealth(pythonExe);
   await checkRuntimeRecoverySelfTest();

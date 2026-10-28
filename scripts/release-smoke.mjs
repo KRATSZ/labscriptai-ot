@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 const root = path.resolve(process.argv[2] || path.join(path.dirname(fileURLToPath(import.meta.url)), '..'));
 const env = { ...process.env, OPENTRONS_PLUGIN_ROOT: root };
 delete env.OPENTRONS_PYTHON;
+delete env.OPENTRONS_OT2_PYTHON;
 delete env.PLUGIN_DATA;
 delete env.OPENTRONS_PLUGIN_DATA;
 const child = spawn(process.execPath, [path.join(root, 'servers/opentrons-mcp/index.js')], { env, stdio: ['pipe', 'pipe', 'pipe'] });
@@ -82,6 +83,30 @@ try {
   report.reopened = await call('flex3d_open_viewer', { protocol_path, port });
   assert.equal(report.reopened.ok, true);
   assert.notEqual(report.reopened.pid, report.viewer.pid);
+  // This harness runs from the source checkout against the extracted bundle.
+  // Use the independently authored OT-2 fixture without shipping tests in the ZIP.
+  const ot2_path = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../automation/flex3d/tests/ot2_fixtures/protocols/single_p20.py');
+  report.ot2 = {};
+  report.ot2.simulation = await call('simulate_protocol', { protocol_path: ot2_path });
+  assert.equal(report.ot2.simulation.ok, true, JSON.stringify(report.ot2.simulation));
+  assert.equal(report.ot2.simulation.robot_type, 'OT-2 Standard');
+  report.ot2.logicpass = await call('logicpass_check', { protocol_path: ot2_path });
+  assert.equal(report.ot2.logicpass.outcome, 'pass', JSON.stringify(report.ot2.logicpass));
+  report.ot2.preflight = await call('flex3d_preflight_check', { source: ot2_path });
+  assert.equal(report.ot2.preflight.status, 'passed', JSON.stringify(report.ot2.preflight));
+  report.ot2.viewer = await call('flex3d_open_viewer', { protocol_path: ot2_path, port });
+  assert.equal(report.ot2.viewer.ok, true, JSON.stringify(report.ot2.viewer));
+  assert.equal(report.ot2.viewer.pid, report.reopened.pid);
+  const ot2Key = new URL(report.ot2.viewer.url).searchParams.get('key');
+  const ot2Info = await (await fetch(`${base}/flex3d/${ot2Key}/info`)).json();
+  const ot2Scene = await (await fetch(`${base}/flex3d/${ot2Key}/view.json`)).json();
+  assert.equal(ot2Info.robot_type, 'OT-2 Standard');
+  assert.ok(ot2Scene.geoms.length && ot2Scene.frames.length);
+  report.flex_after_ot2 = await call('flex3d_open_viewer', { protocol_path, port });
+  assert.equal(report.flex_after_ot2.pid, report.reopened.pid);
+  const flexKey = new URL(report.flex_after_ot2.url).searchParams.get('key');
+  const flexInfo = await (await fetch(`${base}/flex3d/${flexKey}/info`)).json();
+  assert.equal(flexInfo.robot_type, 'OT-3 Standard');
   report.ok = true;
 } finally {
   if (port) { try { await call('flex3d_open_viewer', { action: 'close', port }); } catch {} }
@@ -89,4 +114,4 @@ try {
   child.kill();
 }
 if (process.env.SMOKE_REPORT) fs.writeFileSync(process.env.SMOKE_REPORT, JSON.stringify(report, null, 2) + '\n');
-console.log(JSON.stringify({ ok: report.ok, version: report.health?.mcp_server.version, build: report.health?.mcp_server.build_id, tools: report.tools, simulation: 'passed', logicpass: report.logicpass?.outcome, preflight: report.preflight?.status, viewer_reopen: report.reopened?.ok }));
+console.log(JSON.stringify({ ok: report.ok, version: report.health?.mcp_server.version, build: report.health?.mcp_server.build_id, tools: report.tools, simulation: 'passed', logicpass: report.logicpass?.outcome, preflight: report.preflight?.status, viewer_reopen: report.reopened?.ok, ot2_preflight: report.ot2?.preflight.status, flex_after_ot2: report.flex_after_ot2?.ok }));

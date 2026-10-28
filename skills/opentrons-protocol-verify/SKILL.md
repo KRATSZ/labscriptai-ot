@@ -20,7 +20,7 @@ Use `.venv/bin/python` or `uv run python` for all commands.
 4. Prefer one MCP `simulate_protocol` call: it analyzes once, caches the JSON and returns parsed repair guidance. Do not call it twice or run CLI analyze just to repeat that successful check.
 5. Use the CLI `analyze` / `simulate` commands below only when working without MCP or diagnosing a specific runtime issue.
 6. `logicpass_check` — same protocol. `pass` / `fail` / `unevaluable`. A `fail` issue includes `step_index`.
-7. `flex3d_preflight_check` — Flex protocols only (OT-2 refused). MuJoCo 3D checks: geometry, liquid, targets, clearance; a failing check carries `command_index` matching the LogicPass `step_index` numbering. Degrades with `error: mujoco_missing` (exit 0) when mujoco is not installed — report as optional-unavailable, not a validation failure. `flex3d_open_viewer` starts the interactive browser view.
+7. `flex3d_preflight_check` — OT-2 and Flex protocols, selected by the analysis robot type (the tool name is retained). OT-2 uses the dedicated analyzer installed with the plugin, overrideable with `OPENTRONS_OT2_PYTHON`. MuJoCo 3D checks: geometry, liquid, targets, clearance; a failing check carries `command_index` matching the LogicPass `step_index` numbering. Degrades with `error: mujoco_missing` (exit 0) when mujoco is not installed — report as optional-unavailable, not a validation failure. `flex3d_open_viewer` starts the interactive browser view.
 8. Pass extra CLI flags after `--`.
 9. If iterating until simulation passes -> `opentrons-simulation-repair`.
 

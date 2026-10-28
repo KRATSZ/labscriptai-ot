@@ -56,7 +56,7 @@ Route to individual skills when the user intent is narrow:
 - Reply in the user's language. Lead with the result and any required next action. Routine completion fits in three short bullets: result, user action if needed, and protocol/preview links. Keep tool names, exit codes, PIDs and check metrics in reports unless they explain a problem.
 - State what was actually checked: local simulation, LogicPass and 3D checks do not establish physical robot readiness or experimental accuracy. Say "local checks passed" rather than "fully safe" or "everything works" when no robot was checked.
 - Do not invent numerical carryover, accuracy, contamination or timing claims. Use supplied measurements or a cited, applicable specification; otherwise describe the uncertainty qualitatively. Fresh tips reduce transfer between samples; they do not guarantee zero contamination or zero concentration error.
-- Ask about missing facts that change the experiment before authoring: well mapping, volumes/concentrations, installed labware/pipettes and contamination constraints. Bundle the minimum questions into one round, explain ambiguous terms with concrete well names, and suggest defaults only for non-critical preferences. Follow up if the answer leaves a blocker unresolved.
+- For an underspecified new experiment, begin with a short round of targeted questions before a detailed plan or authoring; reuse supplied protocols and prior answers, and proceed directly when the scope is already clear. Ask about missing facts that change the experiment before authoring: well mapping, volumes/concentrations, installed labware/pipettes and contamination constraints. Bundle the minimum questions into one round, explain ambiguous terms with concrete well names, and suggest defaults only for non-critical preferences. Follow up if the answer leaves a blocker unresolved.
 - When the request is complete, perform the requested local work without another confirmation. A local-only request ends with its result; do not push the user toward live execution.
 - Keep structured handoff details in files per `policy/output-contract.md`. Show them in chat only when requested or required by the client.
 
@@ -81,7 +81,8 @@ Or on Windows: `.\install-labscriptai-ot.ps1`
 
 - `OPENTRONS_PLUGIN_ROOT`: absolute path to this repository.
 - `PLUGIN_DATA`: writable state/artifact directory.
-- `OPENTRONS_PYTHON`: Python executable with Opentrons simulation dependencies.
+- `OPENTRONS_PYTHON`: Python executable with Flex simulation and 3D dependencies.
+- `OPENTRONS_OT2_PYTHON`: optional dedicated OT-2 analyzer override; the installer supplies its isolated 8.8.2 baseline automatically.
 - `OPENTRONS_PROTOCOL_LIBRARY_PATH`: optional external protocol library.
 - `OPENTRONS_ENABLE_PROBE_WELLS=1`: explicit opt-in for live probe motion only.
 - `ARK_API_KEY`: Volcengine Ark (Doubao VLM) API key; default read from `automation/.env`.

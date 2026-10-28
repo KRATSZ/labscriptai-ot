@@ -238,6 +238,7 @@ function applyFrame(frame) {
     const mesh = dynObjects[index];
     if (!mesh) return;
     mesh.position.set(pack[0], pack[1], pack[2]);
+    if (pack.length >= 14) quat(mesh, pack.slice(10, 14));
     const alpha = pack[9];
     mesh.visible = alpha > 0.02;
     const ratio = (next, base) => (Math.abs(base) > 1e-8 ? next / base : 1);
@@ -283,7 +284,15 @@ function poseAt(time) {
     mixed.bodies[id] = left.map((value, i) => value + (right[i] - value) * u);
   }
   for (let i = 0; i < a.dyn.length; i += 1) {
-    mixed.dyn.push(a.dyn[i].map((value, k) => value + (b.dyn[i][k] - value) * u));
+    const pack = a.dyn[i].map((value, k) => value + (b.dyn[i][k] - value) * u);
+    if (pack.length >= 14) {
+      const left = a.dyn[i];
+      const right = b.dyn[i];
+      const rotation = new THREE.Quaternion(left[11], left[12], left[13], left[10]);
+      rotation.slerp(new THREE.Quaternion(right[11], right[12], right[13], right[10]), u);
+      pack.splice(10, 4, rotation.w, rotation.x, rotation.y, rotation.z);
+    }
+    mixed.dyn.push(pack);
   }
   applyFrame(mixed);
 }

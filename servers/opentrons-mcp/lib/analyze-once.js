@@ -2,14 +2,27 @@ import crypto from "crypto";
 import fs from "fs";
 import path from "path";
 
-import { ARTIFACTS_DIR, SCRIPTS_DIR } from "./paths.js";
+import { ARTIFACTS_DIR, SCRIPTS_DIR, PLUGIN_ROOT } from "./paths.js";
+import { runtimePaths } from "../../../scripts/runtime-paths.mjs";
 
 const helperScriptPath = path.join(SCRIPTS_DIR, "local_simulation.py");
 const inflight = new Map();
 
-function protocolHash(filePath) {
+function protocolHash(filePath, args) {
   const bytes = fs.readFileSync(filePath);
-  return crypto.createHash("sha256").update(bytes).digest("hex").slice(0, 20);
+  const runtime = runtimePaths(PLUGIN_ROOT);
+  const context = {
+    schema: 2,
+    python: args.python_executable || process.env.OPENTRONS_PYTHON,
+    ot2Python: process.env.OPENTRONS_OT2_PYTHON,
+    pythonKey: runtime.pythonKey,
+    ot2PythonKey: runtime.ot2PythonKey,
+    root: PLUGIN_ROOT,
+    workspace: args.workspace_root,
+    api: args.api_root,
+    sharedData: args.shared_data_root,
+  };
+  return crypto.createHash("sha256").update(bytes).update(JSON.stringify(context)).digest("hex").slice(0, 20);
 }
 
 function readJson(filePath) {
@@ -50,7 +63,7 @@ export async function analyzeProtocolOnce(args = {}) {
   }
 
   const protocolPath = path.resolve(args.protocol_path);
-  const hash = protocolHash(protocolPath);
+  const hash = protocolHash(protocolPath, args);
   const dir = path.join(ARTIFACTS_DIR, "analyze-cache");
   fs.mkdirSync(dir, { recursive: true });
   const analysisPath = path.join(dir, `${hash}.analysis.json`);

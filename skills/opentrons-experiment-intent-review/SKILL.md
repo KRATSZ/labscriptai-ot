@@ -21,7 +21,7 @@ Use this when the user is still describing the experiment in natural language.
 The goal is to turn a rough request into a clear, short brief without making the
 user fill out a form.
 
-- Bundle the minimum blocking questions into one initial round. If the reply leaves a safety-critical fact unresolved, ask a focused follow-up rather than guessing.
+- Begin an underspecified new task with one short round of targeted questions before drafting a detailed plan or code. Reuse supplied protocols and prior answers; skip this round when the relevant choices are already explicit. Bundle the minimum blocking questions into that initial round. If the reply leaves a safety-critical fact unresolved, ask a focused follow-up rather than guessing.
 - If only one preference is missing (for example tip reuse policy), explain the
   trade-off and give a recommendation.
 - If the protocol can still be drafted safely, hand off with a recommended
