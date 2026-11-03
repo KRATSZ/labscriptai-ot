@@ -116,7 +116,7 @@ Read-only live readiness gate for Flex: combines local runtime health, restart/s
 
 ### `protocol_artifacts` [L2]
 
-Artifact API v1: export self-contained animation and experiment setup HTML documents from a successful analyze JSON. Returns plugin_version, analysis_sha256 and per-document status/path/bytes/sha256/mime. Files are local, contain no server dependencies, and can be copied into authenticated host caches. No robot access. One unavailable document does not invalidate the other.
+Artifact API v1: export self-contained animation and experiment setup HTML documents from a successful analyze JSON. Returns plugin_version, analysis_sha256 and per-document status/path/bytes/sha256/mime. Files are local, contain no server dependencies, and can be copied into authenticated host caches. Also returns attachments with name/path/mime/bytes/sha256 for host-owned authenticated downloads; setup HTML itself contains no download links. No robot access. One unavailable document does not invalidate the other.
 
 **Parameters:** `analysis_path`, `python_executable` (optional)
 

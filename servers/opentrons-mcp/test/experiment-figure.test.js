@@ -27,7 +27,8 @@ test("real simulate entry returns an inline setup PNG, and viewer serves that sa
   assert.equal(artifact.documents.setup.status, "ready", JSON.stringify(artifact));
   const portable = fs.readFileSync(artifact.documents.setup.path, "utf8");
   assert.match(portable, /data:image\/png;base64,/);
-  assert.match(portable, /download="wells.csv"/);
+  assert.ok(artifact.attachments.some(file => file.name === "wells.csv" && file.mime === "text/csv"));
+  assert.doesNotMatch(portable, /<a /);
   assert.match(portable, /Content-Security-Policy/);
   assert.doesNotMatch(portable, /<script>|src="setup/);
   const figure = sim.data.experiment_figure;

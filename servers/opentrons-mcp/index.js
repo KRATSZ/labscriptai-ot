@@ -1893,7 +1893,7 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: "protocol_artifacts",
-    description: "Artifact API v1: export self-contained animation and experiment setup HTML documents from a successful analyze JSON. Returns plugin_version, analysis_sha256 and per-document status/path/bytes/sha256/mime. Files are local, contain no server dependencies, and can be copied into authenticated host caches. No robot access. One unavailable document does not invalidate the other.",
+    description: "Artifact API v1: export self-contained animation and experiment setup HTML documents from a successful analyze JSON. Returns plugin_version, analysis_sha256 and per-document status/path/bytes/sha256/mime. Files are local, contain no server dependencies, and can be copied into authenticated host caches. Also returns attachments with name/path/mime/bytes/sha256 for host-owned authenticated downloads; setup HTML itself contains no download links. No robot access. One unavailable document does not invalidate the other.",
     inputSchema: { type: "object", properties: { analysis_path: { type: "string" }, python_executable: { type: "string" } }, required: ["analysis_path"], additionalProperties: false },
   },
   {

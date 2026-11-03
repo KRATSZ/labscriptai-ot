@@ -79,15 +79,14 @@ def setup_document(analysis, output):
     page = (folder / 'setup.html').read_text(encoding='utf-8')
     page = re.sub(r'<script>.*?</script>', '', page, flags=re.S)
     page = re.sub(r'<a id="animation"[^>]*>.*?</a>', '', page)
-    for name in result['files']:
-        if name == 'setup.html':
-            continue
-        mime = 'image/png' if name.endswith('.png') else 'text/csv;charset=utf-8' if name.endswith('.csv') else 'application/json'
-        uri = f'data:{mime};base64,{encoded((folder / name).read_bytes())}'
-        page = page.replace(f'href="{name}" download', f'href="{uri}" download="{name}"')
+    page = re.sub(r'<nav>.*?</nav>', '', page, flags=re.S)
+    page = re.sub(r'<p><a[^>]+download>.*?</a></p>', '', page)
+    page = re.sub(r'<a[^>]+target="_blank">(.*?)</a>', r'\1', page, flags=re.S)
+    for name in result['images']:
+        uri = f'data:image/png;base64,{encoded((folder / name).read_bytes())}'
         page = page.replace(f'src="{name}"', f'src="{uri}"')
-        page = page.replace(f'href="{name}"', f'href="{uri}" download="{name}"')
-    return page.replace('<meta charset="utf-8">', '<meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'; img-src data:; base-uri \'none\'; form-action \'none\'">')
+    page = page.replace('<meta charset="utf-8">', '<meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'; img-src data:; base-uri \'none\'; form-action \'none\'">')
+    return page, [folder / name for name in result['files'] if name != 'setup.html']
 
 
 def export(analysis, output):
@@ -102,10 +101,18 @@ def export(analysis, output):
     output.mkdir(parents=True, exist_ok=True)
     folder = Path(tempfile.mkdtemp(prefix='documents-', dir=output))
     documents = {}
+    attachments = []
     for name, build in [('animation', lambda: animation_document(analysis, folder)),
                         ('setup', lambda: setup_document(analysis, output / 'figures'))]:
         try:
-            data = build().encode('utf-8')
+            value = build()
+            if name == 'setup':
+                value, files = value
+                for file in files:
+                    raw_file = file.read_bytes()
+                    mime = 'image/png' if file.suffix == '.png' else 'text/csv' if file.suffix == '.csv' else 'application/json'
+                    attachments.append({'name': file.name, 'path': str(file), 'mime': mime, 'bytes': len(raw_file), 'sha256': hashlib.sha256(raw_file).hexdigest()})
+            data = value.encode('utf-8')
             if len(data) > 64 * 1024 * 1024:
                 raise ValueError('Document exceeds 64 MiB')
             file = folder / f'{name}.html'
@@ -115,7 +122,7 @@ def export(analysis, output):
         except Exception as error:
             documents[name] = {'status': 'unavailable', 'message': str(error)[:2000]}
     return {'ok': any(doc['status'] == 'ready' for doc in documents.values()), 'artifact_api': 1,
-            'analysis_sha256': hashlib.sha256(raw).hexdigest(), 'documents': documents}
+            'analysis_sha256': hashlib.sha256(raw).hexdigest(), 'documents': documents, 'attachments': attachments}
 
 
 if __name__ == '__main__':
