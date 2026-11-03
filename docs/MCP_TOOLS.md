@@ -114,6 +114,12 @@ Read-only live readiness gate for Flex: combines local runtime health, restart/s
 
 **Parameters:** `robot_ip`, `session_id` (optional), `file_path` (optional), `python_executable` (optional), `run_id` (optional)
 
+### `protocol_artifacts` [L2]
+
+Artifact API v1: export self-contained animation and experiment setup HTML documents from a successful analyze JSON. Returns plugin_version, analysis_sha256 and per-document status/path/bytes/sha256/mime. Files are local, contain no server dependencies, and can be copied into authenticated host caches. No robot access. One unavailable document does not invalidate the other.
+
+**Parameters:** `analysis_path`, `python_executable` (optional)
+
 ### `query_history` [L2]
 
 Query run and experiment history. scope=robot_runs lists runs on the robot (requires robot_ip); scope=run_commands returns one run's state plus recent command history in an agent-friendly format (requires robot_ip and run_id); scope=experiment_logs queries persisted run, recovery, and reconciliation result logs (local, filterable by session/run/tool/event kind/status).

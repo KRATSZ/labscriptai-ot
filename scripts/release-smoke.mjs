@@ -51,7 +51,7 @@ try {
   child.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n');
   const list = await request('tools/list', {});
   report.tools = list.result.tools.length;
-  assert.equal(report.tools, 52);
+  assert.equal(report.tools, 53);
   report.health = await call('health_check');
   assert.equal(report.health.mcp_server.version, version);
   assert.equal(report.health.mcp_server.consistent, true);
@@ -61,6 +61,10 @@ try {
   assert.equal(report.simulation.ok, true, JSON.stringify(report.simulation));
   assert.equal(report.simulation.experiment_figure.ok, true, JSON.stringify(report.simulation.experiment_figure));
   assert.ok(fs.statSync(report.simulation.experiment_figure.png_path).size > 1000);
+  report.artifacts = await call('protocol_artifacts', { analysis_path: report.simulation.analysis_path });
+  assert.equal(report.artifacts.artifact_api, 1);
+  assert.equal(report.artifacts.documents.animation.status, 'ready', JSON.stringify(report.artifacts));
+  assert.equal(report.artifacts.documents.setup.status, 'ready', JSON.stringify(report.artifacts));
   report.logicpass = await call('logicpass_check', { protocol_path });
   assert.equal(report.logicpass.outcome, 'pass', JSON.stringify(report.logicpass));
   report.preflight = await call('flex3d_preflight_check', { source: protocol_path });
@@ -120,4 +124,4 @@ try {
   child.kill();
 }
 if (process.env.SMOKE_REPORT) fs.writeFileSync(process.env.SMOKE_REPORT, JSON.stringify(report, null, 2) + '\n');
-console.log(JSON.stringify({ ok: report.ok, version: report.health?.mcp_server.version, build: report.health?.mcp_server.build_id, tools: report.tools, simulation: 'passed', logicpass: report.logicpass?.outcome, preflight: report.preflight?.status, viewer_reopen: report.reopened?.ok, ot2_preflight: report.ot2?.preflight.status, flex_after_ot2: report.flex_after_ot2?.ok }));
+console.log(JSON.stringify({ ok: report.ok, version: report.health?.mcp_server.version, build: report.health?.mcp_server.build_id, tools: report.tools, artifact_api: report.artifacts?.artifact_api, documents: Object.fromEntries(Object.entries(report.artifacts?.documents || {}).map(([key,value]) => [key,value.status])), simulation: 'passed', logicpass: report.logicpass?.outcome, preflight: report.preflight?.status, viewer_reopen: report.reopened?.ok, ot2_preflight: report.ot2?.preflight.status, flex_after_ot2: report.flex_after_ot2?.ok }));

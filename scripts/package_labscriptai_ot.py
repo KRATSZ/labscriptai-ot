@@ -106,7 +106,7 @@ def build(root=ROOT, out=None):
             write_zip(root, archive, paths)
             assets.append({'name': name, 'bytes': archive.stat().st_size,
                            'sha256': hashlib.sha256(archive.read_bytes()).hexdigest(), 'files': len(paths) + 1})
-        result = {'version': version, 'assets': assets}
+        result = {'version': version, 'artifact_api': 1, 'assets': assets}
         (stage / 'release-manifest.json').write_text(json.dumps(result, indent=2) + '\n')
         out.mkdir(parents=True, exist_ok=True)
         for stale in out.glob('labscriptai-ot-*.zip'):

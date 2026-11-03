@@ -65,6 +65,7 @@ import {
 } from "./lib/labware-offsets.js";
 import { parseSimulationLog, runDoctorTool, runSimulationTool } from "./lib/simulation.js";
 import { analyzeProtocolOnce } from "./lib/analyze-once.js";
+import { protocolArtifacts } from "./lib/protocol-artifacts.js";
 import { generateExperimentFigure, figureImages } from "./lib/experiment-figure.js";
 import { runFlex3dCheck, startFlex3dViewer, stopFlex3dViewer } from "./lib/flex3d.js";
 import { runLogicpassCheck, buildLogicpassGateBlock } from "./lib/logicpass.js";
@@ -1889,6 +1890,11 @@ const TOOL_DEFINITIONS = [
       },
       required: ["protocol_path"],
     },
+  },
+  {
+    name: "protocol_artifacts",
+    description: "Artifact API v1: export self-contained animation and experiment setup HTML documents from a successful analyze JSON. Returns plugin_version, analysis_sha256 and per-document status/path/bytes/sha256/mime. Files are local, contain no server dependencies, and can be copied into authenticated host caches. No robot access. One unavailable document does not invalidate the other.",
+    inputSchema: { type: "object", properties: { analysis_path: { type: "string" }, python_executable: { type: "string" } }, required: ["analysis_path"], additionalProperties: false },
   },
   {
     name: "logicpass_check",
@@ -8090,6 +8096,10 @@ const TOOL_HANDLERS = {
       },
       images: figureImages(figure),
     };
+  },
+
+  async protocol_artifacts(args) {
+    return { data: await protocolArtifacts(args) };
   },
 
   async logicpass_check(args) {

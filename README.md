@@ -67,3 +67,7 @@ Paper: https://doi.org/10.1101/2025.09.30.679666
 LabscriptAI Research Citation License v1.0 — not MIT. Citation is mandatory for public use. Commercial use requires written permission from `gaoyuanbio@qq.com`. See [LICENSE](LICENSE).
 
 Release packaging: [publishing guide](https://github.com/KRATSZ/labscriptai-ot/blob/main/PUBLISHING.md)
+
+### Host integration
+
+Hosts call the public MCP tools `simulate_protocol`, then `protocol_artifacts` with its `analysis_path`. Artifact API v1 returns the plugin version, analysis SHA-256, and independent `animation` / `setup` document statuses. Ready documents include local `path`, `mime`, `bytes`, and `sha256`; copy only verified artifacts into an authenticated host cache. Animation HTML requires scripts in an opaque-origin sandbox; setup HTML requires downloads only. Both documents are self-contained. Hosts pin a plugin release/checksum and update through compatibility-tested upgrade PRs; they do not import renderer internals or copy plugin source. `release-manifest.json` declares `artifact_api` for compatible release selection.

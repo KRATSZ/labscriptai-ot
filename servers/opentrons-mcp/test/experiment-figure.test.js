@@ -20,6 +20,16 @@ test("real simulate entry returns an inline setup PNG, and viewer serves that sa
   const protocol = path.join(root, "examples/01-flex-serial-dilution/protocol.py");
   const sim = await TOOL_HANDLERS.simulate_protocol({ protocol_path: protocol });
   assert.equal(sim.data.ok, true, JSON.stringify(sim.data));
+  const artifact = (await TOOL_HANDLERS.protocol_artifacts({ analysis_path: sim.data.analysis_path })).data;
+  assert.equal(artifact.artifact_api, 1);
+  assert.equal(artifact.plugin_version, "0.1.3");
+  assert.equal(artifact.documents.animation.status, "ready", JSON.stringify(artifact));
+  assert.equal(artifact.documents.setup.status, "ready", JSON.stringify(artifact));
+  const portable = fs.readFileSync(artifact.documents.setup.path, "utf8");
+  assert.match(portable, /data:image\/png;base64,/);
+  assert.match(portable, /download="wells.csv"/);
+  assert.match(portable, /Content-Security-Policy/);
+  assert.doesNotMatch(portable, /<script>|src="setup/);
   const figure = sim.data.experiment_figure;
   assert.equal(figure.ok, true, JSON.stringify(figure));
   assert.equal(figure.source_well_count, 2);
