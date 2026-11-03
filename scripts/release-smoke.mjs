@@ -59,6 +59,8 @@ try {
   const protocol_path = path.join(root, 'examples/01-flex-serial-dilution/protocol.py');
   report.simulation = await call('simulate_protocol', { protocol_path });
   assert.equal(report.simulation.ok, true, JSON.stringify(report.simulation));
+  assert.equal(report.simulation.experiment_figure.ok, true, JSON.stringify(report.simulation.experiment_figure));
+  assert.ok(fs.statSync(report.simulation.experiment_figure.png_path).size > 1000);
   report.logicpass = await call('logicpass_check', { protocol_path });
   assert.equal(report.logicpass.outcome, 'pass', JSON.stringify(report.logicpass));
   report.preflight = await call('flex3d_preflight_check', { source: protocol_path });
@@ -69,6 +71,9 @@ try {
   await new Promise(resolve => listener.close(resolve));
   report.viewer = await call('flex3d_open_viewer', { protocol_path, port });
   assert.equal(report.viewer.ok, true, JSON.stringify(report.viewer));
+  assert.equal((await fetch(report.viewer.experiment_figure.url)).status, 200);
+  const imageReply = await request('tools/call', { name: 'simulate_protocol', arguments: { protocol_path } });
+  assert.ok(imageReply.result.content.some(item => item.type === 'image' && item.mimeType === 'image/png'));
   const base = `http://127.0.0.1:${port}`;
   const info = await (await fetch(base + '/flex3d/example/info')).json();
   const scene = await (await fetch(base + '/flex3d/example/view.json')).json();
@@ -90,6 +95,7 @@ try {
   report.ot2.simulation = await call('simulate_protocol', { protocol_path: ot2_path });
   assert.equal(report.ot2.simulation.ok, true, JSON.stringify(report.ot2.simulation));
   assert.equal(report.ot2.simulation.robot_type, 'OT-2 Standard');
+  assert.equal(report.ot2.simulation.experiment_figure.ok, true, JSON.stringify(report.ot2.simulation.experiment_figure));
   report.ot2.logicpass = await call('logicpass_check', { protocol_path: ot2_path });
   assert.equal(report.ot2.logicpass.outcome, 'pass', JSON.stringify(report.ot2.logicpass));
   report.ot2.preflight = await call('flex3d_preflight_check', { source: ot2_path });

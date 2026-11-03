@@ -27,6 +27,7 @@ Help the user get the requested experiment done. Use the steps that apply; a sma
 ## 2. Check the protocol locally
 
 - Use `health_check(scope=local)` when runtime readiness is unknown, then `simulate_protocol`. Repair a simulation error before live execution.
+- `simulate_protocol` automatically returns `experiment_figure` plus inline PNG content. Present the image using the returned `png_path` in a Markdown image embed, and link `page_path` for all image pages and the exact well table. When opening the 3D viewer, also link `experiment_figure.url`; its toolbar provides the same setup-image entry. Do not ask users to remember a new command. Figures show declared starting setup, not guessed final composition; a drawing failure does not change simulation results or block the existing workflow. Keep the image concise: Chinese sans-serif, graphical wells/slots, no “design preview”, “not onsite”, preview dates or similar boilerplate.
 - Run `logicpass_check` on the same cached analysis. It checks supported liquid-volume rules; it does not establish gripper or physical robot readiness.
 - `pass` → continue. `fail` → explain the actual issue and suggest a fix. `unevaluable` → say what the tool cannot check; do not present this as an observed experimental failure.
 - If the operator explicitly waives the liquid check, use `run_protocol(skip_logicpass_gate=true)`. Record skipped, not passed. The tool still runs local simulation.

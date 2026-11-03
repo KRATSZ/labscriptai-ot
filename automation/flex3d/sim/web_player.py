@@ -68,6 +68,16 @@ MAIN_DIST = (0.35, 4.0)
 CLOSE_DIST = (0.08, 1.2)
 ROUTE = re.compile(r"^/flex3d/(?P<key>[a-z0-9]{1,32})/(?P<what>info|analysis\.json|view\.json|main\.jpg|close\.jpg)$")
 ASSET = re.compile(r"^/flex3d/(?P<key>[a-z0-9]{1,32})/assets/(?P<file>[A-Za-z0-9_.-]+\.png)$")
+FIGURE = re.compile(r"^/flex3d/(?P<key>[a-z0-9]{1,32})/(?P<file>setup(?:-[1-9][0-9]*)?\.png|setup\.html|setup\.json|wells\.csv)$")
+
+
+def experiment_figure(model):
+    # Lazy and independent of the 3D model: a figure failure never breaks playback.
+    figures = ROOT.parent / 'figures'
+    if str(figures) not in sys.path:
+        sys.path.insert(0, str(figures))
+    from experiment_figure import generate
+    return generate(model.analysis_path, Path(os.environ.get('LABSCRIPT_FIGURE_DIR', EXPORT / 'experiment-figures')))
 
 
 class Model:
@@ -121,6 +131,7 @@ class Model:
     def info(self) -> dict:
         return {
             "key": self.key,
+            "experiment_figure": True,
             "robot_type": self.machine.robot_type,
             "warnings": list(self.plan.warnings),
             "warnings_count": len(self.plan.warnings),
@@ -297,11 +308,37 @@ def make_handler(registry: Registry) -> type[BaseHTTPRequestHandler]:
                     {
                         "ok": True,
                         "service": "labscriptai-flex3d",
+                        "experiment_figure": True,
                         "pid": os.getpid(),
                         "instance": INSTANCE_ID or None,
                         "models": registry.keys(),
                     }
                 )
+                return
+            figure = FIGURE.fullmatch(parsed.path)
+            if figure:
+                model = registry.get(figure['key'])
+                if model is None:
+                    self._json({'error': 'unknown_model'}, code=404)
+                    return
+                try:
+                    manifest = experiment_figure(model)
+                    name = figure['file']
+                    if name not in manifest['files']:
+                        self._json({'error': 'not_found'}, code=404)
+                        return
+                    file = Path(manifest['directory']) / name
+                    types = {'.png': 'image/png', '.html': 'text/html; charset=utf-8',
+                             '.json': 'application/json; charset=utf-8', '.csv': 'text/csv; charset=utf-8'}
+                    self._bytes(file.read_bytes(), types[file.suffix])
+                except Exception:
+                    if figure['file'] == 'setup.html':
+                        self._bytes(('<!doctype html><meta charset="utf-8"><title>实验配置图</title>'
+                                     '<p>配置图暂时无法生成，模拟动画仍可使用。请重运行插件安装器后重试。</p>'
+                                     f'<a href="/viewer.html?key={figure["key"]}">返回模拟动画</a>').encode('utf-8'),
+                                    'text/html; charset=utf-8')
+                    else:
+                        self._json({'error': 'figure_generation_failed', 'message': '配置图暂时不可用；模拟动画仍可使用。'}, code=503)
                 return
             asset = ASSET.match(parsed.path)
             if asset is not None:

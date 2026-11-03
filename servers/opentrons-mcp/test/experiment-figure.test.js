@@ -1,0 +1,63 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { createServer } from "node:net";
+import { fileURLToPath } from "node:url";
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
+const dir = fs.mkdtempSync(path.join(os.tmpdir(), "figure-中文-"));
+process.env.PLUGIN_DATA = dir;
+process.env.OPENTRONS_PLUGIN_ROOT = root;
+process.env.MUJOCO_GL = "disable";
+const { TOOL_HANDLERS } = await import("../index.js");
+const { successResponse } = await import("../lib/envelope.js");
+const { generateExperimentFigure } = await import("../lib/experiment-figure.js");
+test.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+test("real simulate entry returns an inline setup PNG, and viewer serves that same data plus downloads", async t => {
+  const protocol = path.join(root, "examples/01-flex-serial-dilution/protocol.py");
+  const sim = await TOOL_HANDLERS.simulate_protocol({ protocol_path: protocol });
+  assert.equal(sim.data.ok, true, JSON.stringify(sim.data));
+  const figure = sim.data.experiment_figure;
+  assert.equal(figure.ok, true, JSON.stringify(figure));
+  assert.equal(figure.source_well_count, 2);
+  const response = successResponse(sim);
+  assert.equal(response.content[1].mimeType, "image/png");
+  const model = JSON.parse(fs.readFileSync(figure.data_path, "utf8"));
+  const plate = model.labware.find(v => v.slot === "C3");
+  assert.equal(Object.values(plate.initial.A1)[0], 100);
+  assert.equal(plate.initial.A2, undefined); // dispensing does not invent an initial fill
+  const server = createServer();
+  await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
+  const port = server.address().port;
+  await new Promise(resolve => server.close(resolve));
+  t.after(() => TOOL_HANDLERS.flex3d_open_viewer({ action: "close", port }));
+  const viewer = (await TOOL_HANDLERS.flex3d_open_viewer({ protocol_path: protocol, port })).data;
+  assert.equal(viewer.ok, true, JSON.stringify(viewer));
+  assert.equal(viewer.experiment_figure.png_path, figure.png_path);
+  const page = await fetch(viewer.experiment_figure.url);
+  assert.equal(page.status, 200);
+  assert.match(await page.text(), /下载 PNG/);
+  const png = await fetch(new URL("setup.png", viewer.experiment_figure.url));
+  assert.equal(png.headers.get("content-type"), "image/png");
+  assert.deepEqual(Buffer.from(await png.arrayBuffer()), fs.readFileSync(figure.png_path));
+  const csv = await fetch(new URL("wells.csv", viewer.experiment_figure.url));
+  assert.equal(csv.status, 200);
+  const modelUrl = new URL(viewer.url).searchParams.get("key");
+  const missing = await fetch(`http://127.0.0.1:${port}/flex3d/${modelUrl}/setup-999.png`);
+  assert.equal(missing.status, 404);
+});
+
+test("invalid figure input is nonfatal and failed simulations never reuse a stale image", async () => {
+  const source = path.join(dir, "bad.json");
+  fs.writeFileSync(source, '{"robotType":"alien","commands":[]}');
+  assert.equal((await generateExperimentFigure({ analysisPath: source })).ok, false);
+  const broken = path.join(dir, "broken.py");
+  fs.writeFileSync(broken, 'requirements={"robotType":"Flex","apiLevel":"2.24"}\ndef run(p):\n    raise RuntimeError("fixture failure")\n');
+  const failed = await TOOL_HANDLERS.simulate_protocol({ protocol_path: broken });
+  assert.equal(failed.data.ok, false);
+  assert.equal(failed.data.experiment_figure.status, "not_available");
+  assert.deepEqual(failed.images, []);
+});

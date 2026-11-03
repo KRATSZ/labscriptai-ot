@@ -4,6 +4,7 @@ import { spawn } from "child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { connect } from "node:net";
 import { analyzeProtocolOnce } from "./analyze-once.js";
+import { generateExperimentFigure, FIGURE_DIR } from "./experiment-figure.js";
 
 import { DATA_DIR, PLUGIN_ROOT, resolvePythonCandidates } from "./paths.js";
 
@@ -197,6 +198,9 @@ export async function startFlex3dViewer({ protocolPath, port = FLEX3D_DEFAULT_PO
       }
       if (!parsed || !Array.isArray(parsed.commands)) return failure("invalid_protocol", "The analysis must contain a commands list.");
       const hash = createHash("sha256").update(body).digest("hex");
+      const figure = await generateExperimentFigure({ analysisPath: source, preferredPython });
+      const withFigure = (output, available = true) => ({ ...output, experiment_figure: { ...figure,
+        ...(output.ok && available ? { url: `http://127.0.0.1:${port}/flex3d/${new URL(output.url).searchParams.get("key")}/setup.html` } : {}) } });
       const meta = readOwnership(port);
       const report = await health(port);
       if (owned(meta, report)) {
@@ -215,13 +219,13 @@ export async function startFlex3dViewer({ protocolPath, port = FLEX3D_DEFAULT_PO
           meta.models = { ...models, [hash]: key };
           saveOwnership(meta);
         }
-        return result(meta, key, protocol, true);
+        return withFigure(result(meta, key, protocol, true), report.experiment_figure === true);
       }
       if (report) return busy(port, report);
       if (meta && alive(meta.pid)) return failure("viewer_unverified", "The previous viewer is not responding. It was left running; use another port.", { port });
       fs.rmSync(ownershipFile(port), { force: true });
       fs.mkdirSync(FLEX3D_DEFAULT_OUT, { recursive: true });
-      return await withUsablePython(preferredPython, async python => {
+      return withFigure(await withUsablePython(preferredPython, async python => {
         const instance = randomUUID();
         const logPath = path.join(FLEX3D_DEFAULT_OUT, `viewer-${port}-${Date.now()}-${instance.slice(0, 8)}.log`);
         const log = fs.openSync(logPath, "wx", 0o600);
@@ -230,7 +234,7 @@ export async function startFlex3dViewer({ protocolPath, port = FLEX3D_DEFAULT_PO
           child = spawn(python, ["-m", "sim.web_player", "--host", "127.0.0.1", "--port", String(port), "--protocol", source], {
             cwd: FLEX3D_ROOT, detached: true, windowsHide: true, stdio: ["ignore", log, log],
             env: { ...process.env, FLEX3D_EXPORT: FLEX3D_DEFAULT_OUT, PYTHONPATH: FLEX3D_ROOT,
-              FLEX3D_INSTANCE_ID: instance, PYTHONIOENCODING: "utf-8" },
+              FLEX3D_INSTANCE_ID: instance, PYTHONIOENCODING: "utf-8", LABSCRIPT_FIGURE_DIR: FIGURE_DIR },
           });
         } finally { fs.closeSync(log); }
         await new Promise((resolve, reject) => { child.once("spawn", resolve); child.once("error", reject); });
@@ -256,7 +260,7 @@ export async function startFlex3dViewer({ protocolPath, port = FLEX3D_DEFAULT_PO
         if (/No module named ["']?mujoco/i.test(stderr)) return failure("mujoco_missing", "Re-run the installer in the loaded plugin folder to enable 3D preview.", extra);
         return failure(timedOut ? "viewer_start_timeout" : "viewer_start_failed",
           timedOut ? "The viewer did not become ready within 45s. See its startup log." : "The viewer could not start. See its startup log.", extra);
-      });
+      }));
     } catch (error) {
       return failure("viewer_start_failed", error.message);
     }

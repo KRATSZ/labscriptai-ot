@@ -35,6 +35,9 @@ class ReleasePackage(unittest.TestCase):
             with zipfile.ZipFile(a) as z:
                 self.assertEqual(len(z.namelist()), asset['files'])
                 identity = json.loads(z.read('labscriptai-ot/build-info.json'))
+                self.assertIn('labscriptai-ot/automation/figures/experiment_figure.py',z.namelist())
+                self.assertIn('labscriptai-ot/automation/figures/assets/NotoSansSC-Regular.otf',z.namelist())
+                self.assertIn('labscriptai-ot/automation/figures/assets/OFL.txt',z.namelist())
                 digest = hashlib.sha256()
                 for name in z.namelist():
                     if name.endswith('/build-info.json'):

@@ -65,6 +65,7 @@ import {
 } from "./lib/labware-offsets.js";
 import { parseSimulationLog, runDoctorTool, runSimulationTool } from "./lib/simulation.js";
 import { analyzeProtocolOnce } from "./lib/analyze-once.js";
+import { generateExperimentFigure, figureImages } from "./lib/experiment-figure.js";
 import { runFlex3dCheck, startFlex3dViewer, stopFlex3dViewer } from "./lib/flex3d.js";
 import { runLogicpassCheck, buildLogicpassGateBlock } from "./lib/logicpass.js";
 import { buildProbeWellsProtocol, extractProbeResultsFromCommands } from "./lib/probe.js";
@@ -1226,7 +1227,7 @@ const TOOL_DEFINITIONS = [
   {
     name: "flex3d_open_viewer",
     description:
-      "Open or close the local interactive OT-2/Flex 3D preview. action=open (default) requires protocol_path (.py or analyze JSON); returns a browser URL and reuses this plugin's running viewer. Different protocols keep separate keyed URLs (up to four loaded models). action=close stops only the verified viewer owned by this plugin's data directory; protocol_path is unnecessary. A foreign port is left untouched with an actionable error. Online preview only; scene assets and private logs stay under PLUGIN_DATA, with no images or video exports. Local simulation only; no robot connection.",
+      "Open or close the local interactive OT-2/Flex 3D preview. action=open (default) requires protocol_path (.py or analyze JSON); returns a browser URL and reuses this plugin's running viewer. Different protocols keep separate keyed URLs (up to four loaded models). action=close stops only the verified viewer owned by this plugin's data directory; protocol_path is unnecessary. A foreign port is left untouched with an actionable error. Returns experiment_figure with a setup PNG, page and CSV paths plus a browser URL. The PNG is also returned as MCP image content. Scene assets and figures stay under PLUGIN_DATA; no video export. Local simulation only; no robot connection.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1850,7 +1851,7 @@ const TOOL_DEFINITIONS = [
   {
     name: "simulate_protocol",
     description:
-      "Judge a protocol with one opentrons analyze run and classify the result into structured repair categories (parsed_repair in the response, replacing the former parse_simulation_output call). The analyze JSON is cached and reused by logicpass_check. When virtual_lab_steps (or validate_virtual_lab_state=true) is provided, runs deterministic Virtual Lab State validation first and blocks analysis on any violation (Phase 1.5 gate). extra_args still falls back to opentrons.simulate.",
+      "Judge a protocol with one opentrons analyze run and classify the result into structured repair categories (parsed_repair in the response, replacing the former parse_simulation_output call). The analyze JSON is cached and reused by logicpass_check. When virtual_lab_steps (or validate_virtual_lab_state=true) is provided, runs deterministic Virtual Lab State validation first and blocks analysis on any violation (Phase 1.5 gate). Returns experiment_figure with setup PNG/page/CSV paths and inline MCP image content from this same analysis. A figure error does not change the simulation verdict. extra_args still falls back to opentrons.simulate and may not supply figure data.",
     inputSchema: {
       type: "object",
       properties: {
@@ -7019,7 +7020,8 @@ const TOOL_HANDLERS = {
   async flex3d_open_viewer(args = {}) {
     if (args.action === "close") return { data: await stopFlex3dViewer({ port: args.port }) };
     if (args.action && args.action !== "open") return { data: { ok: false, error: "invalid_action", message: "Choose action=open or action=close." } };
-    return { data: await startFlex3dViewer({ protocolPath: args.protocol_path, port: args.port, preferredPython: args.python_executable }) };
+    const result = await startFlex3dViewer({ protocolPath: args.protocol_path, port: args.port, preferredPython: args.python_executable });
+    return { data: result, images: figureImages(result.experiment_figure) };
   },
 
   async vision_check(args) {
@@ -8069,6 +8071,11 @@ const TOOL_HANDLERS = {
       return gate;
     }
     const simulationData = await runSimulationTool(args);
+    const figure = simulationData.ok && simulationData.analysis_path
+      ? await generateExperimentFigure({ analysisPath: simulationData.analysis_path, preferredPython: args.python_executable })
+      : { ok: false, status: "not_available", message: simulationData.ok
+        ? "本次模拟没有生成可用于绘图的分析数据；模拟结果仍可使用。"
+        : "本次分析未完成；修复协议后重试，配置图会自动生成。" };
     let parsedRepair = null;
     try {
       parsedRepair = parseSimulationLog({ simulation_output_json: JSON.stringify(simulationData) });
@@ -8078,8 +8085,10 @@ const TOOL_HANDLERS = {
     return {
       data: {
         ...simulationData,
+        experiment_figure: figure,
         ...(parsedRepair ? { parsed_repair: parsedRepair } : {}),
       },
+      images: figureImages(figure),
     };
   },
 
