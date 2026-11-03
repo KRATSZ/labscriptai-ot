@@ -31,7 +31,9 @@ export function buildEnvelope({
 }
 
 export function successResponse(options = {}) {
-  return asTextResponse(buildEnvelope({ success: true, ...options }));
+  const response = asTextResponse(buildEnvelope({ success: true, ...options }));
+  if (Array.isArray(options.images)) response.content.push(...options.images);
+  return response;
 }
 
 export function errorResponse(tool, error, extra = {}) {

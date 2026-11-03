@@ -8,6 +8,7 @@ const UI = {
     play: "播放",
     pause: "暂停",
     lang: "English",
+    figure: "实验配置图",
     time: "时间",
     empty: "还没有命令。",
     fail: "打不开",
@@ -36,6 +37,7 @@ const UI = {
     play: "Play",
     pause: "Pause",
     lang: "中文",
+    figure: "Experiment setup image",
     time: "Time",
     empty: "No command yet.",
     fail: "Could not open",
@@ -96,6 +98,7 @@ function renderChrome() {
   document.getElementById("help").textContent = text.help;
   document.getElementById("time-label").textContent = text.time;
   langBtn.textContent = text.lang;
+  document.getElementById("experiment-figure").textContent = text.figure;
   document.querySelector('#view option[value="deck"]').textContent = text.deck;
   document.querySelector('#view option[value="machine"]').textContent = text.machine;
   document.getElementById("reset-view").textContent = text.reset;
@@ -493,6 +496,8 @@ async function boot() {
     renderChrome();
     return;
   }
+  const figureLink = document.getElementById("experiment-figure");
+  figureLink.href = `/flex3d/${key}/setup.html`;
   const [infoRes, analysisRes, viewRes] = await Promise.all([
     fetch(`/flex3d/${key}/info`),
     fetch(`/flex3d/${key}/analysis.json`),
@@ -507,6 +512,7 @@ async function boot() {
     return;
   }
   info = await infoRes.json();
+  figureLink.hidden = !info.experiment_figure;
   const analysis = await analysisRes.json();
   commands = analysis.commands || [];
   titleEl.textContent = info.title || "Flex 3D";
