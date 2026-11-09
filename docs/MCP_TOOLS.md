@@ -46,7 +46,7 @@ Run no-motion recovery invariants inside the loaded MCP process, including liqui
 
 ### `simulate_protocol` [L0]
 
-Judge a protocol with one opentrons analyze run and classify the result into structured repair categories (parsed_repair in the response, replacing the former parse_simulation_output call). The analyze JSON is cached and reused by logicpass_check. When virtual_lab_steps (or validate_virtual_lab_state=true) is provided, runs deterministic Virtual Lab State validation first and blocks analysis on any violation (Phase 1.5 gate). extra_args still falls back to opentrons.simulate.
+Judge a protocol with one opentrons analyze run and classify the result into structured repair categories (parsed_repair in the response, replacing the former parse_simulation_output call). The analyze JSON is cached and reused by logicpass_check. When virtual_lab_steps (or validate_virtual_lab_state=true) is provided, runs deterministic Virtual Lab State validation first and blocks analysis on any violation (Phase 1.5 gate). Returns experiment_figure with setup PNG/page/CSV paths and inline MCP image content from this same analysis. A figure error does not change the simulation verdict. extra_args still falls back to opentrons.simulate and may not supply figure data.
 
 **Parameters:** `protocol_path`, `workspace_root` (optional), `api_root` (optional), `shared_data_root` (optional), `python_executable` (optional), `extra_args` (optional), `max_log_chars` (optional), `session_id` (optional), `initial_state` (optional), `virtual_lab_steps` (optional), `validate_virtual_lab_state` (optional), `skip_virtual_lab_state_validation` (optional)
 
@@ -113,6 +113,12 @@ Read-only go/no-go gate before live liquid watcher or probe re-runs. Checks load
 Read-only live readiness gate for Flex: combines local runtime health, restart/session guidance, robot/module status, home safety, and optional preflight into pass/warn/fail checks before create_run or play.
 
 **Parameters:** `robot_ip`, `session_id` (optional), `file_path` (optional), `python_executable` (optional), `run_id` (optional)
+
+### `protocol_artifacts` [L2]
+
+Artifact API v1: export self-contained animation and experiment setup HTML documents from a successful analyze JSON. Returns plugin_version, analysis_sha256 and per-document status/path/bytes/sha256/mime. Files are local, contain no server dependencies, and can be copied into authenticated host caches. Also returns attachments with name/path/mime/bytes/sha256 for host-owned authenticated downloads; setup HTML itself contains no download links. No robot access. One unavailable document does not invalidate the other.
+
+**Parameters:** `analysis_path`, `python_executable` (optional)
 
 ### `query_history` [L2]
 
@@ -312,7 +318,7 @@ Deck vision observation (observation-only; does not mutate session state; compar
 
 ### `flex3d_open_viewer` [L4]
 
-Open or close the local interactive OT-2/Flex 3D preview. action=open (default) requires protocol_path (.py or analyze JSON); returns a browser URL and reuses this plugin's running viewer. Different protocols keep separate keyed URLs (up to four loaded models). action=close stops only the verified viewer owned by this plugin's data directory; protocol_path is unnecessary. A foreign port is left untouched with an actionable error. Online preview only; scene assets and private logs stay under PLUGIN_DATA, with no images or video exports. Local simulation only; no robot connection.
+Open or close the local interactive OT-2/Flex 3D preview. action=open (default) requires protocol_path (.py or analyze JSON); returns a browser URL and reuses this plugin's running viewer. Different protocols keep separate keyed URLs (up to four loaded models). action=close stops only the verified viewer owned by this plugin's data directory; protocol_path is unnecessary. A foreign port is left untouched with an actionable error. Returns experiment_figure with a setup PNG, page and CSV paths plus a browser URL. The PNG is also returned as MCP image content. Scene assets and figures stay under PLUGIN_DATA; no video export. Local simulation only; no robot connection.
 
 **Parameters:** `action` (optional), `protocol_path` (optional), `port` (optional), `python_executable` (optional)
 

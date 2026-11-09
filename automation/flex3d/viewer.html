@@ -69,6 +69,8 @@
   .bar button + button, .bar label { border-left: 1px solid #d5e6f4; }
   .bar button { cursor: pointer; }
   .bar button:hover { background: #e7f2fb; }
+  .bar a { padding: 8px 12px; color: #087c83; font: inherit; text-decoration: none; border-left: 1px solid #d5e6f4; }
+  .bar a:hover { background: #e7f2fb; }
   #time { width: 128px; margin: 0; accent-color: #3d7eae; }
   aside { border-left: 1px solid #d5e6f4; overflow: auto; background: #fff; }
   #steps { list-style: none; margin: 0; padding: 0; counter-reset: step; }
@@ -118,6 +120,7 @@
   </div>
   <div class="bar">
     <button type="button" id="lang">English</button>
+    <a id="experiment-figure" hidden>实验配置图</a>
     <button type="button" id="play">播放</button>
     <select id="view" aria-label="视角"><option value="deck">台面</option><option value="machine">整机</option></select>
     <button type="button" id="reset-view">重置视角</button>
