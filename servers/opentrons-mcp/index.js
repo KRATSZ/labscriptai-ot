@@ -9,6 +9,7 @@ import { systemPath } from "../../scripts/runtime-paths.mjs";
 
 import { errorResponse, successResponse } from "./lib/envelope.js";
 import { requestRobotBytes, requestRobotJson } from "./lib/http.js";
+import { resolveRobotConnection, robotConnectionSummary } from "./lib/robot-connection.js";
 import {
   applyObservedDeckToSessionState,
   buildActionSummary,
@@ -1916,7 +1917,7 @@ const TOOL_DEFINITIONS = [
   {
     name: "health_check",
     description:
-      "Health and environment checks in one entry. scope=full (default) is the comprehensive check: MCP server, Python venv, opentrons package, git state, session state, plus robot connectivity when robot_ip is given; scope=robot is a quick robot /health connectivity ping (requires robot_ip); scope=local probes whether the local Python environment can import opentrons.simulate.",
+      "Health and environment checks in one entry. scope=full (default) checks MCP server, Python, git and session state, and reports robot_connection (saved address, source, config_path) without contacting a robot unless robot_ip is given. scope=robot checks /health using robot_ip, OPENTRONS_HOST or the saved address. Successful robot connections save the address for future chats. scope=local checks the local Python environment only.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1926,7 +1927,7 @@ const TOOL_DEFINITIONS = [
           default: "full",
           description: "full = comprehensive; robot = quick /health ping; local = local Python env probe.",
         },
-        robot_ip: { type: "string", description: "Robot IP (required for scope=robot, optional for full)." },
+        robot_ip: { type: "string", description: "Optional robot IP or base URL; scope=robot reuses the saved address when omitted." },
         python_executable: {
           type: "string",
           description: "Optional Python interpreter to inspect instead of the repo-local .venv.",
@@ -2050,6 +2051,28 @@ const TOOL_DEFINITIONS = [
     },
   },
 ];
+
+// Advertise persistence consistently, including tools that previously required
+// an address on every call. Resolve once per live operation to pin its target.
+const ROBOT_CONNECTION_TOOLS = new Set();
+for (const tool of TOOL_DEFINITIONS) {
+  if (!tool.inputSchema.properties?.robot_ip) continue;
+  ROBOT_CONNECTION_TOOLS.add(tool.name);
+  tool.inputSchema.properties.robot_ip.description = "Robot IP, hostname or HTTP(S) base URL. Optional after the first successful connection: explicit robot_ip > OPENTRONS_HOST > saved user connection. A new explicit address updates the saved connection after success.";
+  if (tool.inputSchema.required) {
+    tool.inputSchema.required = tool.inputSchema.required.filter(name => name !== "robot_ip");
+  }
+}
+
+function usesDefaultRobotConnection(name, args) {
+  if (name === "health_check") return args.scope === "robot";
+  // Restart summaries are local unless a live preview is explicitly requested.
+  if (name === "safe_next_action") return false;
+  if (name === "query_history" && args.scope === "experiment_logs") return false;
+  if (name === "deck_vision_check" && args.mode === "local") return false;
+  if (name === "probe_wells" && args.execute_on_robot !== true) return false;
+  return true;
+}
 
 async function uploadProtocol(args) {
   const { robot_ip, file_path, protocol_kind, key, run_time_parameters } = args;
@@ -8160,6 +8183,7 @@ const TOOL_HANDLERS = {
       return TOOL_HANDLERS.doctor_local_runtime(rest);
     }
     const report = buildHealthCheck(args);
+    report.robot_connection = robotConnectionSummary(args.robot_ip);
     report.mcp_server.entrypoint = __filename;
     report.mcp_server.required_runtime_tools = buildToolAvailabilitySummary();
     if (args.robot_ip) {
@@ -8279,6 +8303,17 @@ const TOOL_HANDLERS = {
     return executeLiveReadinessCheck(args);
   },
 };
+
+for (const name of ROBOT_CONNECTION_TOOLS) {
+  const handler = TOOL_HANDLERS[name];
+  TOOL_HANDLERS[name] = async (args = {}) => {
+    if (args.robot_ip == null && usesDefaultRobotConnection(name, args)) {
+      const connection = resolveRobotConnection(args.robot_ip);
+      if (connection) args = { ...args, robot_ip: connection.robot_ip };
+    }
+    return handler(args);
+  };
+}
 
 class OpentronsLabMCP {
   constructor() {

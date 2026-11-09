@@ -36,6 +36,7 @@ Help the user get the requested experiment done. Use the steps that apply; a sma
 
 ## 3. Read the live state; choose optional checks
 
+- Reuse the saved robot connection across chats. Before asking for an IP, inspect `health_check(scope=full).robot_connection` (local metadata only), or call the requested read-only robot tool without `robot_ip`; it resolves explicit address → `OPENTRONS_HOST` → saved user address. Ask once only when none exists. A successful connection saves the address outside plugin caches; a newly supplied address replaces it after success. If the saved robot is unreachable, report that address and ask whether it changed rather than demanding it again. Saving an address does not authorize motion.
 - Use `robot_status(include_modules=true)` and read-only readiness tools as needed. Reconcile an actual session/deck conflict with `reconcile_state` before relying on that state.
 - Report known faults accurately. Door open, an engaged estop or a collision is different from an endpoint that returned no reading. Missing door/estop readings are `not_checked` warnings.
 - A module heating/cooling toward its target is not automatically a startup blocker: check whether the protocol waits for it. Do not require unused modules to be ready.

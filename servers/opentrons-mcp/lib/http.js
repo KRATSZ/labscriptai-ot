@@ -1,5 +1,6 @@
+import { rememberRobotAddress, requireRobotAddress } from "./robot-connection.js";
+
 const DEFAULT_VERSION_HEADER = process.env.OPENTRONS_VERSION || "4";
-const DEFAULT_PORT = process.env.OPENTRONS_PORT || "31950";
 
 function safeJsonParse(text) {
   if (!text) {
@@ -9,19 +10,17 @@ function safeJsonParse(text) {
 }
 
 export function normalizeBaseUrl(robotIp) {
-  if (robotIp && /^https?:\/\//i.test(robotIp)) {
-    return robotIp.replace(/\/$/, "");
+  return requireRobotAddress(robotIp);
+}
+
+function rememberConnectedRobot(address) {
+  try {
+    rememberRobotAddress(address);
+  } catch (error) {
+    // A settings write failure must never turn completed robot motion into a
+    // failed request that callers might retry.
+    console.error(`Robot connected, but its address could not be saved: ${error.message}`);
   }
-  if (robotIp) {
-    if (/^[^/]+:\d+$/.test(robotIp)) {
-      return `http://${robotIp}`;
-    }
-    return `http://${robotIp}:${DEFAULT_PORT}`;
-  }
-  if (process.env.OPENTRONS_HOST) {
-    return process.env.OPENTRONS_HOST.replace(/\/$/, "");
-  }
-  throw new Error("robot_ip is required unless OPENTRONS_HOST is set.");
 }
 
 export function buildRobotUrl(robotIp, pathname, searchParams = null) {
@@ -143,10 +142,13 @@ export async function requestRobotJson(
   pathname,
   { headers = {}, body = null, searchParams = null } = {},
 ) {
-  return requestJson(method, buildRobotUrl(robotIp, pathname, searchParams), {
+  const address = normalizeBaseUrl(robotIp);
+  const result = await requestJson(method, buildRobotUrl(address, pathname, searchParams), {
     headers,
     body,
   });
+  rememberConnectedRobot(address);
+  return result;
 }
 
 export async function requestRobotBytes(
@@ -155,8 +157,11 @@ export async function requestRobotBytes(
   pathname,
   { headers = {}, body = null, searchParams = null } = {},
 ) {
-  return requestBytes(method, buildRobotUrl(robotIp, pathname, searchParams), {
+  const address = normalizeBaseUrl(robotIp);
+  const result = await requestBytes(method, buildRobotUrl(address, pathname, searchParams), {
     headers,
     body,
   });
+  rememberConnectedRobot(address);
+  return result;
 }

@@ -81,6 +81,14 @@ For a bundled example, use [the Flex serial dilution walkthrough](../examples/01
 
 Simulation now also generates an **experiment setup image** automatically: deck slots, modules, labware and declared starting liquids. Ask the agent to show its returned PNG; no extra command is needed. In the animation page, select **实验配置图 / Experiment setup image** to view/download all image pages and the per-well CSV. Large experiments are split into pages. Amounts come from `define_liquid` / `load_liquid`; undeclared contents remain **未声明**, and final concentrations are not guessed. PNG generation works offline with the bundled Chinese sans-serif font, independently of 3D. If it fails, the existing simulation result and animation remain available. After upgrading with an older viewer already running, close and reopen the preview to load its new image routes.
 
+## Remember the robot address
+
+Provide your robot's IP once when first connecting, for example “Check the robot at 192.168.1.50”. After a successful connection, the plugin saves it automatically and reuses it in new chats and after a restart or plugin upgrade. To change robots or update an IP, provide the new address; it replaces the saved address after a successful connection. An unreachable address does not overwrite a working saved address.
+
+Robot tools accept an optional `robot_ip` (bare IP, hostname, host:port or HTTP(S) base URL). Resolution order is explicit `robot_ip` → `OPENTRONS_HOST` → saved connection. `health_check(scope=full)` reports `robot_connection.robot_ip`, `source` and `config_path` without connecting unless an address is explicitly supplied; `health_check(scope=robot)` checks the saved robot. Local-only checks remain local, and saving an address does not authorize motion.
+
+MCP and the LAN fallback share `robot-connection.json` under the stable user directory: `%LOCALAPPDATA%/labscriptai-ot` on Windows, `~/Library/Application Support/labscriptai-ot` on macOS, and `${XDG_DATA_HOME:-~/.local/share}/labscriptai-ot` on Linux. `LABSCRIPTAI_HOME` overrides this directory; `OPENTRONS_CONNECTION_FILE` optionally selects a specific file. The connection is independent of per-experiment `PLUGIN_DATA` and versioned plugin caches. Remove that file to forget the saved address (an explicit `OPENTRONS_HOST` still takes precedence).
+
 ## What a passing result means
 
 - **Simulation:** the Opentrons software can interpret and execute the protocol locally.

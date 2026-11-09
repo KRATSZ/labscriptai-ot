@@ -5,8 +5,10 @@ from __future__ import annotations
 import argparse
 import json
 import mimetypes
+import os
 import re
 import sys
+import tempfile
 import time
 import uuid
 from dataclasses import dataclass
@@ -14,6 +16,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 from urllib import error, request
+from urllib.parse import urlsplit
 
 DEFAULT_PORT = 31950
 DEFAULT_TIMEOUT = 30
@@ -27,7 +30,22 @@ from robot_run import TERMINAL_RUN_STATUSES  # noqa: E402
 
 LOCAL_ONLY_COMMANDS = frozenset({"show-connection", "search-labware"})
 
-_CONNECTION_CONFIG_PATH = Path(__file__).resolve().parent.parent / "data" / "robot-connection.json"
+_LEGACY_CONNECTION_CONFIG_PATH = Path(__file__).resolve().parent.parent / "data" / "robot-connection.json"
+
+
+def connection_config_path() -> Path:
+    """Same stable user directory as scripts/runtime-paths.mjs dataHome()."""
+    if os.environ.get("OPENTRONS_CONNECTION_FILE", "").strip():
+        return Path(os.environ["OPENTRONS_CONNECTION_FILE"].strip()).resolve()
+    if os.environ.get("LABSCRIPTAI_HOME", "").strip():
+        home = Path(os.environ["LABSCRIPTAI_HOME"].strip()).resolve()
+    elif sys.platform == "win32":
+        home = Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData" / "Local") / "labscriptai-ot"
+    elif sys.platform == "darwin":
+        home = Path.home() / "Library" / "Application Support" / "labscriptai-ot"
+    else:
+        home = Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local" / "share") / "labscriptai-ot"
+    return home / "robot-connection.json"
 
 
 @dataclass(frozen=True)
@@ -36,10 +54,11 @@ class ConnectionConfig:
     port: int = DEFAULT_PORT
     token: str | None = None
     timeout: int = DEFAULT_TIMEOUT
+    scheme: str = "http"
 
     @property
     def base_url(self) -> str:
-        return f"http://{self.host}:{self.port}"
+        return f"{self.scheme}://{self.host}:{self.port}"
 
 
 def parse_bool(value: str) -> bool:
@@ -248,27 +267,37 @@ def _extract_flex_slot_name(value: Any) -> str | None:
 
 def load_connection_config() -> dict[str, Any] | None:
     """Load saved robot connection config from disk."""
-    if not _CONNECTION_CONFIG_PATH.exists():
+    config_path = connection_config_path()
+    if not config_path.exists():
+        config_path = _LEGACY_CONNECTION_CONFIG_PATH
+    if not config_path.exists():
         return None
     try:
-        return json.loads(_CONNECTION_CONFIG_PATH.read_text(encoding="utf-8"))
+        entry = json.loads(config_path.read_text(encoding="utf-8"))
+        return entry if isinstance(entry, dict) else None
     except (json.JSONDecodeError, OSError):
         return None
 
 
-def save_connection_config(host: str, port: int, token: str | None) -> dict[str, Any]:
+def save_connection_config(host: str, port: int, token: str | None, scheme: str = "http") -> dict[str, Any]:
     """Save robot connection config to disk."""
-    _CONNECTION_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    config_path = connection_config_path()
+    config_path.parent.mkdir(parents=True, exist_ok=True)
     entry: dict[str, Any] = {
+        "robot_ip": f"{scheme}://{host}:{port}",
         "host": host,
         "port": port,
+        "scheme": scheme,
         "token": token,
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
-    _CONNECTION_CONFIG_PATH.write_text(
-        json.dumps(entry, indent=2, ensure_ascii=False) + "\n",
-        encoding="utf-8",
-    )
+    with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=config_path.parent, delete=False) as handle:
+        temporary = Path(handle.name)
+        handle.write(json.dumps(entry, indent=2, ensure_ascii=False) + "\n")
+    try:
+        os.replace(temporary, config_path)
+    finally:
+        temporary.unlink(missing_ok=True)
     return entry
 
 
@@ -276,7 +305,13 @@ def resolve_config(args: argparse.Namespace) -> ConnectionConfig:
     """Build ConnectionConfig from *args*, falling back to saved config."""
     saved = load_connection_config() or {}
     explicit_host = getattr(args, "host", None)
-    host = explicit_host or saved.get("host")
+    environment_host = os.environ.get("OPENTRONS_HOST", "").strip()
+    address = explicit_host or environment_host or saved.get("robot_ip") or saved.get("host")
+    parsed = urlsplit(address if address and "://" in address else f"http://{address or ''}")
+    host = parsed.hostname
+    scheme = parsed.scheme
+    if scheme not in {"http", "https"} or parsed.username or parsed.password or parsed.path not in {"", "/"} or parsed.query or parsed.fragment:
+        raise SystemExit("Robot address must be an HTTP(S) base URL or host, without credentials, path or query.")
     if not host:
         raise SystemExit(
             "No --host provided and no saved connection found. "
@@ -285,19 +320,29 @@ def resolve_config(args: argparse.Namespace) -> ConnectionConfig:
 
     raw_port = getattr(args, "port", None)
     if raw_port is None:
-        raw_port = DEFAULT_PORT if explicit_host else saved.get("port", DEFAULT_PORT)
+        raw_port = parsed.port
+        if raw_port is None:
+            raw_port = (443 if scheme == "https" else 80) if "://" in str(address) else DEFAULT_PORT
+            if not explicit_host and not environment_host:
+                raw_port = saved.get("port", raw_port)
     raw_token = getattr(args, "token", None)
     if raw_token is None:
-        raw_token = saved.get("token")
+        same_robot = (
+            host == str(saved.get("host", "")).strip("[]")
+            and int(raw_port) == saved.get("port")
+            and scheme == saved.get("scheme", "http")
+        )
+        raw_token = saved.get("token") if same_robot else None
     raw_timeout = getattr(args, "timeout", None)
     if raw_timeout is None:
         raw_timeout = DEFAULT_TIMEOUT
 
     return ConnectionConfig(
-        host=str(host),
+        host=f"[{host}]" if ":" in host else str(host),
         port=int(raw_port),
         token=raw_token,
         timeout=int(raw_timeout),
+        scheme=scheme,
     )
 
 
@@ -487,7 +532,7 @@ def handle_capture_preview(args: argparse.Namespace, config: ConnectionConfig) -
 
 
 def handle_save_connection(args: argparse.Namespace, config: ConnectionConfig) -> int:
-    saved = save_connection_config(args.host, config.port, config.token)
+    saved = save_connection_config(config.host, config.port, config.token, config.scheme)
     print_json(_redact_connection_config(saved))
     return 0
 
@@ -1075,9 +1120,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     config = None if args.command in LOCAL_ONLY_COMMANDS else resolve_config(args)
     rc = args.handler(args, config)
-    # Auto-save connection on success when host was explicitly provided
-    if rc == 0 and args.host and args.command != "save-connection" and args.command not in LOCAL_ONLY_COMMANDS:
-        save_connection_config(args.host, config.port, config.token)
+    # Save shared defaults and migrate the older skill-local record on success.
+    if rc == 0 and args.command != "save-connection" and args.command not in LOCAL_ONLY_COMMANDS:
+        try:
+            save_connection_config(config.host, config.port, config.token, config.scheme)
+        except OSError as exc:
+            print(f"Robot connected, but its address could not be saved: {exc}", file=sys.stderr)
     return rc
 
 

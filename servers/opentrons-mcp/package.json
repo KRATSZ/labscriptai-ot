@@ -9,7 +9,7 @@
   },
   "scripts": {
     "start": "node index.js",
-    "test": "node --test"
+    "test": "node --require ./test-support/isolated-connection.cjs --test"
   },
   "keywords": [
     "opentrons",

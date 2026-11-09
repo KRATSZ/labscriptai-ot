@@ -49,6 +49,7 @@ Route to individual skills when the user intent is narrow:
 3. Treat live robot actions as opt-in only.
 4. Treat vision as observation-only; never use it as committed deck truth.
 5. Use `reconcile_state`, `robot_status`, and the robot APIs for actual deck state.
+   Reuse the saved user-wide robot connection before asking for an IP. `health_check(scope=full).robot_connection` reports the address without network access; live tools can omit `robot_ip` after the first successful connection. A saved address is not authorization for motion.
 6. Liquid probing is optional; its environment flag gates probe motion only. Honor explicit scoped software-check waivers using the existing run flags; see `policy/safety-policy.md#operator-selected-checks`.
 
 ## Operator communication
@@ -80,6 +81,8 @@ Or on Windows: `.\install-labscriptai-ot.ps1`
 ## Important Environment Variables
 
 - `OPENTRONS_PLUGIN_ROOT`: absolute path to this repository.
+- `OPENTRONS_HOST`: optional default robot base URL or IP; overrides the saved connection. An explicit tool `robot_ip` takes priority.
+- `OPENTRONS_CONNECTION_FILE`: optional shared robot-connection JSON path; defaults to `robot-connection.json` in the stable user data directory (`LABSCRIPTAI_HOME` when set), outside versioned plugin caches and per-experiment `PLUGIN_DATA`.
 - `PLUGIN_DATA`: writable state/artifact directory.
 - `OPENTRONS_PYTHON`: Python executable with Flex simulation and 3D dependencies.
 - `OPENTRONS_OT2_PYTHON`: optional dedicated OT-2 analyzer override; the installer supplies its isolated 8.8.2 baseline automatically.

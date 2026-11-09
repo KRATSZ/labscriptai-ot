@@ -42,6 +42,8 @@ camera tools (`camera_settings(action=status)`, `capture_image(mode=preview)`, `
 
 ### Connection management
 
+Reuse the saved connection before asking for an IP. MCP and this fallback share the per-user `robot-connection.json` outside plugin caches; precedence is explicit address → `OPENTRONS_HOST` → saved connection. A successful connection automatically saves the address for future chats, including after a restart/upgrade. The fallback also reads its older skill-local record when no shared record exists. A saved address does not authorize live motion. Do not run fallback and MCP live control in parallel.
+
 ```bash
 # Save connection for reuse (--host is optional afterwards)
 uv run python scripts/opentrons_robot_api.py --host 192.168.1.50 save-connection

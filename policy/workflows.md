@@ -4,6 +4,8 @@ This file is the **single source of truth** for end-to-end and tool-order workfl
 
 ## New experiment (end-to-end)
 
+Robot connection: reuse the user-wide saved address before asking for an IP. `health_check(scope=full).robot_connection` reports configuration without network access; `health_check(scope=robot)` or other live tools can omit `robot_ip`. Precedence is explicit `robot_ip` → `OPENTRONS_HOST` → saved address. Successful connections persist the address across chats and plugin upgrades. Only ask for an address when none is configured, or when the user needs to change an unreachable robot. Saved connection details are not motion authorization.
+
 ```
 user intent / SOP
   →  (optional) bundled questions for facts that block the current decision

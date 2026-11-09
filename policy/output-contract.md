@@ -81,7 +81,7 @@ Use the scoped authorization rules in [workflows.md](workflows.md#humanconfirmbu
   "phase": "simulation",
   "status": "passed",
   "summary": "Local simulation completed with no errors.",
-  "next_action": "If you want to run on the robot, provide robot IP for live_readiness_check.",
+  "next_action": "If you want to run on the robot, use live_readiness_check with the saved connection; ask for robot IP only when no connection is configured.",
   "artifacts": ["examples/01-flex-serial-dilution/protocol.py"]
 }
 ```

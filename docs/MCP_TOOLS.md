@@ -22,7 +22,7 @@ Server name: `opentrons-lab`. Workflows: [policy/workflows.md](../policy/workflo
 
 ### `health_check` [L0]
 
-Health and environment checks in one entry. scope=full (default) is the comprehensive check: MCP server, Python venv, opentrons package, git state, session state, plus robot connectivity when robot_ip is given; scope=robot is a quick robot /health connectivity ping (requires robot_ip); scope=local probes whether the local Python environment can import opentrons.simulate.
+Health and environment checks in one entry. scope=full (default) checks MCP server, Python, git and session state, and reports robot_connection (saved address, source, config_path) without contacting a robot unless robot_ip is given. scope=robot checks /health using robot_ip, OPENTRONS_HOST or the saved address. Successful robot connections save the address for future chats. scope=local checks the local Python environment only.
 
 **Parameters:** `scope` (optional), `robot_ip` (optional), `python_executable` (optional), `workspace_root` (optional), `api_root` (optional), `shared_data_root` (optional)
 
@@ -62,7 +62,7 @@ Heuristically estimate tip usage and flag low-volume transfers below the recomme
 
 Before play: verify session reconciliation, robot readiness, and (Flex) declared protocol loads vs live deck snapshot. Callable standalone or invoked automatically inside run_protocol after run creation.
 
-**Parameters:** `robot_ip`, `file_path`, `session_id` (optional), `run_id` (optional), `skip_deck_diff` (optional), `strict_empty_labware_slots` (optional)
+**Parameters:** `robot_ip` (optional), `file_path`, `session_id` (optional), `run_id` (optional), `skip_deck_diff` (optional), `strict_empty_labware_slots` (optional)
 
 ## L2 — Live read-only — robot and session status
 
@@ -106,13 +106,13 @@ List registered fixed recovery playbooks, their gates, allowed watch-mode use, a
 
 Read-only go/no-go gate before live liquid watcher or probe re-runs. Checks loaded recovery self-test, robot/module status, door/estop, source-map readiness, source identity, and attached-tip blockers without moving the robot. Returns an ordered resolution_plan for clearing blockers safely.
 
-**Parameters:** `robot_ip`, `session_id` (optional), `source_plan` (optional), `required_sources` (optional), `allow_observed_mismatch_reprobe` (optional), `recovery_steps` (optional), `error_step_index` (optional), `failed_source_key` (optional), `failed_slot_name` (optional), `failed_well_name` (optional), `preferred_source_key` (optional)
+**Parameters:** `robot_ip` (optional), `session_id` (optional), `source_plan` (optional), `required_sources` (optional), `allow_observed_mismatch_reprobe` (optional), `recovery_steps` (optional), `error_step_index` (optional), `failed_source_key` (optional), `failed_slot_name` (optional), `failed_well_name` (optional), `preferred_source_key` (optional)
 
 ### `live_readiness_check` [L2]
 
 Read-only live readiness gate for Flex: combines local runtime health, restart/session guidance, robot/module status, home safety, and optional preflight into pass/warn/fail checks before create_run or play.
 
-**Parameters:** `robot_ip`, `session_id` (optional), `file_path` (optional), `python_executable` (optional), `run_id` (optional)
+**Parameters:** `robot_ip` (optional), `session_id` (optional), `file_path` (optional), `python_executable` (optional), `run_id` (optional)
 
 ### `protocol_artifacts` [L2]
 
@@ -332,7 +332,7 @@ OT-2/Flex 3D digital preflight (MuJoCo). Runs automation/flex3d/scripts/render_p
 
 Generate a new tip-only continuation protocol from an awaiting-recovery run. This writes a local protocol file but does not stop, play, or move the robot.
 
-**Parameters:** `robot_ip`, `run_id`, `session_id` (optional), `output_path` (optional), `page_length` (optional), `protocol_name` (optional), `use_session_state` (optional)
+**Parameters:** `robot_ip` (optional), `run_id`, `session_id` (optional), `output_path` (optional), `page_length` (optional), `protocol_name` (optional), `use_session_state` (optional)
 
 ### `parse_error` [L4]
 
