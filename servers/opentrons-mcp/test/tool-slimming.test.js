@@ -162,6 +162,7 @@ test("simulate_protocol response embeds parsed_repair classification", async () 
   const result = await TOOL_HANDLERS.simulate_protocol({
     protocol_path: path.join(fixturesDir, candidates[0]),
     max_log_chars: 2000,
+    generate_3d_preview: false,
   });
   assert.ok(result.data);
   assert.ok("parsed_repair" in result.data);

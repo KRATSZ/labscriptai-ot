@@ -1854,7 +1854,7 @@ const TOOL_DEFINITIONS = [
   {
     name: "simulate_protocol",
     description:
-      "Judge a protocol with one opentrons analyze run and classify the result into structured repair categories (parsed_repair in the response, replacing the former parse_simulation_output call). The analyze JSON is cached and reused by logicpass_check. When virtual_lab_steps (or validate_virtual_lab_state=true) is provided, runs deterministic Virtual Lab State validation first and blocks analysis on any violation (Phase 1.5 gate). Returns experiment_figure with setup PNG/page/CSV paths and inline MCP image content from this same analysis. A figure error does not change the simulation verdict. extra_args still falls back to opentrons.simulate and may not supply figure data.",
+      "Judge a protocol with one opentrons analyze run and classify the result into structured repair categories (parsed_repair in the response, replacing the former parse_simulation_output call). The analyze JSON is cached and reused by logicpass_check. When virtual_lab_steps (or validate_virtual_lab_state=true) is provided, runs deterministic Virtual Lab State validation first and blocks analysis on any violation (Phase 1.5 gate). On success, automatically starts or reuses the local OT-2/Flex 3D viewer from this same analysis and returns preview_3d.url; show this link to the user without another preview request. Set generate_3d_preview=false only when the user declines preview. Also returns experiment_figure with setup PNG/page/CSV paths and inline MCP image content. Preview or figure failures do not change the simulation verdict. No robot access. extra_args still falls back to opentrons.simulate and may not supply preview or figure data.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1868,6 +1868,11 @@ const TOOL_DEFINITIONS = [
           items: { type: "string" },
         },
         max_log_chars: { type: "integer", default: 20000 },
+        generate_3d_preview: {
+          type: "boolean",
+          default: true,
+          description: "Automatically prepare a local interactive 3D preview after successful analysis. Set false when the user explicitly wants no preview.",
+        },
         session_id: {
           type: "string",
           description: "Session whose Virtual Lab State seeds validation when initial_state is omitted.",
@@ -8107,11 +8112,29 @@ const TOOL_HANDLERS = {
       return gate;
     }
     const simulationData = await runSimulationTool(args);
-    const figure = simulationData.ok && simulationData.analysis_path
+    let preview = { ok: false, status: "not_available", message: simulationData.ok
+      ? "本次模拟没有生成可用于三维预览的分析数据；模拟结果仍可使用。"
+      : "本次分析未完成；修复协议后重试，三维预览会自动生成。" };
+    let previewFigure;
+    if (args.generate_3d_preview === false) {
+      preview = { ok: false, status: "skipped", message: "已按要求跳过三维预览。" };
+    } else if (simulationData.ok && simulationData.analysis_path) {
+      try {
+        const { data: { experiment_figure, ...viewer } } = await TOOL_HANDLERS.flex3d_open_viewer({
+          protocol_path: simulationData.analysis_path,
+          python_executable: args.python_executable,
+        });
+        previewFigure = experiment_figure;
+        preview = { ...viewer, status: viewer.ok ? "ready" : "unavailable" };
+      } catch (error) {
+        preview = { ok: false, status: "unavailable", error: "viewer_start_failed", message: String(error.message || error) };
+      }
+    }
+    const figure = previewFigure || (simulationData.ok && simulationData.analysis_path
       ? await generateExperimentFigure({ analysisPath: simulationData.analysis_path, preferredPython: args.python_executable })
       : { ok: false, status: "not_available", message: simulationData.ok
         ? "本次模拟没有生成可用于绘图的分析数据；模拟结果仍可使用。"
-        : "本次分析未完成；修复协议后重试，配置图会自动生成。" };
+        : "本次分析未完成；修复协议后重试，配置图会自动生成。" });
     let parsedRepair = null;
     try {
       parsedRepair = parseSimulationLog({ simulation_output_json: JSON.stringify(simulationData) });
@@ -8121,6 +8144,7 @@ const TOOL_HANDLERS = {
     return {
       data: {
         ...simulationData,
+        preview_3d: preview,
         experiment_figure: figure,
         ...(parsedRepair ? { parsed_repair: parsedRepair } : {}),
       },

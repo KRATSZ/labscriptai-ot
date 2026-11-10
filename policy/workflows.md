@@ -16,6 +16,7 @@ user intent / SOP
   →  protocol-author draft (+ critical_sources in liquid source map)
   →  validate_virtual_lab_state_steps (session_id/initial_state, steps) — pure software gate
   →  health_check(scope=local) → simulate_protocol (virtual_lab_steps when available) → logicpass_check
+       → successful simulation automatically prepares the local 3D preview; return preview_3d.url
   →  (fix loop if failed)
   →  Phase 3a dashboard: health_check → live_readiness_check → robot_status(include_modules=true) → reconcile_state (if needed)
        → machine-judged: passed | blocked | needs_operator_physical_action (no verbal re-confirm)
@@ -53,12 +54,20 @@ An unset `OPENTRONS_ENABLE_PROBE_WELLS` blocks only requested live probing. It d
 ## Protocol validation only (no live robot)
 
 ```
-health_check(scope=local) → simulate_protocol → logicpass_check
+health_check(scope=local) → simulate_protocol (automatic 3D preview on success) → logicpass_check
 ```
 Script equivalent: `verify_protocol.py doctor` then `verify_protocol.py analyze <file>`.
 
 Before simulating a new draft, it is worth calling `labware_lookup(action=validate)` on unfamiliar load names, `labware_lookup(action=inspect)` when geometry or dead volume matters, and `estimate_tip_budget` on the draft protocol source. Those checks catch the highest-frequency authoring mistakes before the slower sim step.
 If the user only wants validation or labware inspection, stop after the check and report findings; do not fabricate a full `protocol.py`.
+
+## Automatic 3D preview
+
+After successful MCP simulation, `simulate_protocol` starts or reuses the local OT-2/Flex viewer from the returned analysis JSON and includes `preview_3d` (`ready`, `unavailable`, `not_available`, or `skipped`). Show `preview_3d.url` when ready, along with `experiment_figure.url` or `page_path`. Do not wait for a separate preview request or repeat analysis/viewer calls for an already returned preview. No robot connection or motion is involved.
+
+If the user explicitly declines preview, pass `generate_3d_preview=false`. Failed simulation or a CLI fallback with no analysis JSON does not start the viewer. A missing dependency, busy port or viewer error is reported separately and does not change the simulation verdict; explain the reason once. A playable preview does not substitute for the separate optional `flex3d_preflight_check` or imply that physical checks passed.
+
+When using the CLI without MCP, successful analysis can be passed to `flex3d_open_viewer` if MCP becomes available; otherwise report that the interactive preview was not generated.
 
 ## User-facing defaults
 

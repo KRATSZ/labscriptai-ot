@@ -15,6 +15,8 @@ Repeat until simulation passes or you stop early:
 4. Fix only the highest-priority issue.
 5. Re-run `simulate_protocol`.
 
+When simulation passes, show the automatically returned `preview_3d.url` with the result; do not wait for a separate preview request or reopen a ready viewer. Honor an explicit no-preview request with `generate_3d_preview=false`; otherwise report any preview-unavailable reason separately. See `policy/workflows.md` § Automatic 3D preview.
+
 **Stop early if:**
 - `RUNTIME_UNAVAILABLE`
 - `UNKNOWN_NEEDS_HUMAN`
