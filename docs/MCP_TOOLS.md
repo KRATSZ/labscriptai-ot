@@ -64,6 +64,12 @@ Before play: verify session reconciliation, robot readiness, and (Flex) declared
 
 **Parameters:** `robot_ip` (optional), `file_path`, `session_id` (optional), `run_id` (optional), `skip_deck_diff` (optional), `strict_empty_labware_slots` (optional)
 
+### `robot_authoring_context` [L1]
+
+Read the saved robot hardware configuration for protocol authoring without contacting the robot (default). Returns data.authoring_context with its original observation time; works across chats/restarts while the robot is offline. refresh=true explicitly reads live hardware and saves a new snapshot. A missing/corrupt snapshot returns status=missing; use operator-supplied hardware or capture once when online. Saved configuration is not live readiness or deck/liquid truth. Refresh live state before execution.
+
+**Parameters:** `robot_ip` (optional), `refresh` (optional)
+
 ## L2 — Live read-only — robot and session status
 
 ### `deck_slots` [L2]
@@ -140,7 +146,7 @@ Record operator-confirmed liquid/sample identity and optional live probe observa
 
 ### `robot_status` [L2]
 
-Read-only live hardware snapshot. Before writing a protocol for a connected robot, call with include_modules=true (default) and use data.authoring_context: observed robot type, pipette protocol load names/mounts, attached modules/locations, deck fixtures and hardware_questions. Ordinary labware, remaining clean tips and liquid contents are not inventoried by these APIs; confirm those with the operator rather than guessing from history or templates. Includes health, door, estop and module readiness. Uses the saved robot address when robot_ip is omitted. No motion; refresh again before live execution.
+Read-only live hardware snapshot; always contacts the robot and never falls back to saved state. Includes health, door, estop and module readiness. Successful include_modules=true reads also save hardware for later offline authoring with robot_authoring_context. Before writing a protocol, prefer robot_authoring_context for saved robot type, pipettes/mounts, modules/locations and fixtures. Ordinary labware, remaining clean tips and liquids need operator information. Uses the saved address when robot_ip is omitted. No motion; use fresh live checks before execution.
 
 **Parameters:** `robot_ip` (optional), `include_modules` (optional)
 

@@ -155,7 +155,7 @@ test("robot_status returns authoring context from the saved robot using only exi
       "/modules": { data: [] },
     };
     const seen = [];
-    global.fetch = async (url, options) => {
+    const robotFetch = async (url, options) => {
       const parsed = new URL(url);
       assert.equal(parsed.origin, "http://192.168.1.80:31950");
       assert.equal(options.method, "GET");
@@ -163,6 +163,7 @@ test("robot_status returns authoring context from the saved robot using only exi
       seen.push(parsed.pathname);
       return new Response(JSON.stringify(payloads[parsed.pathname]), { headers: { "content-type": "application/json" } });
     };
+    global.fetch = robotFetch;
     const result = await TOOL_HANDLERS.robot_status({ include_modules: true });
     const context = result.data.authoring_context;
     assert.equal(context.robot_ip, "http://192.168.1.80:31950");
@@ -170,9 +171,51 @@ test("robot_status returns authoring context from the saved robot using only exi
     assert.deepEqual(context.pipettes.map(p => [p.mount, p.protocol_load_name]), [["right", "flex_1channel_50"]]);
     assert.equal(context.deck.fixtures[0].cutoutId, "cutoutC3");
     assert.equal(context.modules_checked, true);
+    assert.equal(result.data.hardware_cache.saved, true);
+    // Subsequent authoring must work without any robot requests.
+    global.fetch = async () => { throw new Error("robot offline"); };
+    const saved = await TOOL_HANDLERS.robot_authoring_context({});
+    assert.equal(saved.data.status, "available");
+    assert.equal(saved.data.authoring_context.source, "saved_robot_snapshot");
+    assert.equal(saved.data.authoring_context.observed_at, context.observed_at);
+    assert.equal(saved.data.authoring_context.robot_serial, "FLX-LIVE");
+    assert.deepEqual(saved.data.authoring_context.pipettes.map(p => [p.mount, p.protocol_load_name]), [["right", "flex_1channel_50"]]);
+    assert.equal(saved.data.authoring_context.deck.fixtures[0].cutoutId, "cutoutC3");
+    assert.equal(saved.hardwareSnapshot, undefined);
+    assert.equal(saved.data.authoring_context.live_state_checked, false);
+    await assert.rejects(() => TOOL_HANDLERS.robot_status({}), /robot offline/);
+    await assert.rejects(() => TOOL_HANDLERS.robot_authoring_context({ refresh: true }), /robot offline/);
+    assert.deepEqual((await TOOL_HANDLERS.robot_authoring_context({})).data, saved.data);
     assert.deepEqual([...seen].sort(), Object.keys(payloads).sort());
     assert.deepEqual(result.hardwareSnapshot.deck_configuration, payloads["/deck_configuration"]);
     assert.match(TOOL_DEFINITIONS.find(t => t.name === "robot_status").description, /Before writing a protocol/);
+    // Skipping modules or failing mid-refresh must preserve the full snapshot.
+    global.fetch = robotFetch;
+    payloads["/instruments"] = { data: [{ mount: "left", instrumentName: "p1000_single_flex", ok: true }] };
+    await TOOL_HANDLERS.robot_status({ include_modules: false });
+    assert.deepEqual((await TOOL_HANDLERS.robot_authoring_context({})).data, saved.data);
+    global.fetch = async (url, options) => {
+      if (new URL(url).pathname === "/modules") throw new Error("module inspection failed");
+      return robotFetch(url, options);
+    };
+    await assert.rejects(() => TOOL_HANDLERS.robot_authoring_context({ refresh: true }), /module inspection failed/);
+    assert.deepEqual((await TOOL_HANDLERS.robot_authoring_context({})).data, saved.data);
+    // An explicit successful refresh replaces the persisted equipment.
+    global.fetch = robotFetch;
+    const refreshed = await TOOL_HANDLERS.robot_authoring_context({ refresh: true });
+    assert.equal(refreshed.data.authoring_context.source, "live_robot_api");
+    assert.equal(refreshed.data.hardware_cache.saved, true);
+    const updated = (await TOOL_HANDLERS.robot_authoring_context({})).data.authoring_context;
+    assert.equal(updated.pipettes[0].mount, "left");
+    assert.equal(updated.pipettes[0].protocol_load_name, "flex_1channel_1000");
+    // A disk error is reported without disguising a successful live read.
+    fs.rmSync(refreshed.data.hardware_cache.cache_path);
+    fs.rmdirSync(path.dirname(refreshed.data.hardware_cache.cache_path));
+    fs.writeFileSync(path.dirname(refreshed.data.hardware_cache.cache_path), "blocked");
+    const unsaved = await TOOL_HANDLERS.robot_status({});
+    assert.equal(unsaved.data.authoring_context.source, "live_robot_api");
+    assert.equal(unsaved.data.hardware_cache.saved, false);
+    assert.ok(unsaved.data.hardware_cache.error);
   } finally {
     global.fetch = originalFetch;
     for (const key of Object.keys(process.env)) if (!(key in originalEnv)) delete process.env[key];

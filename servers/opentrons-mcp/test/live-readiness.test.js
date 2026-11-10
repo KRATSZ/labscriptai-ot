@@ -6,6 +6,7 @@ import path from "path";
 
 import { TOOL_HANDLERS } from "../index.js";
 import { buildLiveReadinessReport } from "../lib/live-readiness.js";
+import { mockPython } from "../test-support/mock-python.js";
 
 function jsonResponse(payload, status = 200) {
   return new Response(JSON.stringify(payload), {
@@ -129,10 +130,10 @@ test("buildLiveReadinessReport warns on stale session and preflight warnings", (
   ]);
 });
 
-test("live_readiness_check handler returns structured checks with mocked robot", async () => {
+test("live_readiness_check handler returns structured checks with mocked robot", async t => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "opentrons-live-readiness-"));
   const protocolPath = path.join(tempDir, "noop.py");
-  const fakePython = path.join(tempDir, "python");
+  const fakePython = mockPython(t);
   fs.writeFileSync(
     protocolPath,
     [
@@ -145,20 +146,6 @@ test("live_readiness_check handler returns structured checks with mocked robot",
       "",
     ].join("\n"),
   );
-  fs.writeFileSync(
-    fakePython,
-    [
-      "#!/bin/sh",
-      'case "$2" in',
-      '  *"import sys; print(sys.version.split()[0])"*) echo "3.12.0" ;;',
-      '  *"import opentrons; print(opentrons.__version__)"*) echo "9.9.9" ;;',
-      "  *) exit 1 ;;",
-      "esac",
-      "",
-    ].join("\n"),
-  );
-  fs.chmodSync(fakePython, 0o755);
-
   const originalFetch = global.fetch;
   global.fetch = async (url, options = {}) => {
     const requestUrl = new URL(url);

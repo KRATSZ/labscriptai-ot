@@ -11,6 +11,7 @@ import { errorResponse, successResponse } from "./lib/envelope.js";
 import { requestRobotBytes, requestRobotJson } from "./lib/http.js";
 import { requireRobotAddress, resolveRobotConnection, robotConnectionSummary } from "./lib/robot-connection.js";
 import { buildAuthoringContext } from "./lib/authoring-context.js";
+import { readHardwareContext, saveHardwareContext } from "./lib/hardware-cache.js";
 import {
   applyObservedDeckToSessionState,
   buildActionSummary,
@@ -479,9 +480,21 @@ const TOOL_DEFINITIONS = [
     },
   },
   {
+    name: "robot_authoring_context",
+    description:
+      "Read the saved robot hardware configuration for protocol authoring without contacting the robot (default). Returns data.authoring_context with its original observation time; works across chats/restarts while the robot is offline. refresh=true explicitly reads live hardware and saves a new snapshot. A missing/corrupt snapshot returns status=missing; use operator-supplied hardware or capture once when online. Saved configuration is not live readiness or deck/liquid truth. Refresh live state before execution.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        robot_ip: { type: "string", description: "Target address; defaults to the configured robot. Never reuses another robot's snapshot." },
+        refresh: { type: "boolean", default: false, description: "Explicitly contact the robot and update its saved hardware configuration." },
+      },
+    },
+  },
+  {
     name: "robot_status",
     description:
-      "Read-only live hardware snapshot. Before writing a protocol for a connected robot, call with include_modules=true (default) and use data.authoring_context: observed robot type, pipette protocol load names/mounts, attached modules/locations, deck fixtures and hardware_questions. Ordinary labware, remaining clean tips and liquid contents are not inventoried by these APIs; confirm those with the operator rather than guessing from history or templates. Includes health, door, estop and module readiness. Uses the saved robot address when robot_ip is omitted. No motion; refresh again before live execution.",
+      "Read-only live hardware snapshot; always contacts the robot and never falls back to saved state. Includes health, door, estop and module readiness. Successful include_modules=true reads also save hardware for later offline authoring with robot_authoring_context. Before writing a protocol, prefer robot_authoring_context for saved robot type, pipettes/mounts, modules/locations and fixtures. Ordinary labware, remaining clean tips and liquids need operator information. Uses the saved address when robot_ip is omitted. No motion; use fresh live checks before execution.",
     inputSchema: {
       type: "object",
       properties: {
@@ -4765,6 +4778,20 @@ function evaluateVirtualLabStateGate(args) {
 }
 
 const TOOL_HANDLERS = {
+  async robot_authoring_context(args = {}) {
+    if (args.refresh === true) {
+      return TOOL_HANDLERS.robot_status({ robot_ip: args.robot_ip, include_modules: true });
+    }
+    const connection = resolveRobotConnection(args.robot_ip);
+    const saved = connection ? readHardwareContext(connection.robot_ip) : { authoring_context: null, cache_path: null };
+    return { data: {
+      ...saved,
+      status: saved.authoring_context ? "available" : "missing",
+      live_state_checked: false,
+      ...(saved.authoring_context ? {} : { next_action: "Use operator-supplied hardware constraints, or refresh once when the target robot is online. No robot connection is required for drafting." }),
+    } };
+  },
+
   async robot_health(args) {
     const health = await requestRobotJson("GET", args.robot_ip, "/health");
     return {
@@ -4789,12 +4816,21 @@ const TOOL_HANDLERS = {
       }) } };
     }
     const modules = await readModuleStatus(rest);
+    const authoringContext = buildAuthoringContext({ robotStatus: status.data, moduleStatus: modules.data, robotIp, observedAt });
+    let hardwareCache;
+    try {
+      hardwareCache = { cache_path: saveHardwareContext(authoringContext), saved: true };
+    } catch (error) {
+      // Persistence failure must not hide a successful live status read.
+      hardwareCache = { saved: false, error: error.message };
+    }
     return {
       ...status,
       data: {
         ...status.data,
         modules: modules.data,
-        authoring_context: buildAuthoringContext({ robotStatus: status.data, moduleStatus: modules.data, robotIp, observedAt }),
+        authoring_context: authoringContext,
+        hardware_cache: hardwareCache,
       },
       hardwareSnapshot: {
         ...status.hardwareSnapshot,

@@ -1,13 +1,13 @@
 ---
 name: opentrons-protocol-author
-description: Write or revise OT-2 or Flex Python protocols using the target robot's current hardware before choosing pipettes, mounts, modules and deck layout. Supports explicitly offline drafts.
+description: Write or revise OT-2 or Flex Python protocols using saved target hardware for pipettes, mounts, modules and deck layout. Works offline; refresh live state before execution.
 metadata:
   entry: assets/flex_protocol_template.py
 ---
 
 # Protocol Author
 
-1. For new protocols and hardware-dependent edits, **before choosing hardware or writing Python**, read `robot_status(include_modules=true)` using the saved connection and use `data.authoring_context`. Match the reported robot type, installed pipette protocol load names/mounts, modules/locations and waste fixtures. Reuse a current snapshot for this task. For explicit offline/local-only/no-connection requests, skip network access and use supplied hardware constraints, marked unverified. Never infer the machine from a template or default to Flex. Canonical behavior for unavailable connections, unknown labware and target conflicts: `policy/workflows.md` § Before protocol authoring.
+1. For new protocols and hardware-dependent edits, **before choosing hardware or writing Python**, read `robot_authoring_context()` and use its saved `data.authoring_context` without contacting the robot. Match the recorded robot type, pipette protocol load names/mounts, modules/locations and waste fixtures. Reuse across chats/restarts even when offline; age alone does not require refresh. Explicit offline/local-only/no-connection requests also allow local snapshot reads. Use supplied constraints for missing facts; capture once or explicitly refresh with `robot_authoring_context(refresh=true)` when online. Never infer the machine from a template or default to Flex. Canonical behavior for missing snapshots, hardware changes and target conflicts: `policy/workflows.md` § Before protocol authoring.
 2. For spatial patterns, arbitrary well subsets, or unclear plate mapping:
    run `opentrons-experiment-intent-review` first. Lock `target_wells` / tip policy.
 3. Read `references/python-protocol-patterns.md`, `references/pattern-library.md`, and (Flex) `references/liquid-classes-flex.md`.
@@ -29,7 +29,7 @@ metadata:
 - Ask only for choices that change robot compatibility, deck truth, module usage,
   or safety-critical contamination assumptions.
 - Read the machine before asking hardware questions. Do not ask again for facts already returned by current APIs. Only confirm relevant `hardware_questions`, ordinary labware/slots, clean-tip availability, liquids and unreported passive modules/adapters; do not present an old run or a visually inferred layout as current deck truth.
-- A saved IP is a connection default, not proof that it is the requested target. Resolve a machine mismatch before drafting. If unreachable, explain which connection failed and ask whether to fix it or explicitly draft offline; do not silently substitute assumed hardware.
+- A saved IP is a connection default, not proof that it is the requested target. Resolve a machine mismatch before drafting and never use another robot's snapshot. An unreachable robot does not block authoring from saved hardware; use operator-supplied constraints when no snapshot exists. Record the saved observation time and confirmed changes, and refresh live state before execution.
 - If only a preference is missing, choose a documented default and note it in
   `design-notes.json` (schema in appendix when you write it).
 - Once a runnable draft exists, the default next step is simulation.

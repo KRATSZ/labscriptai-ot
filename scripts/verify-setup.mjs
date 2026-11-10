@@ -10,6 +10,7 @@ import { fileURLToPath, pathToFileURL } from "url";
 import { execSync, spawnSync } from "child_process";
 import { cachedPython, cachedOt2Python, cachedNodeModules } from "./runtime-paths.mjs";
 import { buildIdentity } from "../servers/opentrons-mcp/lib/build-info.js";
+import { extractTomlString, extractTomlArrayFirstString, sameAbsolutePath } from "./toml-values.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PLUGIN_ROOT = path.resolve(process.env.OPENTRONS_PLUGIN_ROOT || path.join(__dirname, ".."));
@@ -26,6 +27,7 @@ const REQUIRED_RUNTIME_TOOLS = [
   "list_recovery_playbooks",
   "live_liquid_recovery_gate",
   "robot_status",
+  "robot_authoring_context",
   "is_home_safe",
   "query_history",
   "record_liquid_source_map",
@@ -122,18 +124,6 @@ function readTextFile(relPath) {
   }
 }
 
-function extractTomlString(text, key) {
-  const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const match = text.match(new RegExp(`^${escapedKey}\\s*=\\s*"([^"]*)"`, "m"));
-  return match ? match[1] : null;
-}
-
-function extractTomlArrayFirstString(text, key) {
-  const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const match = text.match(new RegExp(`^${escapedKey}\\s*=\\s*\\[\\s*"([^"]*)"`, "m"));
-  return match ? match[1] : null;
-}
-
 function checkMcpManifestPaths() {
   const expectedIndex = "${PLUGIN_ROOT}/servers/opentrons-mcp/index.js";
   const expectedRoot = "${PLUGIN_ROOT}";
@@ -196,28 +186,32 @@ function checkMcpManifestPaths() {
   const codexLocalConfig = fs.existsSync(path.join(PLUGIN_ROOT, ".codex/config.toml"))
     ? readTextFile(".codex/config.toml") : null;
   if (codexLocalConfig) {
-    const args0 = extractTomlArrayFirstString(codexLocalConfig, "args");
-    const configuredRoot = extractTomlString(codexLocalConfig, "OPENTRONS_PLUGIN_ROOT");
-    const configuredLibrary = extractTomlString(codexLocalConfig, "OPENTRONS_PROTOCOL_LIBRARY_PATH");
-    const configuredData = extractTomlString(codexLocalConfig, "PLUGIN_DATA");
-    if (
-      args0 === expectedAbsoluteIndex &&
-      configuredRoot === PLUGIN_ROOT &&
-      configuredLibrary === expectedAbsoluteLibrary &&
-      configuredData === expectedAbsoluteData
-    ) {
-      pass("Manifest: Codex local config paths", ".codex/config.toml uses absolute plugin root");
-    } else {
-      fail(
-        "Manifest: Codex local config paths",
-        JSON.stringify({
-          args: args0,
-          OPENTRONS_PLUGIN_ROOT: configuredRoot,
-          OPENTRONS_PROTOCOL_LIBRARY_PATH: configuredLibrary,
-          PLUGIN_DATA: configuredData,
-        }),
-        "Use absolute paths in .codex/config.toml; relative paths can keep Codex running a stale MCP process after edits."
-      );
+    try {
+      const args0 = extractTomlArrayFirstString(codexLocalConfig, "args");
+      const configuredRoot = extractTomlString(codexLocalConfig, "OPENTRONS_PLUGIN_ROOT");
+      const configuredLibrary = extractTomlString(codexLocalConfig, "OPENTRONS_PROTOCOL_LIBRARY_PATH");
+      const configuredData = extractTomlString(codexLocalConfig, "PLUGIN_DATA");
+      if (
+        sameAbsolutePath(args0, expectedAbsoluteIndex) &&
+        sameAbsolutePath(configuredRoot, PLUGIN_ROOT) &&
+        sameAbsolutePath(configuredLibrary, expectedAbsoluteLibrary) &&
+        sameAbsolutePath(configuredData, expectedAbsoluteData)
+      ) {
+        pass("Manifest: Codex local config paths", ".codex/config.toml uses absolute plugin root");
+      } else {
+        fail(
+          "Manifest: Codex local config paths",
+          JSON.stringify({
+            args: args0,
+            OPENTRONS_PLUGIN_ROOT: configuredRoot,
+            OPENTRONS_PROTOCOL_LIBRARY_PATH: configuredLibrary,
+            PLUGIN_DATA: configuredData,
+          }),
+          "Use absolute paths matching this plugin root in .codex/config.toml; another checkout can keep Codex running stale code."
+        );
+      }
+    } catch (err) {
+      fail("Manifest: Codex local config paths", err.message, "Fix the TOML string syntax in .codex/config.toml.");
     }
   }
 }

@@ -31,6 +31,7 @@ const TOOL_TIERS = {
   logicpass_check: "L0",
   labware_lookup: "L0",
   estimate_tip_budget: "L1",
+  robot_authoring_context: "L1",
   preflight_run_setup: "L1",
   robot_status: "L2",
   deck_slots: "L2",

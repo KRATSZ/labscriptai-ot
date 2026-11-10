@@ -1,10 +1,8 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import fs from "fs";
-import os from "os";
-import path from "path";
 import { TOOL_HANDLERS } from "../index.js";
 import { buildHealthCheck, checkRobotHealth } from "../lib/health-check.js";
+import { mockPython } from "../test-support/mock-python.js";
 
 describe("health_check", () => {
   it("returns a structured report without robot_ip", () => {
@@ -53,7 +51,7 @@ describe("health_check", () => {
     assert.ok(tools.present.includes("list_recovery_playbooks"));
     assert.ok(tools.present.includes("live_liquid_recovery_gate"));
     assert.ok(tools.present.includes("safe_next_action"));
-    assert.match(result.data.mcp_server.entrypoint, /servers\/opentrons-mcp\/index\.js$/);
+    assert.match(result.data.mcp_server.entrypoint.replaceAll("\\", "/"), /servers\/opentrons-mcp\/index\.js$/);
   });
 
   it("accepts robot_ip values with an explicit port", async () => {
@@ -76,57 +74,21 @@ describe("health_check", () => {
     }
   });
 
-  it("respects python_executable override for local runtime inspection", () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "health-check-python-"));
-    const fakePython = path.join(dir, "python");
-    fs.writeFileSync(
-      fakePython,
-      [
-        "#!/bin/sh",
-        'case "$2" in',
-        '  *"import sys; print(sys.version.split()[0])"*) echo "3.12.0" ;;',
-        '  *"import opentrons; print(opentrons.__version__)"*) echo "9.9.9" ;;',
-        "  *) exit 1 ;;",
-        "esac",
-        "",
-      ].join("\n"),
-    );
-    fs.chmodSync(fakePython, 0o755);
-
+  it("respects python_executable override for local runtime inspection", t => {
+    const fakePython = mockPython(t);
     const report = buildHealthCheck({ python_executable: fakePython });
     assert.equal(report.venv.python_executable, fakePython);
     assert.equal(report.venv.status, "ok");
     assert.equal(report.venv.opentrons, "9.9.9");
   });
 
-  it("accepts python_executable commands resolved from PATH", () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "health-check-path-python-"));
+  it("accepts python_executable command names for PATH resolution", t => {
     const commandName = "fake-opentrons-python";
-    const fakePython = path.join(dir, commandName);
-    fs.writeFileSync(
-      fakePython,
-      [
-        "#!/bin/sh",
-        'case "$2" in',
-        '  *"import sys; print(sys.version.split()[0])"*) echo "3.11.8" ;;',
-        '  *"import opentrons; print(opentrons.__version__)"*) echo "8.5.0" ;;',
-        "  *) exit 1 ;;",
-        "esac",
-        "",
-      ].join("\n"),
-    );
-    fs.chmodSync(fakePython, 0o755);
-
-    const originalPath = process.env.PATH;
-    process.env.PATH = `${dir}${path.delimiter}${originalPath || ""}`;
-    try {
-      const report = buildHealthCheck({ python_executable: commandName });
-      assert.equal(report.venv.python_executable, commandName);
-      assert.equal(report.venv.status, "ok");
-      assert.equal(report.venv.python, "3.11.8");
-      assert.equal(report.venv.opentrons, "8.5.0");
-    } finally {
-      process.env.PATH = originalPath;
-    }
+    mockPython(t, { executable: commandName, version: "3.11.8", opentrons: "8.5.0" });
+    const report = buildHealthCheck({ python_executable: commandName });
+    assert.equal(report.venv.python_executable, commandName);
+    assert.equal(report.venv.status, "ok");
+    assert.equal(report.venv.python, "3.11.8");
+    assert.equal(report.venv.opentrons, "8.5.0");
   });
 });

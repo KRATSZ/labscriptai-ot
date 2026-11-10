@@ -1,6 +1,6 @@
 ---
 name: opentrons-experiment-run
-description: Default entry for experiment setup, running, monitoring and recovery. Reads the target robot before authoring, then simulates locally and respects the operator's selected checks.
+description: Default entry for experiment setup, running, monitoring and recovery. Uses saved target hardware for offline-capable authoring, then simulates locally and refreshes live state before execution.
 ---
 
 # Run an experiment
@@ -10,7 +10,7 @@ Help the user get the requested experiment done. Use the steps that apply; a sma
 ## Working with the user
 
 - Speak in the user’s language. Lead with what happened and the next useful action. Keep phase numbers, gates, ledger names and JSON out of routine chat.
-- For a new experiment, read the target machine before hardware questions or authoring unless the user explicitly requests offline/local-only/no-connection work. Use `robot_status(include_modules=true)` with the saved connection and reuse its `authoring_context`; then ask a short initial round only for unresolved assay, mapping, labware and tip-policy facts. Do not ask the user to retype installed pipettes, mounts, modules or robot type already established by current readings. See `policy/workflows.md` § Before protocol authoring.
+- For a new experiment, read `robot_authoring_context()` before hardware questions or authoring. It reads saved hardware locally, including during offline/local-only/no-connection work. Reuse snapshots across chats/restarts without requiring a live connection; then ask a short initial round only for unresolved assay, mapping, labware and tip-policy facts. Do not ask the user to retype recorded pipettes, mounts, modules or robot type. If no snapshot exists, use supplied hardware constraints or capture once when online. See `policy/workflows.md` § Before protocol authoring.
 - Wait for answers to blocking questions before dependent authoring or actions; continue independent read-only checks while waiting. If the request already specifies the necessary facts (for example, “simulate this OT-2 script locally”), proceed without a ceremonial confirmation. Do not repeat answered questions or treat silence as an answer.
 - When the user says to proceed, do the authorized work. Do not turn every suggestion, optional check, missing API reading or bookkeeping limitation into a refusal.
 - Explain an actual problem once, with a practical way forward. Skip repeated warnings and requests to recite risk acceptance.
@@ -18,7 +18,7 @@ Help the user get the requested experiment done. Use the steps that apply; a sma
 
 ## 1. Prepare only what is needed
 
-- Before choosing a template or writing machine-specific Python, use the current `authoring_context` to constrain robot type, pipettes/mounts, modules/locations and waste fixtures. Templates do not override the target hardware. Resolve a target mismatch, unavailable connection or missing critical hardware fact first; offer offline drafting only as an explicit choice using supplied constraints. "Write only, don't run" still allows read-only inspection; "do not connect" skips it.
+- Before choosing a template or writing machine-specific Python, use the saved `authoring_context` to constrain robot type, pipettes/mounts, modules/locations and waste fixtures. Templates do not override the target hardware. Resolve target mismatches or missing critical hardware facts; an unavailable connection alone does not block writing. Record the snapshot's observation time and supplied changes. Use `robot_authoring_context(refresh=true)` for requested refreshes; never refresh over the network for an explicit no-connection task. Always use fresh live state before execution.
 - For ambiguous wells or volumes, use `opentrons-experiment-intent-review`. For writing/editing, use `opentrons-protocol-author`. Use the library only when reference protocols are wanted.
 - Existing runnable protocol → simulate it. Do not require rewriting it into a preferred template.
 - Keep the requested liquids, well mapping, modules and tip strategy. Suggest improvements without silently changing the experiment.

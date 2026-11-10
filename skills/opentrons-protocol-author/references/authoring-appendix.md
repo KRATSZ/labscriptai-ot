@@ -57,7 +57,7 @@ If tips are insufficient:
 
 Before outputting your final protocol, verify each item below. Fix any issues found:
 
-0. **Machine basis**: For connected-robot authoring, was `robot_status(include_modules=true)` read before the draft? Do `requirements.robotType`, pipette names/mounts, modules/slots and waste fixture match its current `authoring_context` plus explicit operator-confirmed additions? Keep unknown labware/tips/liquids distinct from API observations. Offline requests must record an unverified user-supplied basis. Refresh live state again before execution.
+0. **Machine basis**: Was `robot_authoring_context()` read locally before the draft? Do `requirements.robotType`, pipette names/mounts, modules/slots and waste fixture match its saved `authoring_context` plus explicit operator-confirmed changes? Record source and original observation time, or the supplied basis if no snapshot exists. Keep unknown labware/tips/liquids distinct from saved hardware. Offline authoring needs no live connection. Refresh live state before execution.
 1. **Volume accumulation**: Does sequential addition without removal cause volume to exceed the well capacity? Add aspiration/removal steps between reagent additions.
 2. **Reagent compatibility**: Does the protocol neutralize or remove reagents before the next step? (e.g., trypsin must be neutralized before adding fresh medium)
 3. **Temperature sensitivity**: Do any reagents require temperature control (37°C for cell culture, 4°C for enzyme reactions)? Add temperature module if needed.
