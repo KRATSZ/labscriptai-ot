@@ -89,6 +89,14 @@ Robot tools accept an optional `robot_ip` (bare IP, hostname, host:port or HTTP(
 
 MCP and the LAN fallback share `robot-connection.json` under the stable user directory: `%LOCALAPPDATA%/labscriptai-ot` on Windows, `~/Library/Application Support/labscriptai-ot` on macOS, and `${XDG_DATA_HOME:-~/.local/share}/labscriptai-ot` on Linux. `LABSCRIPTAI_HOME` overrides this directory; `OPENTRONS_CONNECTION_FILE` optionally selects a specific file. The connection is independent of per-experiment `PLUGIN_DATA` and versioned plugin caches. Remove that file to forget the saved address (an explicit `OPENTRONS_HOST` still takes precedence).
 
+## Write for the connected robot
+
+For a new experiment or hardware-dependent protocol edit, the plugin first uses the saved address to read the robot's current state, then writes the protocol for that machine. It reuses the reported OT-2/Flex model, installed pipettes and mounts, attached modules/locations, and actual waste/deck fixtures. It no longer starts from assumed template hardware and checks compatibility only after drafting. You can say “Check my robot first, then write a protocol for this experiment; do not run it.” The inspection is read-only and does not move the robot.
+
+The status response includes `authoring_context` with the observation time, robot identity, protocol pipette names, modules, fixtures and unresolved hardware facts. Ordinary labware/slots, clean-tip availability, liquid contents and unreported passive modules/adapters still need your information when relevant. If a required fact conflicts or cannot be read, the agent asks before choosing incompatible hardware. A missing/unreachable connection is surfaced rather than silently replaced with template defaults.
+
+Explicit “offline”, “local only”, or “do not connect” requests keep the whole authoring task local and use the equipment details you supply, marked unverified. Merely saying “do not run” allows read-only inspection. Generated design notes record the hardware basis; local simulation and a fresh live readiness check still happen before any authorized run, since the machine can change after drafting.
+
 ## What a passing result means
 
 - **Simulation:** the Opentrons software can interpret and execute the protocol locally.

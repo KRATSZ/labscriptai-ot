@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import { normalizePipetteProtocolName } from "./pipette-names.js";
 
 import {
   COLUMN_MAJOR_WELL_ORDER_96,
@@ -16,15 +17,6 @@ const TIP_ONLY_ALLOWED_COMMANDS = new Set([
   "comment",
   "moveToAddressableAreaForDropTip",
   "dropTipInPlace",
-]);
-
-const FLEX_PIPETTE_NAME_ALIASES = new Map([
-  ["p50_single_flex", "flex_1channel_50"],
-  ["p50_multi_flex", "flex_8channel_50"],
-  ["p50_96_flex", "flex_96channel_50"],
-  ["p1000_single_flex", "flex_1channel_1000"],
-  ["p1000_multi_flex", "flex_8channel_1000"],
-  ["p1000_96_flex", "flex_96channel_1000"],
 ]);
 
 function asArray(value) {
@@ -58,11 +50,6 @@ function readNested(value, candidates, fallback = null) {
 
 function normalizeWell(wellName) {
   return wellName ? String(wellName).toUpperCase() : null;
-}
-
-function normalizePipetteProtocolName(pipetteName) {
-  const normalized = String(pipetteName || "").trim();
-  return FLEX_PIPETTE_NAME_ALIASES.get(normalized.toLowerCase()) || normalized || null;
 }
 
 function extractRunRecord(runPayload) {

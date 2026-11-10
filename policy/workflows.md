@@ -8,6 +8,10 @@ Robot connection: reuse the user-wide saved address before asking for an IP. `he
 
 ```
 user intent / SOP
+  →  before authoring: robot_status(include_modules=true) using the saved robot connection
+       → use authoring_context for robot type, installed pipettes/mounts, modules/locations and fixtures
+       → ask only for unresolved hardware conflicts and assay/labware facts the APIs cannot observe
+       → explicit offline/no-connection task: use supplied hardware constraints and record unverified
   →  (optional) bundled questions for facts that block the current decision
   →  protocol-author draft (+ critical_sources in liquid source map)
   →  validate_virtual_lab_state_steps (session_id/initial_state, steps) — pure software gate
@@ -25,6 +29,18 @@ user intent / SOP
   →  run_protocol (robot_ip, file_path, session_id) after required checks pass or named software gates are explicitly waived, with authorization covering this run — quiet execution
   →  runtime_watch(mode=loop) (run_id) until COMPLETE/BLOCKED
 ```
+
+## Before protocol authoring: read the target machine
+
+For new protocols and hardware-dependent edits, read `robot_status(include_modules=true)` **before choosing a template, pipettes, mounts, module slots or waste fixture and before writing Python**. This is read-only and needs no motion authorization. Reuse the saved connection and a current snapshot already obtained for this same task; refresh after a robot switch, hardware/layout change or restart. Merely asking to "write only, do not run" still allows read-only inspection. An explicit "offline", "local only", or "do not connect" request skips all robot calls.
+
+Use `data.authoring_context` plus the raw hardware snapshot as the authoring constraints. Derive `requirements.robotType` from the reported machine, use the installed pipettes' `protocol_load_name` on their reported mounts, preserve reported module locations and actual waste/deck fixtures. Gripper moves require a reported or explicitly confirmed installed gripper. Templates provide code structure; their equipment and slots are examples. Do not default to Flex, load a more suitable but absent pipette, force a trash bin into A3, or rearrange existing equipment silently. If the requested target conflicts with the connected robot, resolve the target/address conflict before machine-specific code. When MCP is unavailable, use the LAN fallback's read-only equivalents under the same constraints; do not mix fallback and MCP live control in parallel.
+
+Read `hardware_questions` and confirm only facts that affect the requested steps. The status APIs do not inventory ordinary labware/clean tips, identify liquids, or verify unreported passive modules/adapters. Missing module locations, exact labware load names/slots, starting liquid volumes and allowed additions may need a short question. Neither an unreported slot nor an old run's labware proves the current deck is empty or populated. Vision remains observation-only; use `reconcile_state` for actual session conflicts, not to invent missing observations.
+
+If no address exists, ask for it once. If the saved robot is unreachable, name that connection and resolve it or obtain an explicit choice to draft offline using supplied hardware constraints; do not silently fall back to template hardware. An offline draft records its unverified basis and never claims a live machine match. A door/module readiness warning can prevent motion without preventing useful protocol writing; retain it for the pre-run review.
+
+Keep the snapshot's `robot_ip`, serial, `observed_at`, equipment and any operator-confirmed additions in `design-notes.json` under `hardware_context`. Author → simulate/check → refresh live state before running. The earlier snapshot reduces avoidable hardware rewrites; it does not replace the later live-readiness and simulation gates or authorize any movement.
 
 ## HumanConfirmBudget (go-live)
 

@@ -57,6 +57,7 @@ If tips are insufficient:
 
 Before outputting your final protocol, verify each item below. Fix any issues found:
 
+0. **Machine basis**: For connected-robot authoring, was `robot_status(include_modules=true)` read before the draft? Do `requirements.robotType`, pipette names/mounts, modules/slots and waste fixture match its current `authoring_context` plus explicit operator-confirmed additions? Keep unknown labware/tips/liquids distinct from API observations. Offline requests must record an unverified user-supplied basis. Refresh live state again before execution.
 1. **Volume accumulation**: Does sequential addition without removal cause volume to exceed the well capacity? Add aspiration/removal steps between reagent additions.
 2. **Reagent compatibility**: Does the protocol neutralize or remove reagents before the next step? (e.g., trypsin must be neutralized before adding fresh medium)
 3. **Temperature sensitivity**: Do any reagents require temperature control (37°C for cell culture, 4°C for enzyme reactions)? Add temperature module if needed.
@@ -121,6 +122,7 @@ When producing `design-notes.json`, use this exact schema. Field types matter:
 - `liquid_sources` (optional but required when a reserve exists): `primary` / `reserve` objects with shared `liquid_id` when substitution is allowed; never list wash/enzyme as reserve for assay buffer.
 - `timing` (optional but required for multi-phase time-sensitive protocols): set `max_hold_minutes` (number) for strict windows, or `hold_tolerant: true` for short safe pauses.
 - `key_decisions` MUST be a non-empty array of objects with `decision` and `rationale`.
+- `hardware_context` is required for new protocols and hardware-dependent edits. Record `source` (`live_robot_api` or `operator_supplied_offline`), `robot_ip`, `robot_serial`, `observed_at`, observed pipettes/mounts, modules/locations, deck fixtures, and `operator_confirmed_additions` / `unresolved_items` as applicable. Use the returned authoring context for live observations; record unknowns rather than fabricating values. For offline work, null live identity/timestamp fields and record supplied constraints. This records the design basis; it does not claim current readiness or replace pre-run checks.
 - For workflow/safety questions where no protocol is generated, still fill all fields. Use "N/A" only for `robot` if truly inapplicable; always provide meaningful `deck_layout.description`, `pipette_choice.reason`, and `tip_strategy.reason` even when describing why no action was taken.
 
 **IMPORTANT:** Structure checker scores `pipette_choice.reason` and `tip_strategy.reason` separately. Missing or empty reasons lose points even when the name/policy is correct.

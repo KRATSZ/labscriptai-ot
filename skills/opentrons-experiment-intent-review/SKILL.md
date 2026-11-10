@@ -55,7 +55,7 @@ The goal is to lock the intent before protocol authoring or live execution.
 ## Review Checklist
 
 1. **Restate intent** in one paragraph (volumes, liquids, success criteria).
-2. **Deck snapshot** — slots, load names, pipette mounts; flag anything unstated.
+2. **Deck snapshot** — before authoring for a connected robot, reuse `robot_status(include_modules=true).data.authoring_context` for machine type, pipettes/mounts, modules/locations and fixtures. Ask only about relevant unobservable labware/slots, remaining tips and liquids; do not make the user re-enter observed hardware. For explicit offline/no-connection work, use supplied constraints and mark unverified. Follow `policy/workflows.md` § Before protocol authoring; a mapping-only discussion need not connect or lock a whole deck.
 3. **Plate mapping** — 8x12 indexing, orientation vs human "up"; produce
    ASCII or table preview of target wells.
 4. **Protocol alignment** — does well list match preview? Extra/missing wells?

@@ -57,7 +57,8 @@ function summarizeHealth(healthPayload) {
   return {
     name: readNested(health, [["name"]]),
     robot_model: readNested(health, [["robot_model"], ["robotModel"]]),
-    robot_serial: readNested(health, [["robot_serial"], ["robotSerial"]]),
+    robot_type: readNested(health, [["robot_type"], ["robotType"]]),
+    robot_serial: readNested(health, [["robot_serial"], ["robotSerial"], ["serialNumber"]]),
     api_version: readNested(health, [["api_version"], ["apiVersion"]]),
     firmware_version: readNested(health, [["fw_version"], ["fwVersion"]]),
     system_version: readNested(health, [["system_version"], ["systemVersion"]]),
@@ -115,7 +116,7 @@ function summarizeDeck(deckPayload) {
   const deck = unwrapData(deckPayload) || {};
   return {
     deck_type: readNested(deck, [["deckType"], ["type"]]),
-    cutout_fixtures: readNested(deck, [["cutoutFixtures"], ["fixtures"]], []),
+    cutout_fixtures: readNested(deck, [["cutoutFixtures"], ["cutout_fixtures"], ["fixtures"]], []),
     raw: deck,
   };
 }

@@ -4,19 +4,37 @@
     {
       "id": 1,
       "prompt": "I need to write an Opentrons protocol for an OT-2 robot. The protocol should transfer liquid from a 96-well plate to a 384-well plate using a 300ul single-channel pipette. Include deck setup and pipette configuration.",
-      "expected_output": "A Python protocol file with proper metadata, deck setup defining the labware, pipette configuration for a 300ul single-channel pipette, and transfer commands using valid methods.",
+      "expected_output": "Read the target robot before authoring (or ask for the missing connection once), resolve any target/hardware conflict, and use its actual installed pipette and mount. Ask only for unresolved labware and assay facts. Then produce a compatible OT-2 protocol with explicit deck setup and valid transfer methods.",
       "files": []
     },
     {
       "id": 2,
       "prompt": "create a simple flex protocol that does a serial dilution. start with 100ul in first well, do 1:2 dilution across 8 wells of a 96 plate",
-      "expected_output": "A Flex-compatible Python protocol with robotType='Flex', a multi-channel pipette setup, and serial dilution logic that transfers decreasing volumes across the wells.",
+      "expected_output": "Read current hardware before choosing a pipette/template; preserve installed mounts and modules, resolve well direction/volumes and relevant unknown labware, then write a Flex serial dilution protocol compatible with the observed pipette and target wells rather than assuming a multichannel pipette is available.",
       "files": []
     },
     {
       "id": 3,
       "prompt": "I have a protocol that isn't working. The error says 'No labware defined for tip rack on position 3'. Can you fix it?",
       "expected_output": "The protocol should be corrected to include proper tip rack definition in the deck setup or use a valid position reference, with clear explanation of the fix.",
+      "files": []
+    },
+    {
+      "id": 4,
+      "prompt": "Use the saved robot connection to write a 20 uL transfer protocol for my current setup. Only write and simulate it; do not run it. The robot reports a Flex with a right-mounted p50_single_flex, a left-mounted p1000_multi_flex, and a D3 waste chute.",
+      "expected_output": "Call robot_status(include_modules=true) before Python authoring; do not treat 'do not run' as an offline request. Use the observed right-mounted flex_1channel_50 for suitable individual-well work, preserve the D3 waste fixture, ask only for relevant unobservable labware/liquid details, record the hardware context, and perform no motion. Do not copy an A3 trash bin or assume a left-mounted single-channel pipette.",
+      "files": []
+    },
+    {
+      "id": 5,
+      "prompt": "Draft an OT-2 protocol offline. Do not connect to any robot. I have a right-mounted p300_single_gen2; I will supply the plate mapping, volumes, and deck details before you write the code.",
+      "expected_output": "Make no robot calls, keep OT-2 and the supplied right-mounted pipette, ask only for the promised missing experimental/deck details, and record operator_supplied_offline as an unverified hardware basis. Do not contact a saved Flex or default to Flex.",
+      "files": []
+    },
+    {
+      "id": 6,
+      "prompt": "Write a Flex protocol using my saved connection. The current status response identifies an OT-2 with a left p300_single_gen2, and the deck has no confirmed labware list.",
+      "expected_output": "Resolve whether the saved address is the intended robot before writing machine-specific code. Do not silently turn the requested Flex experiment into OT-2 code, invent Flex pipettes or labware, or overwrite the target with template assumptions.",
       "files": []
     }
   ]

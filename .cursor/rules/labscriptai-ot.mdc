@@ -9,4 +9,6 @@ Use the bundled `opentrons-lab` MCP server and `skills/opentrons-*` skills for O
 
 For new experiments, start with `opentrons-experiment-run`. Setup: [docs/GETTING_STARTED.md](../../docs/GETTING_STARTED.md).
 
-Live robot actions are opt-in. Run simulation before unattended live execution. Treat vision as observation-only. Default order: dashboard → optional deck vision → optional liquid probe → execution. Honor explicit scoped software-check waivers per policy/safety-policy.md; the probe opt-in flag gates probe motion only.
+Before new protocol authoring, read robot_status(include_modules=true) using the saved connection and use authoring_context to match the actual machine. Explicit offline/local-only/no-connection requests skip robot access. Follow policy/workflows.md for the authoring sequence and unobservable labware details.
+
+Live robot motion is opt-in. Run simulation before unattended live execution. Treat vision as observation-only. After authoring and simulation, refresh the dashboard before optional deck vision → optional liquid probe → execution. Honor explicit scoped software-check waivers per policy/safety-policy.md; the probe opt-in flag gates probe motion only.

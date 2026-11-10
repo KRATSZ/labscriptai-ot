@@ -90,6 +90,8 @@ pipette = protocol.load_instrument("flex_8channel_1000", "left", tip_racks=[tips
 
 ### Tip selection heuristic
 
+Apply these options only to installed pipettes on their observed mounts and confirmed available tip racks. Resolve a hardware change with the operator instead of silently choosing an absent model.
+
 - Volumes ≤50 µL: use `50ul` tips with a 50µL pipette (best accuracy).
 - Volumes 5-200 µL: use `200ul` tips with a 1000µL pipette.
 - Volumes >200 µL: use `1000ul` tips with a 1000µL pipette.
@@ -97,9 +99,9 @@ pipette = protocol.load_instrument("flex_8channel_1000", "left", tip_racks=[tips
 - If an operator asks for a "P300" on Flex, translate that into a real Flex choice instead of inventing a 300 µL model:
   usually `flex_1channel_1000` + `200ul` tips for mid-volume work, or `flex_1channel_50` if the critical transfers are mostly ≤50 µL.
 
-## Flex trash bin
+## Flex waste fixture
 
-Every Flex protocol MUST load a trash bin and pass it to `drop_tip(...)`:
+Load the actual waste fixture from the live deck configuration: trash bin or waste chute. The template below is a trash-bin example only:
 
 ```python
 trash = protocol.load_trash_bin("A3")
@@ -107,7 +109,7 @@ trash = protocol.load_trash_bin("A3")
 pipette.drop_tip(trash)
 ```
 
-Use an explicit slot consistent with your deck layout (this repo’s templates default to **`"A3"`**). If your deck uses another trash slot, change the string to match the Flex deck map.
+Use the observed trash-bin slot instead of copying the example A3. If the robot has a waste chute, use its supported protocol API and reserve the actual chute/fixture space; do not add a phantom trash bin or overlap another module/labware. Confirm any unreported fixture before writing its setup.
 
 ## OT-2 vs Flex
 

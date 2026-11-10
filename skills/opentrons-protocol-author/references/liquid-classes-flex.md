@@ -14,7 +14,7 @@ Source: [Python API: Liquid Classes](https://docs.opentrons.com/python-api/liqui
 
 ## How to use
 
-1. Set `requirements` to a Flex `apiLevel` that supports liquid classes: **minimum 2.24** for `transfer_with_liquid_class`. This repo’s Flex templates default to **2.24**. Newer installs often support higher API levels (e.g. **2.27** on many 8.8.x builds) — raise toward `MAX_SUPPORTED_VERSION` when you need features beyond 2.24, not as a template default requirement.
+1. Set `requirements` to a Flex `apiLevel` that supports liquid classes: **minimum 2.24** for `transfer_with_liquid_class`. This repo’s Flex templates default to **2.24**. Check support on both the target robot software and the local analyzer before using newer features; the local `MAX_SUPPORTED_VERSION` alone does not establish robot compatibility.
 2. Load tips, trash, pipette, and labware.
 3. Call `protocol.get_liquid_class(name="water" | "ethanol_80" | "glycerol_50")`.
 4. Transfer with `pipette.transfer_with_liquid_class(liquid_class=..., volume=..., source=..., dest=..., new_tip=..., trash_location=...)`.

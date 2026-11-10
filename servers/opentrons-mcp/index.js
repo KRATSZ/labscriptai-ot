@@ -9,7 +9,8 @@ import { systemPath } from "../../scripts/runtime-paths.mjs";
 
 import { errorResponse, successResponse } from "./lib/envelope.js";
 import { requestRobotBytes, requestRobotJson } from "./lib/http.js";
-import { resolveRobotConnection, robotConnectionSummary } from "./lib/robot-connection.js";
+import { requireRobotAddress, resolveRobotConnection, robotConnectionSummary } from "./lib/robot-connection.js";
+import { buildAuthoringContext } from "./lib/authoring-context.js";
 import {
   applyObservedDeckToSessionState,
   buildActionSummary,
@@ -480,7 +481,7 @@ const TOOL_DEFINITIONS = [
   {
     name: "robot_status",
     description:
-      "Fetch the live hardware snapshot needed before physical actions: health, instruments, door, estop, and deck configuration. With include_modules=true (default) the attached module state and execution-readiness summary is embedded in the same snapshot.",
+      "Read-only live hardware snapshot. Before writing a protocol for a connected robot, call with include_modules=true (default) and use data.authoring_context: observed robot type, pipette protocol load names/mounts, attached modules/locations, deck fixtures and hardware_questions. Ordinary labware, remaining clean tips and liquid contents are not inventoried by these APIs; confirm those with the operator rather than guessing from history or templates. Includes health, door, estop and module readiness. Uses the saved robot address when robot_ip is omitted. No motion; refresh again before live execution.",
     inputSchema: {
       type: "object",
       properties: {
@@ -4773,9 +4774,14 @@ const TOOL_HANDLERS = {
 
   async robot_status(args) {
     const { include_modules = true, ...rest } = args;
+    const robotIp = requireRobotAddress(rest.robot_ip);
+    rest.robot_ip = robotIp;
+    const observedAt = new Date().toISOString();
     const status = await readRobotStatus(rest);
     if (include_modules !== true) {
-      return status;
+      return { ...status, data: { ...status.data, authoring_context: buildAuthoringContext({
+        robotStatus: status.data, robotIp, observedAt,
+      }) } };
     }
     const modules = await readModuleStatus(rest);
     return {
@@ -4783,6 +4789,7 @@ const TOOL_HANDLERS = {
       data: {
         ...status.data,
         modules: modules.data,
+        authoring_context: buildAuthoringContext({ robotStatus: status.data, moduleStatus: modules.data, robotIp, observedAt }),
       },
       hardwareSnapshot: {
         ...status.hardwareSnapshot,

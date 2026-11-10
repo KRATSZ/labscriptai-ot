@@ -18,7 +18,7 @@ const MANIFESTS = {
 
 const REQUIRED_INTERFACE = ["displayName", "shortDescription", "defaultPrompt", "postInstallMessage"];
 const EXPECTED_PROMPTS = [
-  "Help me design a Flex liquid-handling experiment from scratch — review intent first, then write and simulate the protocol",
+  "Help me design a liquid-handling experiment — inspect the connected robot first, then review intent, write and simulate the protocol",
   "Check whether this Opentrons protocol can pass local simulation safely",
   "What state is the robot in? Run safety checks before any recovery action",
 ];

@@ -59,6 +59,7 @@ Skills:
 ${skills}
 
 - Live robot actions are opt-in only. Run local simulation before unattended live execution; treat vision as observation-only.
+- Before new protocol authoring, read robot_status(include_modules=true) using the saved connection and use authoring_context for the actual hardware; explicit offline/local-only/no-connection requests skip robot access. Follow policy/workflows.md.
 - Reply in the user's language. Lead with the result, then the next action or blocker. Use plain language, keep routine replies short, and link files instead of pasting logs or status JSON.
 `;
 }

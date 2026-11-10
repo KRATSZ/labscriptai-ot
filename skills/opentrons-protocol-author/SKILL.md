@@ -1,17 +1,17 @@
 ---
 name: opentrons-protocol-author
-description: Write or revise Opentrons Python protocols for OT-2 or Flex robots — deck setup, labware, pipette, runtime parameters, camera capture.
+description: Write or revise OT-2 or Flex Python protocols using the target robot's current hardware before choosing pipettes, mounts, modules and deck layout. Supports explicitly offline drafts.
 metadata:
   entry: assets/flex_protocol_template.py
 ---
 
 # Protocol Author
 
-1. Identify target robot: `OT-2` or `Flex`. **Default Flex.**
+1. For new protocols and hardware-dependent edits, **before choosing hardware or writing Python**, read `robot_status(include_modules=true)` using the saved connection and use `data.authoring_context`. Match the reported robot type, installed pipette protocol load names/mounts, modules/locations and waste fixtures. Reuse a current snapshot for this task. For explicit offline/local-only/no-connection requests, skip network access and use supplied hardware constraints, marked unverified. Never infer the machine from a template or default to Flex. Canonical behavior for unavailable connections, unknown labware and target conflicts: `policy/workflows.md` § Before protocol authoring.
 2. For spatial patterns, arbitrary well subsets, or unclear plate mapping:
    run `opentrons-experiment-intent-review` first. Lock `target_wells` / tip policy.
 3. Read `references/python-protocol-patterns.md`, `references/pattern-library.md`, and (Flex) `references/liquid-classes-flex.md`.
-4. Start from **`assets/flex_protocol_template.py`** (Flex) or **`assets/protocol_template.py`** (OT-2). For common workflows, copy from **`assets/flex_template_*.py`** or **`assets/flex_liquid_classes_example.py`**. Supplementary snippets live under **`assets/archive/`** — not default starters.
+4. Start from **`assets/flex_protocol_template.py`** (Flex) or **`assets/protocol_template.py`** (OT-2). Adapt their example equipment/slots to the inspected hardware and confirmed labware **before** outputting a draft. For common workflows, copy from **`assets/flex_template_*.py`** or **`assets/flex_liquid_classes_example.py`**. Supplementary snippets live under **`assets/archive/`** — not default starters.
 5. Keep protocol explicit: labware, instruments, mounts, slots, runtime parameters.
 6. Add the standard `dry_run_on` boolean runtime parameter unless the user
    explicitly declines it. Default `False`. Route every tip release through one
@@ -28,6 +28,8 @@ metadata:
 - Do not wait for perfect inputs when a safe, runnable draft is already possible.
 - Ask only for choices that change robot compatibility, deck truth, module usage,
   or safety-critical contamination assumptions.
+- Read the machine before asking hardware questions. Do not ask again for facts already returned by current APIs. Only confirm relevant `hardware_questions`, ordinary labware/slots, clean-tip availability, liquids and unreported passive modules/adapters; do not present an old run or a visually inferred layout as current deck truth.
+- A saved IP is a connection default, not proof that it is the requested target. Resolve a machine mismatch before drafting. If unreachable, explain which connection failed and ask whether to fix it or explicitly draft offline; do not silently substitute assumed hardware.
 - If only a preference is missing, choose a documented default and note it in
   `design-notes.json` (schema in appendix when you write it).
 - Once a runnable draft exists, the default next step is simulation.
@@ -36,7 +38,7 @@ metadata:
 
 - Use `requirements = {"robotType": "...", "apiLevel": "..."}` for modern protocols.
 - `apiLevel` must appear **only** in `requirements`, never inside `metadata`.
-- Flex apiLevel must be **2.24 or higher** in bundled templates — compatible with verified liquid classes and RTP; raise toward `opentrons.protocol_api.MAX_SUPPORTED_VERSION` when your install allows. Older 2.20-only protocols may still run on robot but new drafts should not default below **2.24**.
+- Flex templates use **apiLevel 2.24** as their feature baseline. Choose a level supported by both the target robot's software and the local analyzer; the local `MAX_SUPPORTED_VERSION` alone is not proof of robot support. Do not confuse the robot HTTP `api_version` with Python protocol `apiLevel`. If target support for required features is unknown or too old, resolve compatibility before emitting a machine-ready protocol; use compatible alternatives or discuss an upgrade rather than silently choosing a newer level.
 - Call out custom labware dependencies explicitly.
 - Declare known starting liquids and volumes with `protocol.define_liquid(...)` and `well.load_liquid(liquid, volume)` before transfers. Use separate liquid objects for independent samples; a shared liquid ID asserts shared identity and must not make different samples appear substitutable. Missing source amounts are a clarification, not permission to invent enough liquid just to pass LogicPass or 3D checks.
 - **Flex trash bin is NOT a Labware.** `load_trash_bin()` returns a `TrashBin` object,
@@ -86,9 +88,9 @@ metadata:
 
 ## Pipette range (Flex default path)
 
-Choose the smallest pipette that covers the required volume range. Transfers below 10% of max volume lose accuracy.
+Choose among the **installed pipettes** on their observed mounts; select the smallest compatible one that covers the required volumes and access pattern. If none fits, discuss a confirmed hardware change or an applicable split-transfer strategy before writing incompatible code. Treat the recommendations below as options only when that equipment is present or an addition was explicitly agreed.
 
-**Flex pipettes (only these are valid `load_instrument` names):**
+**Common Flex pipette load names (use the observed hardware; this table is not exhaustive):**
 
 | Pipette model | Actual min | Recommended min (≥10% max) | Max volume | Use for |
 |--------------|-----------|---------------------------|-----------|---------|
@@ -97,9 +99,9 @@ Choose the smallest pipette that covers the required volume range. Transfers bel
 
 **IMPORTANT**: `flex_1channel_200` and `flex_8channel_200` do NOT exist. If you need a mid-range volume (20-200 µL), use `flex_1channel_50` with volume splitting, or `flex_1channel_1000` with awareness that accuracy decreases below 100 µL. **Do NOT claim the P1000 "cannot" do volumes below 100 µL** — it can transfer down to 5 µL, just with reduced accuracy. If high precision is needed below 100 µL, recommend the P50 instead.
 
-**Common operator wording trap:** If a Flex user asks for a "single-channel P300", do **not** invent a non-existent `flex_1channel_300`. State the mismatch plainly, then choose the closest real option:
-- default practical choice: `flex_1channel_1000` with `opentrons_flex_96_tiprack_200ul` for roughly 20-200 µL work
-- precision-first choice: `flex_1channel_50` when important transfers are mostly ≤50 µL
+**Common operator wording trap:** If a Flex user asks for a "single-channel P300", do **not** invent a non-existent `flex_1channel_300`. State the mismatch plainly, then use a compatible installed option or discuss an explicit hardware change:
+- if installed and appropriate for the assay: `flex_1channel_1000` with confirmed `opentrons_flex_96_tiprack_200ul` tips for roughly 20-200 µL work
+- if installed: `flex_1channel_50` when important transfers are mostly ≤50 µL
 - in `design-notes.json`, record that Flex has no native 300 µL single-channel pipette and explain the tradeoff you chose
 
 **Volume split rule:** If a single transfer exceeds the pipette max, split into multiple transfers. Example: 1500 µL with a 1000 µL pipette → 1000 µL + 500 µL.

@@ -140,7 +140,7 @@ Record operator-confirmed liquid/sample identity and optional live probe observa
 
 ### `robot_status` [L2]
 
-Fetch the live hardware snapshot needed before physical actions: health, instruments, door, estop, and deck configuration. With include_modules=true (default) the attached module state and execution-readiness summary is embedded in the same snapshot.
+Read-only live hardware snapshot. Before writing a protocol for a connected robot, call with include_modules=true (default) and use data.authoring_context: observed robot type, pipette protocol load names/mounts, attached modules/locations, deck fixtures and hardware_questions. Ordinary labware, remaining clean tips and liquid contents are not inventoried by these APIs; confirm those with the operator rather than guessing from history or templates. Includes health, door, estop and module readiness. Uses the saved robot address when robot_ip is omitted. No motion; refresh again before live execution.
 
 **Parameters:** `robot_ip` (optional), `include_modules` (optional)
 
