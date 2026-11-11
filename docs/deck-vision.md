@@ -4,7 +4,23 @@ Lab-trained deck vision helps agents **observe** Flex deck layout from camera ph
 
 **Safety:** Vision is **observation-only**. It does **not** replace committed deck truth. Always compare with `reconcile_state` and robot APIs before acting on layout. See [policy/workflows.md](../policy/workflows.md) (*Optional deck vision*) and [GLOSSARY.md](GLOSSARY.md).
 
-**Branch:** Full pipeline lives on `feature/flex-deck-vision` (not merged to `main` yet). Use that branch for vision tools and weights.
+The pipeline is included in this plugin checkout. No separate feature branch is needed.
+
+## Automatic workflow
+
+`run_protocol` attempts configured Flex vision after software preflight and immediately before sending `play`. It derives the **starting** slot layout from the successful local simulation's load commands, captures a fresh preview image, runs YOLO, and requests an Ark/Kimi second opinion only on uncertainty or mismatch.
+
+- `OPENTRONS_PREFLIGHT_VISION=auto` (default): attempt the configured check. `off` disables it.
+- Per run, `preflight_vision=on|off` explicitly requests/skips it and takes priority over the environment default. `skip_preflight=true` skips vision along with the software preflight; `skip_preflight_deck_diff=true` only skips the API deck diff.
+- Missing camera/calibration/dependencies, unsupported labware or unresolved runtime-parameter layouts are reported as `not_checked`, never passed. These optional omissions do not prevent an ordinary run.
+- Observed mismatch or unresolved visual uncertainty stops before play and returns reconcile/re-check guidance. The tool does not move labware or change session deck truth.
+- `auto_play=false` defers checking: the uploaded run's expectations are persisted, and `control_run(action=play)` checks a fresh photo at actual startup, including after a server restart. Runs stopped by a visual mismatch retain this requirement when retried. After a manual layout change, use `control_run(deck_changed=true, expected_layout={...})` when playing/resuming; pass the **current** expected layout, not the original protocol layout after moves. Each call captures again. Stop/pause and normal running do not trigger photography.
+
+Every attempt returns `vision_gate` with status, `report_path`, and available image/annotated-image paths. JSON reports live under `PLUGIN_DATA/artifacts/deck-vision/check-*/vision-report.json`; old reports are audit evidence, not reusable readiness checks.
+
+For a separate staged review use `deck_vision_check(mode=preflight, file_path=...)`, `analysis_path=...`, or an explicit `expected_layout` such as `{"B2":"plate","B3":"empty"}`. Explicit layouts check only the supplied supported slots. Local saved-image observation remains available with `mode=local`. The detector groups tiprack sizes as `tiprack` for comparison and does not establish exact consumable identity, tip counts, or liquid contents.
+
+Without a layout baseline, a preflight call can still capture diagnostic evidence for recovery, but returns `not_checked` for layout agreement. Late loads whose starting placement is ambiguous are excluded from comparison rather than assumed empty. Old reports and the fixed-slot policy do not establish physical module placement.
 
 ---
 
@@ -45,10 +61,11 @@ Offline (once / when retraining)
   train_deck_yolo.py     →  vision/models/weights/deck_v2_best.pt
 
 Runtime (each check)
-  camera_settings(action=status)
-    → capture_image(mode=preview)
-    → deck_vision_check(mode=local)  (loads calibration + policy + weights automatically)
-    → reconcile_state  (deck truth for comparison)
+  run_protocol: simulation → software preflight
+    → fresh capture → YOLO vs analyzed starting layout → optional VLM
+    → report → play only if no unresolved visual mismatch/uncertainty
+
+  mismatch: reconcile_state + API review → resolve → fresh check
 ```
 
 MCP tool reference: [MCP_TOOLS.md](MCP_TOOLS.md) → `deck_vision_check(mode=local)` [L4].
@@ -76,14 +93,14 @@ Expect passes for: deck layout policy, deck calibration, deck YOLO weights, visi
 ### 2. Calibrate camera homography (once per camera angle)
 
 ```powershell
-.venv\Scripts\python.exe automation\click_deck_corners.py --show
+.venv\Scripts\python.exe automation\click_deck_corners.py --image "C:\path\to\current-deck.jpg"
 ```
 
-Click corners in order **A1 → A3 → D3 → D1** (deck view). Writes:
+First capture a current deck image with `capture_image(mode=preview)`, then use its saved path above. Click corners in order **A1 → A3 → D3 → D1** (deck view). Writes:
 
 `automation/photo/deck_calibration.json`
 
-`deck_vision_check(mode=local)` loads `optional_deck_corners_norm` from this file automatically. Re-calibrate if the camera mount or angle changes.
+`deck_vision_check(mode=local)` loads `optional_deck_corners_norm` from this file automatically. Re-calibrate if the camera mount or angle changes. `--show` previews an existing calibration without editing; it cannot create one. Automatic preflight requires calibration and rejects a calibration bound to a different robot; uncalibrated local observations are not a preflight pass.
 
 ### 3. Machine layout policy
 
@@ -120,7 +137,7 @@ Ensure `.cursor/mcp.json` sets:
 - `OPENTRONS_PLUGIN_ROOT` → repo root
 - `OPENTRONS_PYTHON` → `.venv\Scripts\python.exe`
 
-Reload MCP only after changing `mcp.json` env vars or if the server is stale. **Not required** after editing `deck_vision_check(mode=local).py`, policy, calibration, or weights — each `deck_vision_check(mode=local)` call spawns a fresh Python process.
+Reload MCP after updating server code or changing `mcp.json` env vars. **Not required** after editing `vision_check.py`, policy, calibration, or weights — each local vision call spawns a fresh Python process.
 
 ---
 
@@ -128,7 +145,7 @@ Reload MCP only after changing `mcp.json` env vars or if the server is stale. **
 
 ### Option A — Cursor Agent (recommended)
 
-Stay on `feature/flex-deck-vision`. Ask explicitly (vision is **not** in the default preflight path):
+Configured vision is attempted automatically before `run_protocol` starts movement. The following prompts also work for independent checks:
 
 **Quick deck check**
 
@@ -136,7 +153,7 @@ Stay on `feature/flex-deck-vision`. Ask explicitly (vision is **not** in the def
 
 **Before a run**
 
-> 实验开始前：camera_settings(action=status) → capture_image(mode=preview) → deck_vision_check(mode=local)。若检测槽位与 protocol 预期 layout 不一致，列出差异，不要自动启动 run。
+> 实验开始前，使用 deck_vision_check(mode=preflight, file_path=协议路径) 检查台面，列出差异和标注图，不启动实验。
 
 **After rearranging labware**
 
@@ -180,7 +197,7 @@ $payload = @{
   image_path = "C:\...\automation\photo\test\test_....jpg"
   conf_threshold = 0.2
 } | ConvertTo-Json -Compress
-$payload | .venv\Scripts\python.exe servers\opentrons-mcp\scripts\deck_vision_check(mode=local).py
+$payload | .venv\Scripts\python.exe servers\opentrons-mcp\scripts\vision_check.py
 ```
 
 Calibration and policy are loaded from repo paths; no need to pass `deck_corners_norm` manually.
@@ -215,7 +232,7 @@ Calibration and policy are loaded from repo paths; no need to pass `deck_corners
 
 | When | Action |
 |------|--------|
-| Camera angle changed | Re-run `click_deck_corners.py` |
+| Camera angle changed | Re-run `click_deck_corners.py --image <current-photo>` |
 | Fixed modules moved | Update `deck_layout_policy.json` |
 | New labware type or poor accuracy | Capture photos → `label_deck_bboxes.py` → `export_yolo_dataset.py` → `train_deck_yolo.py` |
 | New plate/reservoir layouts | Add bbox labels in detection slots, retrain |
@@ -252,7 +269,8 @@ Updates `vision/models/weights/deck_v2_best.pt`.
 | `automation/deck_layout_policy.json` | Fixed slots + detection scope |
 | `automation/photo/deck_calibration.json` | Homography corners |
 | `vision/models/weights/deck_v2_best.pt` | Trained detector |
-| `servers/opentrons-mcp/scripts/deck_vision_check(mode=local).py` | MCP deck vision backend |
+| `servers/opentrons-mcp/scripts/vision_check.py` | MCP deck vision backend |
+| `servers/opentrons-mcp/lib/deck-vision-layout.js` | Initial analyzed layout, calibration availability, run decision |
 | `automation/capture_photo_series.py` | Robot timed capture |
 | `automation/run_test_vision.py` | Offline batch evaluation |
 | `automation/click_deck_corners.py` | Calibration GUI |

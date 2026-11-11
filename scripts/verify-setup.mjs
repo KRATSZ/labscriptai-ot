@@ -266,13 +266,13 @@ function checkPython() {
 }
 
 function checkVision(pythonExe) {
-  if (!["on", "1"].includes(process.env.OPENTRONS_PREFLIGHT_VISION)) {
-    checks.push({ name: "Optional deck vision", status: "skip", detail: "Not enabled; see docs/deck-vision.md to configure." });
+  if (["off", "0", "false", "no"].includes(String(process.env.OPENTRONS_PREFLIGHT_VISION || "auto").trim().toLowerCase())) {
+    checks.push({ name: "Optional deck vision", status: "skip", detail: "Explicitly disabled; see docs/deck-vision.md to configure." });
     return;
   }
-  const policyPath = path.join(PLUGIN_ROOT, "automation", "deck_layout_policy.json");
-  const calibrationPath = path.join(PLUGIN_ROOT, "automation", "photo", "deck_calibration.json");
-  const weightsPath = path.join(PLUGIN_ROOT, "vision", "models", "weights", "deck_v2_best.pt");
+  const policyPath = process.env.OPENTRONS_DECK_LAYOUT_POLICY || path.join(PLUGIN_ROOT, "automation", "deck_layout_policy.json");
+  const calibrationPath = process.env.OPENTRONS_DECK_CALIBRATION || path.join(PLUGIN_ROOT, "automation", "photo", "deck_calibration.json");
+  const weightsPath = process.env.OPENTRONS_DECK_YOLO_WEIGHTS || path.join(PLUGIN_ROOT, "vision", "models", "weights", "deck_v2_best.pt");
 
   if (fs.existsSync(policyPath)) {
     pass("Deck layout policy", path.relative(PLUGIN_ROOT, policyPath));
@@ -290,7 +290,7 @@ function checkVision(pythonExe) {
     warn(
       "Deck calibration",
       "Missing automation/photo/deck_calibration.json",
-      "Run: python automation/click_deck_corners.py --show"
+      "Capture a current deck photo, then run: python automation/click_deck_corners.py --image <photo-path>"
     );
   }
 
@@ -381,7 +381,7 @@ function checkOt2Analyzer() {
 }
 
 function checkArkVlm() {
-  if (!["on", "1"].includes(process.env.OPENTRONS_PREFLIGHT_VISION)) return;
+  if (["off", "0", "false", "no"].includes(String(process.env.OPENTRONS_PREFLIGHT_VISION || "auto").trim().toLowerCase())) return;
   const envPath = path.join(PLUGIN_ROOT, "automation", ".env");
   let arkKey = process.env.ARK_API_KEY || null;
   if (!arkKey && fs.existsSync(envPath)) {

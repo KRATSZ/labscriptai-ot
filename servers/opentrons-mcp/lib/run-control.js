@@ -25,6 +25,7 @@ export function buildRunProtocolResult({
   final_run_history,
   simulation_gate = null,
   preflight_gate = null,
+  vision_gate = null,
   parsed_error = null,
   recovery = null,
 } = {}) {
@@ -33,6 +34,7 @@ export function buildRunProtocolResult({
   return {
     simulation_gate,
     preflight_gate,
+    vision_gate,
     protocol,
     created_run,
     play_action,

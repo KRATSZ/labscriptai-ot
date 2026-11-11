@@ -202,9 +202,9 @@ Control an attached module in an active run or maintenance context. module_type=
 
 ### `control_run` [L3]
 
-Play, pause, stop, or resume-from-recovery for a run.
+Play, pause, stop, or resume-from-recovery for a run. Deferred or visually blocked run_protocol runs retain a fresh vision check at actual startup. After manual deck changes, set deck_changed=true and pass the expected current layout: a new observation-only check runs before play/resume. Earlier starting-layout photos are never reused.
 
-**Parameters:** `robot_ip` (optional), `run_id`, `action`, `page_length` (optional), `session_id` (optional), `tiprack_slots` (optional)
+**Parameters:** `robot_ip` (optional), `run_id`, `action`, `page_length` (optional), `session_id` (optional), `deck_changed` (optional), `expected_layout` (optional), `preflight_vision` (optional), `tiprack_slots` (optional)
 
 ### `create_run` [L3]
 
@@ -268,9 +268,9 @@ In protocol recovery state, enqueue a fixit pickUpTip on the next viable well an
 
 ### `run_protocol` [L3]
 
-Upload, create and optionally play a protocol, then poll to a terminal or intervention state. Local simulation is required. LogicPass and software preflight gate by default; honor explicit operator waivers with the corresponding skip flags and record skipped checks. Liquid probing is optional and its enable flag is not required for this tool.
+Upload, create and optionally play a protocol, then poll to a terminal or intervention state. Local simulation is required. LogicPass and software preflight gate by default. Immediately before play, automatically attempt configured Flex deck vision using the simulation's starting layout; save vision_gate and its report. Unavailable vision is not_checked; layout doubts stop play for reconcile/review. Honor explicit operator waivers with the corresponding skip flags. Liquid probing is optional.
 
-**Parameters:** `robot_ip` (optional), `file_path`, `protocol_kind` (optional), `key` (optional), `run_time_parameters` (optional), `labware_offsets` (optional), `auto_play` (optional), `timeout_ms` (optional), `poll_interval_ms` (optional), `page_length` (optional), `session_id` (optional), `skip_logicpass_gate` (optional), `skip_preflight` (optional), `skip_preflight_deck_diff` (optional), `strict_preflight_labware_slots` (optional), `tiprack_slots` (optional)
+**Parameters:** `robot_ip` (optional), `file_path`, `protocol_kind` (optional), `key` (optional), `run_time_parameters` (optional), `labware_offsets` (optional), `auto_play` (optional), `preflight_vision` (optional), `timeout_ms` (optional), `poll_interval_ms` (optional), `page_length` (optional), `session_id` (optional), `skip_logicpass_gate` (optional), `skip_preflight` (optional), `skip_preflight_deck_diff` (optional), `strict_preflight_labware_slots` (optional), `tiprack_slots` (optional)
 
 ### `runtime_outbox` [L3]
 
@@ -318,9 +318,9 @@ Robot data files (including historical camera images). action=list shows generat
 
 ### `deck_vision_check` [L4]
 
-Deck vision observation (observation-only; does not mutate session state; compare with reconcile_state before treating as deck truth). mode=preflight orchestrates capture → YOLO → optional VLM second opinion when uncertain or mismatched (requires robot_ip; enable the optional configured path with OPENTRONS_PREFLIGHT_VISION=on). mode=local runs the YOLOE/YOLO observation directly on a saved image (requires image_path): detections map to Flex 12 slots via optional deck homography or a uniform image-grid fallback; empty slots are geometric. Default YOLOE prompts are Flex-tuned (colored tip racks, modules, trash); override with class_prompts + canonical_labels.
+Observation-only deck vision; never mutates deck truth. mode=preflight captures → YOLO → conditional VLM, derives starting expectations from file_path/analysis_path or accepts expected_layout, and saves a report. Automatically attempted before run_protocol play when configured; unavailable checks are not_checked, mismatches require reconcile_state. OPENTRONS_PREFLIGHT_VISION=off disables automatic checks; preflight_vision=on explicitly requests one. mode=local observes a saved image_path without robot access.
 
-**Parameters:** `mode`, `robot_ip` (optional), `session_id` (optional), `expected_layout` (optional), `output_path` (optional), `force_vlm` (optional), `vlm_provider` (optional), `conf_threshold` (optional), `weights` (optional), `image_path` (optional), `reference_image_path` (optional), `use_text_prompts` (optional), `annotated_output_dir` (optional), `python_executable` (optional), `deck_corners_norm` (optional), `load_labels_sidecar` (optional), `class_prompts` (optional), `canonical_labels` (optional)
+**Parameters:** `mode`, `robot_ip` (optional), `session_id` (optional), `run_id` (optional), `file_path` (optional), `analysis_path` (optional), `run_time_parameters` (optional), `preflight_vision` (optional), `expected_layout` (optional), `output_path` (optional), `force_vlm` (optional), `vlm_provider` (optional), `conf_threshold` (optional), `weights` (optional), `image_path` (optional), `reference_image_path` (optional), `use_text_prompts` (optional), `annotated_output_dir` (optional), `python_executable` (optional), `deck_corners_norm` (optional), `load_labels_sidecar` (optional), `class_prompts` (optional), `canonical_labels` (optional)
 
 ### `flex3d_open_viewer` [L4]
 

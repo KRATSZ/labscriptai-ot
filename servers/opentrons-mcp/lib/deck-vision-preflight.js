@@ -6,8 +6,8 @@ const ESCALATION_UNCERTAINTIES = new Set([
   "uncertain_slot",
 ]);
 
-export function isPreflightVisionEnabled() {
-  const flag = String(process.env.OPENTRONS_PREFLIGHT_VISION || "off").trim().toLowerCase();
+export function isPreflightVisionEnabled(mode = "auto") {
+  const flag = String(mode === "auto" ? process.env.OPENTRONS_PREFLIGHT_VISION || "auto" : mode).trim().toLowerCase();
   return !["0", "false", "off", "no"].includes(flag);
 }
 
@@ -131,6 +131,7 @@ export function isLayoutConsistentWithExpected({
   yoloMismatches = [],
   vlmParsed = null,
   expectedLayout = null,
+  yoloCompared = false,
 } = {}) {
   if (Array.isArray(yoloMismatches) && yoloMismatches.length > 0) {
     return false;
@@ -142,8 +143,7 @@ export function isLayoutConsistentWithExpected({
     expectedLayout &&
     typeof expectedLayout === "object" &&
     Object.keys(expectedLayout).length > 0;
-  // Without VLM, cannot affirm expected layout when one was supplied.
-  return !hasExpected;
+  return !hasExpected || yoloCompared;
 }
 
 function uniqueActions(actions = []) {
@@ -195,6 +195,7 @@ export function summarizeDeckVisionConsensus({
     yoloMismatches: mismatches,
     vlmParsed,
     expectedLayout,
+    yoloCompared: Boolean(yoloResult?.slot_observations && Object.keys(yoloResult.slot_observations).length),
   });
   const vlmActions = Array.isArray(vlmParsed?.recommended_next_actions)
     ? vlmParsed.recommended_next_actions
@@ -247,7 +248,7 @@ export function summarizeDeckVisionConsensus({
       recommendedNextActions = ["reconcile_state", "deck_vision_check"];
     }
   } else {
-    recommendedNextActions = uniqueActions([...vlmActions, "continue_critical_probe"]);
+    recommendedNextActions = uniqueActions([...vlmActions, "continue_selected_checks_or_run"]);
   }
 
   return {

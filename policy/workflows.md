@@ -21,14 +21,15 @@ user intent / SOP
   →  (fix loop if failed)
   →  Phase 3a dashboard: health_check → live_readiness_check → robot_status(include_modules=true) → reconcile_state (if needed)
        → machine-judged: passed | blocked | needs_operator_physical_action (no verbal re-confirm)
-  →  Phase 3b deck vision: deck_vision_check (YOLO → optional Ark VLM) OR capture_image(mode=preview) → deck_vision_check(mode=local) → analyze_image(provider=ark)
+  →  Phase 3b deck vision: run_protocol automatically checks immediately before play (YOLO → optional Ark VLM)
+       → standalone staged review: deck_vision_check(mode=preflight, file_path=... or analysis_path=... or expected_layout=...)
        → sensor-aligned (e.g. VLM agrees) → passed; uncertainty → auto_fixable (reconcile first); mismatch needing hands → needs_operator_physical_action
   →  Phase 3c optional probe, only when selected: critical_targets → simulate probe → authorize live probe
        → OPENTRONS_ENABLE_PROBE_WELLS=1 → probe_wells execute_on_robot → apply_liquid_probe_results → live_liquid_recovery_gate
        → otherwise record skipped/not_checked and continue (no probe flag needed for a normal run)
   →  return status: passed (subgates) | auto_fixable | needs_operator_physical_action | blocked
        | needs_confirmation (before the first authorized motion — HumanConfirmBudget)
-  →  run_protocol (robot_ip, file_path, session_id) after required checks pass or named software gates are explicitly waived, with authorization covering this run — quiet execution
+  →  run_protocol (robot_ip, file_path, session_id): simulate → software preflight → fresh configured deck vision → play, with authorization covering this run — quiet execution
   →  runtime_watch(mode=loop) (run_id) until COMPLETE/BLOCKED
 ```
 
@@ -106,12 +107,18 @@ health_check
 
 Default pre-run visual check (observation-only). Never deck truth — compare with `reconcile_state` and robot APIs (see `policy/safety-policy.md`). On uncertainty, auto-reconcile / re-check before asking a human.
 
+`run_protocol` automatically attempts configured Flex vision after software preflight and immediately before sending `play`. Default `OPENTRONS_PREFLIGHT_VISION=auto`; `off` disables it. Per-call `preflight_vision=on|off` takes priority. No camera is used for `auto_play=false`; full `skip_preflight=true` also skips vision, while `skip_preflight_deck_diff=true` skips only the API deck diff. All outcomes, including skipped/unavailable checks, are returned in `vision_gate` and saved to a fresh `report_path`.
+
+Deferred runs persist their uploaded initial-layout expectations under `artifacts/pending-deck-vision/`. `control_run(action=play)` takes a fresh observation at actual startup, even after restart; a run blocked by a visual mismatch retains its pending check. These files contain expectations, never a reusable camera verdict. After successful play or stop the pending record is removed. This visual integration does not replace the existing live-readiness/simulation/authorization rules for delayed startup or recovery.
+
+Starting expectations come from the same successful simulation's analyzed load commands (variables/loops resolved), not its final labware locations. Later loads after a pause/move are not pre-run loads. Unsupported labware, unresolved runtime-parameter layouts, missing calibration or unavailable camera/inference are `not_checked`; never infer empty slots for unsupported labware. A visual mismatch or unresolved uncertainty stops before play and returns reconcile/re-check guidance. This does not move labware or mutate session truth.
+
 **Setup (once per machine):** See [docs/deck-vision.md](../docs/deck-vision.md).
 
 **Preferred orchestration:**
 
 ```
-deck_vision_check (robot_ip, session_id?, expected_layout?)
+deck_vision_check (mode=preflight, robot_ip?, session_id?, file_path? OR analysis_path? OR expected_layout?)
   → internally: capture_image(mode=preview) → deck_vision_check(mode=local)
   → if uncertain/mismatched: analyze_image(provider=ark) (Doubao; ARK_API_KEY in automation/.env)
   → if VLM/sensors align with expected layout: status=passed (continue; no human re-confirm)
@@ -126,7 +133,9 @@ camera_settings(action=status) → capture_image(mode=preview) → deck_vision_c
   → if escalate: analyze_image(provider=ark) (or analyze_image(provider=kimi) when OPENTRONS_VLM_PROVIDER=kimi)
 ```
 
-Escalate to VLM when YOLO reports low confidence, ambiguity, or layout mismatches. Sensor-aligned agreement (e.g. VLM agrees) is a **pass**, not `needs_confirmation`. Skip entire step with `OPENTRONS_PREFLIGHT_VISION=off`. Camera API failure is a surfaced error — do not silently skip.
+Escalate to VLM when YOLO reports low confidence, ambiguity, or layout mismatches. Sensor-aligned agreement (e.g. VLM agrees) is a **pass**, not `needs_confirmation`. Camera/API/backend failures are surfaced in the report as `not_checked`, not silently skipped or cleared by VLM. A missing Ark key only affects the second opinion; clean YOLO comparisons do not require VLM.
+
+After manual plate/tiprack/layout changes, reconcile the current state and use `control_run(deck_changed=true, expected_layout={...})` for play/resume. It checks a NEW photo against CURRENT canonical labels. Do not supply the protocol's original layout after labware has moved; old reports are audit-only. Pause/stop and normal quiet execution never trigger photography. Existing vision-channel recovery routing remains available for appearance/layout faults; collision remains a manual hard stop.
 
 ## Critical-source liquid probe — Phase 3c (no VLM)
 

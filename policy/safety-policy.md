@@ -28,7 +28,9 @@ This file is the **single source of truth** for safety rules and hard bans in th
 
 Vision / `deck_vision_check(mode=local)` / `deck_vision_check` is **observation-only**. It does not mutate session state or override `reconcile_state`. Never treat vision as committed deck truth — always compare with robot APIs and reconciled deck state.
 
-**Optional Phase 3b uses observation-only vision** when configured or requested (`OPENTRONS_PREFLIGHT_VISION=on`). An unavailable vision check is reported as not checked; include deck-layout confirmation in the scoped motion authorization. Ad-hoc vision outside preflight remains available when useful (see [workflows.md](workflows.md)).
+**Optional Phase 3b uses observation-only vision.** `run_protocol` attempts it immediately before play by default (`OPENTRONS_PREFLIGHT_VISION=auto`) when camera calibration and layout configuration are available. `off` disables it; per-call `preflight_vision=on|off` expresses an explicit choice. An unavailable check is recorded as `not_checked`, never passed; include known deck setup in the existing scoped motion authorization. A detected mismatch or unresolved visual uncertainty stops play for reconcile/review; no automatic relocation or deck-state writes. Ad-hoc vision remains available (see [workflows.md](workflows.md)).
+
+Each preflight observation saves a fresh timestamped report. Do not reuse it after a manual deck change or treat it as current physical state. `control_run(deck_changed=true, expected_layout=...)` performs a new check before play/resume against CURRENT expectations. A full `skip_preflight=true` skips vision as well; a deck-diff-only waiver does not. Vision-only omission uses `preflight_vision=off`. All omissions are recorded and do not waive simulation or hardware interlocks.
 
 On vision uncertainty or soft mismatch: prefer **auto-reconcile** (`reconcile_state`, re-check APIs) before any human ask. Sensor-aligned agreement (e.g. VLM agrees with expected layout) is a machine **pass**, not a prompt to confirm the subgate. See HumanConfirmBudget in [output-contract.md](output-contract.md).
 

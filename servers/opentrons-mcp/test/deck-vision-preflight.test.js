@@ -309,13 +309,17 @@ test("isPreflightVisionEnabled respects OPENTRONS_PREFLIGHT_VISION=off", () => {
   }
 });
 
-test("optional preflight vision is off until explicitly configured", () => {
+test("preflight vision defaults to auto and supports explicit per-call selection", () => {
   const original = process.env.OPENTRONS_PREFLIGHT_VISION;
   try {
     delete process.env.OPENTRONS_PREFLIGHT_VISION;
-    assert.equal(isPreflightVisionEnabled(), false);
+    assert.equal(isPreflightVisionEnabled(), true);
     process.env.OPENTRONS_PREFLIGHT_VISION = "on";
     assert.equal(isPreflightVisionEnabled(), true);
+    process.env.OPENTRONS_PREFLIGHT_VISION = "off";
+    assert.equal(isPreflightVisionEnabled(), false);
+    assert.equal(isPreflightVisionEnabled("on"), true);
+    assert.equal(isPreflightVisionEnabled("off"), false);
   } finally {
     if (original === undefined) delete process.env.OPENTRONS_PREFLIGHT_VISION;
     else process.env.OPENTRONS_PREFLIGHT_VISION = original;

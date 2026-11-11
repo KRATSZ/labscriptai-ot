@@ -157,6 +157,7 @@ import {
   shouldEscalateToVlm,
 } from "./lib/deck-vision-preflight.js";
 import { ARTIFACTS_DIR, DATA_DIR, PLUGIN_ROOT } from "./lib/paths.js";
+import { buildDeckVisionLayout, readDeckVisionConfiguration, unperformedDeckVision, evaluateDeckVisionGate } from "./lib/deck-vision-layout.js";
 
 const __filename = fileURLToPath(import.meta.url);
 process.env.PATH = systemPath();
@@ -1257,7 +1258,7 @@ const TOOL_DEFINITIONS = [
   {
     name: "deck_vision_check",
     description:
-      "Deck vision observation (observation-only; does not mutate session state; compare with reconcile_state before treating as deck truth). mode=preflight orchestrates capture → YOLO → optional VLM second opinion when uncertain or mismatched (requires robot_ip; enable the optional configured path with OPENTRONS_PREFLIGHT_VISION=on). mode=local runs the YOLOE/YOLO observation directly on a saved image (requires image_path): detections map to Flex 12 slots via optional deck homography or a uniform image-grid fallback; empty slots are geometric. Default YOLOE prompts are Flex-tuned (colored tip racks, modules, trash); override with class_prompts + canonical_labels.",
+      "Observation-only deck vision; never mutates deck truth. mode=preflight captures → YOLO → conditional VLM, derives starting expectations from file_path/analysis_path or accepts expected_layout, and saves a report. Automatically attempted before run_protocol play when configured; unavailable checks are not_checked, mismatches require reconcile_state. OPENTRONS_PREFLIGHT_VISION=off disables automatic checks; preflight_vision=on explicitly requests one. mode=local observes a saved image_path without robot access.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1268,6 +1269,11 @@ const TOOL_DEFINITIONS = [
         },
         robot_ip: { type: "string", description: "Robot IP or full base URL (preflight; required)." },
         session_id: { type: "string", description: "preflight only." },
+        run_id: { type: "string", description: "preflight only: audit association, not a source of starting layout." },
+        file_path: { type: "string", description: "preflight only: derive starting layout from local protocol analysis." },
+        analysis_path: { type: "string", description: "preflight only: existing local analysis JSON; run_protocol supplies its own simulation artifact." },
+        run_time_parameters: { type: "object", description: "preflight only: when runtime overrides are present, supply a matching explicit expected_layout; default analysis alone cannot establish it." },
+        preflight_vision: { type: "string", enum: ["auto", "on", "off"], description: "auto follows OPENTRONS_PREFLIGHT_VISION (default auto); on explicitly requests vision; off skips it." },
         expected_layout: {
           type: "object",
           description:
@@ -1357,7 +1363,7 @@ const TOOL_DEFINITIONS = [
   {
     name: "run_protocol",
     description:
-      "Upload, create and optionally play a protocol, then poll to a terminal or intervention state. Local simulation is required. LogicPass and software preflight gate by default; honor explicit operator waivers with the corresponding skip flags and record skipped checks. Liquid probing is optional and its enable flag is not required for this tool.",
+      "Upload, create and optionally play a protocol, then poll to a terminal or intervention state. Local simulation is required. LogicPass and software preflight gate by default. Immediately before play, automatically attempt configured Flex deck vision using the simulation's starting layout; save vision_gate and its report. Unavailable vision is not_checked; layout doubts stop play for reconcile/review. Honor explicit operator waivers with the corresponding skip flags. Liquid probing is optional.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1376,6 +1382,7 @@ const TOOL_DEFINITIONS = [
             "Optional explicit offsets. When omitted, fetches and dedupes stored robot offsets.",
         },
         auto_play: { type: "boolean", default: true },
+        preflight_vision: { type: "string", enum: ["auto", "on", "off"], description: "Default auto: try configured Flex vision before play. on explicitly requests it; off records an operator-selected skip. skip_preflight also skips vision; skip_preflight_deck_diff does not." },
         timeout_ms: { type: "integer", default: 1800000 },
         poll_interval_ms: { type: "integer", default: 1000 },
         page_length: { type: "integer", default: 20 },
@@ -1487,7 +1494,7 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: "control_run",
-    description: "Play, pause, stop, or resume-from-recovery for a run.",
+    description: "Play, pause, stop, or resume-from-recovery for a run. Deferred or visually blocked run_protocol runs retain a fresh vision check at actual startup. After manual deck changes, set deck_changed=true and pass the expected current layout: a new observation-only check runs before play/resume. Earlier starting-layout photos are never reused.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1499,6 +1506,9 @@ const TOOL_DEFINITIONS = [
         },
         page_length: { type: "integer", default: 10 },
         session_id: { type: "string" },
+        deck_changed: { type: "boolean", description: "For play/resume after manual labware or tiprack changes; triggers a fresh visual check before the action." },
+        expected_layout: { type: "object", description: "Expected CURRENT slot-to-label layout after the change (tiprack, plate, reservoir, empty); never the protocol's original layout after moves." },
+        preflight_vision: { type: "string", enum: ["auto", "on", "off"], description: "auto uses configured vision; off records a skipped check. No camera is called for pause/stop." },
         tiprack_slots: {
           type: "array",
           items: { type: "string" },
@@ -4519,6 +4529,71 @@ async function executeProtocolRecovery(args, { expectedAction = null, watchMode 
   });
 }
 
+function recordDeckVisionObservation(args, observation) {
+  const data = evaluateDeckVisionGate(observation);
+  data.observed_at = new Date().toISOString();
+  data.session_id = args.session_id || DEFAULT_SESSION_ID;
+  data.run_id = args.run_id || null;
+  data.robot_ip = args.robot_ip || null;
+  data.file_path = args.file_path || null;
+  const parent = path.join(ARTIFACTS_DIR, "deck-vision");
+  fs.mkdirSync(parent, { recursive: true });
+  const reportPath = path.join(fs.mkdtempSync(path.join(parent, "check-")), "vision-report.json");
+  data.report_path = reportPath;
+  fs.writeFileSync(reportPath, JSON.stringify(data, null, 2));
+  const result = { data, sessionId: data.session_id, runId: data.run_id };
+  recordToolResultLog({ toolName: "deck_vision_check", eventKind: "deck_vision", args, result,
+    fallbackSessionId: data.session_id, summary: data.consensus?.summary,
+    data: { status: data.status, report_path: reportPath, allowed_to_play: data.allowed_to_play } });
+  return result;
+}
+
+function pendingDeckVisionPath(args) {
+  const robot = resolveRobotConnection(args.robot_ip)?.robot_ip || "unconfigured";
+  return path.join(ARTIFACTS_DIR, "pending-deck-vision", `${sanitizePendingSessionId(`${robot}_${args.run_id}`)}.json`);
+}
+
+function savePendingDeckVision(args, analysisPath) {
+  const file = pendingDeckVisionPath(args);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  // Persist expectations, not a previous camera verdict. A delayed play after
+  // restart must take its own fresh photo of this uploaded run's initial deck.
+  fs.writeFileSync(file, JSON.stringify({
+    robot_ip: args.robot_ip, run_id: args.run_id, session_id: args.session_id,
+    file_path: args.file_path, analysis_path: analysisPath,
+    run_time_parameters: args.run_time_parameters, preflight_vision: args.preflight_vision,
+    skip_preflight: args.skip_preflight, python_executable: args.python_executable,
+  }));
+}
+
+function clearPendingDeckVision(args) {
+  try { fs.rmSync(pendingDeckVisionPath(args), { force: true }); }
+  catch (error) {
+    // The action already succeeded. A cleanup failure must not look like a
+    // failed play that the caller might repeat.
+    console.error(`Run action completed; pending vision record cleanup failed: ${error.message}`);
+  }
+}
+
+async function checkDeckVisionBeforePlay(args, { analysisPath = null, deferred = false } = {}) {
+  if (args.skip_preflight === true || deferred) {
+    return recordDeckVisionObservation(args, unperformedDeckVision("skipped", deferred ? "run_not_started" : "software_preflight_waived")).data;
+  }
+  const wrap = await TOOL_HANDLERS.deck_vision_check({
+    ...args, mode: "preflight", analysis_path: analysisPath,
+  });
+  const gate = evaluateDeckVisionGate(wrap.data);
+  if (!gate.allowed_to_play) {
+    const error = new Error(`Deck vision stopped play: ${gate.consensus?.summary || gate.status}. Reconcile current state and re-check; no automatic deck changes were made.`);
+    error.toolContext = { runId: args.run_id, sessionId: args.session_id || args.run_id, data: {
+      blocked_real_execution: true, gate_stage: "deck_vision", run_id: args.run_id,
+      vision_gate: gate, recommended_next_tools: ["reconcile_state", "deck_vision_check"],
+    } };
+    throw error;
+  }
+  return gate;
+}
+
 async function runPreflightRunSetup(args) {
   if (!args.robot_ip) {
     throw new Error("preflight_run_setup requires robot_ip.");
@@ -7133,63 +7208,73 @@ const TOOL_HANDLERS = {
       const { mode: _mode, ...rest } = args;
       return TOOL_HANDLERS.vision_check(rest);
     }
-    if (!isPreflightVisionEnabled()) {
-      return {
-        data: {
-          skipped: true,
-          reason: "OPENTRONS_PREFLIGHT_VISION=off",
-          subphase: "deck_vision",
-          consensus: {
-            status: "not_applicable",
-            summary: "Deck vision preflight skipped by environment flag.",
-            recommended_next_actions: ["liquid_source_map"],
-            recommended_next_args: { action: "critical_targets" },
-          },
-        },
-      };
+    let hardwareSnapshot = null;
+    const finish = data => ({ ...recordDeckVisionObservation(args, data), hardwareSnapshot });
+    if (!isPreflightVisionEnabled(args.preflight_vision)) {
+      return finish(unperformedDeckVision("skipped", "vision_disabled"));
     }
+    const config = readDeckVisionConfiguration({ robotIp: args.robot_ip });
+    let analysis = null;
+    let layout;
+    try {
+      if (args.analysis_path) analysis = JSON.parse(fs.readFileSync(args.analysis_path, "utf8"));
+      else if (args.file_path && !args.expected_layout) {
+        const analyzed = await analyzeProtocolOnce({ protocol_path: args.file_path, python_executable: args.python_executable });
+        if (!analyzed.ok) throw new Error("Protocol analysis did not pass.");
+        analysis = JSON.parse(fs.readFileSync(analyzed.analysis_path, "utf8"));
+      }
+      layout = buildDeckVisionLayout({ analysis, expectedLayout: args.expected_layout, policy: config.policy, runTimeParameters: args.run_time_parameters });
+    } catch (error) {
+      return finish(unperformedDeckVision("not_checked", "expected_layout_unavailable", { error: { message: error.message } }));
+    }
+    const context = { layout, expected_layout: layout.expected_layout, configuration: { policy_path: config.policy_path, calibration_path: config.calibration_path } };
+    if (/ot-?2/i.test(layout.robot_type || "")) {
+      return finish(unperformedDeckVision("not_checked", "ot2_vision_not_supported", context));
+    }
+    if (config.issues.length) {
+      return finish(unperformedDeckVision("not_checked", config.issues[0], { ...context, not_checked: [...config.issues, ...layout.not_checked] }));
+    }
+    // Without a baseline, still take an observation for recovery/ad-hoc review.
+    // It will be not_checked for layout agreement, never a preflight pass.
 
-    const captureResult = await TOOL_HANDLERS.capture_preview_image({
-      robot_ip: args.robot_ip,
-      output_path: args.output_path,
-    });
-    const imagePath = captureResult.data.saved_to;
-    const yoloResult = (
-      await TOOL_HANDLERS.vision_check({
-        mode: "deck",
-        image_path: imagePath,
-        expected_layout: args.expected_layout,
-        conf_threshold: args.conf_threshold,
-        weights: args.weights,
-      })
-    ).data;
-
+    let captureResult;
+    let imagePath;
+    let yoloResult;
+    try {
+      captureResult = await TOOL_HANDLERS.capture_preview_image({ robot_ip: args.robot_ip, output_path: args.output_path });
+      imagePath = captureResult.data.saved_to;
+      hardwareSnapshot = captureResult.hardwareSnapshot || null;
+      yoloResult = (await TOOL_HANDLERS.vision_check({
+        mode: "deck", image_path: imagePath, expected_layout: layout.expected_layout,
+        conf_threshold: args.conf_threshold, weights: args.weights,
+        python_executable: args.python_executable, load_labels_sidecar: false,
+      })).data;
+    } catch (error) {
+      return finish(unperformedDeckVision("not_checked", imagePath ? "vision_inference_unavailable" : "camera_capture_unavailable", {
+        ...context, image_path: imagePath || null, error: { message: error.message },
+      }));
+    }
+    // A backend failure or an uncalibrated fallback is not visual agreement.
+    // Do not let VLM turn missing YOLO observations into a passed check.
+    const observations = yoloResult?.slot_observations || {};
+    const incomplete = !Object.keys(observations).length || Object.keys(layout.expected_layout).some(slot => !["empty", "occupied", "uncertain"].includes(observations[slot]?.state));
+    if (yoloResult?.error || incomplete || !["deck_homography", "slot_centers_mesh"].includes(yoloResult?.slot_mapping?.method)) {
+      return finish(unperformedDeckVision("not_checked", "vision_observations_unavailable", { ...context, image_path: imagePath, yolo: yoloResult }));
+    }
     const escalation = shouldEscalateToVlm(yoloResult, { force: Boolean(args.force_vlm) });
     const provider = resolveVlmProvider({ provider: args.vlm_provider });
     const { vlmResult, vlmError } = await runVlmSecondOpinion({
-      escalate: escalation.escalate,
-      provider,
-      imagePath,
-      expectedLayout: args.expected_layout,
+      escalate: escalation.escalate, provider, imagePath, expectedLayout: layout.expected_layout,
       analyzeArk: payload => TOOL_HANDLERS.analyze_image_with_ark(payload),
       analyzeKimi: payload => TOOL_HANDLERS.analyze_image_with_kimi(payload),
     });
-
-    const result = buildDeckVisionPreflightResult({
-      imagePath,
-      yoloResult,
-      vlmResult,
-      vlmError,
-      escalation,
-      expectedLayout: args.expected_layout,
-      provider,
-    });
-
-    return {
-      data: result,
-      hardwareSnapshot: captureResult.hardwareSnapshot || null,
-      sessionId: args.session_id || DEFAULT_SESSION_ID,
-    };
+    const result = buildDeckVisionPreflightResult({ imagePath, yoloResult, vlmResult, vlmError, escalation, expectedLayout: layout.expected_layout, provider });
+    if (layout.not_checked.length && result.consensus.status === "passed") {
+      result.consensus.status = "not_checked";
+      result.consensus.layout_consistent_with_expected = false;
+      result.consensus.summary += " Some requested slots or labware classes were not checked; see layout.not_checked.";
+    }
+    return finish({ ...context, ...result, not_checked: layout.not_checked });
   },
 
   async list_critical_probe_targets(args) {
@@ -7292,6 +7377,11 @@ const TOOL_HANDLERS = {
       }
 
       const autoPlay = args.auto_play ?? true;
+      const visionArgs = { ...args, run_id: runId, session_id: args.session_id || runId };
+      savePendingDeckVision(visionArgs, simulationGate.simulation?.analysis_path);
+      const visionGate = await checkDeckVisionBeforePlay(visionArgs, {
+        analysisPath: simulationGate.simulation?.analysis_path, deferred: !autoPlay,
+      });
       let playAction = null;
       if (autoPlay) {
         playAction = await requestRobotJson("POST", args.robot_ip, `/runs/${runId}/actions`, {
@@ -7302,6 +7392,7 @@ const TOOL_HANDLERS = {
             },
           }),
         });
+        clearPendingDeckVision(visionArgs);
         await pollRunToTerminal({
           robotIp: args.robot_ip,
           runId,
@@ -7331,6 +7422,7 @@ const TOOL_HANDLERS = {
           recovery: failureGuidance?.recovery || null,
           simulation_gate: simulationGate,
           preflight_gate: preflightGate,
+          vision_gate: visionGate,
         }),
         hardwareSnapshot:
           failureGuidance?.hardwareSnapshot && Object.keys(failureGuidance.hardwareSnapshot).length > 0
@@ -7354,6 +7446,8 @@ const TOOL_HANDLERS = {
         data: {
           simulation_gate_success: result.data.simulation_gate?.parsed?.success ?? null,
           preflight_gate_ok: result.data.preflight_gate?.ok ?? null,
+          vision_gate_status: result.data.vision_gate?.status ?? null,
+          vision_report_path: result.data.vision_gate?.report_path ?? null,
           parsed_error_category: result.data.parsed_error?.error_category || null,
           recovery_action:
             result.data.recovery?.recovery?.action || result.data.recovery?.action || null,
@@ -7375,6 +7469,7 @@ const TOOL_HANDLERS = {
         data: {
           blocked_real_execution: error?.toolContext?.data?.blocked_real_execution || false,
           gate_stage: error?.toolContext?.data?.gate_stage || null,
+          vision_gate: error?.toolContext?.data?.vision_gate || null,
           parsed_simulation_output: error?.toolContext?.data?.parsed_simulation_output || null,
         },
       });
@@ -7593,6 +7688,17 @@ const TOOL_HANDLERS = {
   },
 
   async control_run(args) {
+    let visionGate = null;
+    const startsMotion = ["play", "resume-from-recovery"].includes(args.action);
+    const pendingPath = pendingDeckVisionPath(args);
+    const pending = startsMotion && fs.existsSync(pendingPath) ? JSON.parse(fs.readFileSync(pendingPath, "utf8")) : null;
+    if (startsMotion && (args.deck_changed === true || (!pending && args.preflight_vision === "on"))) {
+      // A changed deck requires CURRENT expectations. Never reuse an initial
+      // simulation layout or a previous photograph after a manual change.
+      visionGate = await checkDeckVisionBeforePlay(args);
+    } else if (pending) {
+      visionGate = await checkDeckVisionBeforePlay({ ...pending, ...args }, { analysisPath: pending.analysis_path });
+    }
     const actionResult = await requestRobotJson(
       "POST",
       args.robot_ip,
@@ -7606,6 +7712,7 @@ const TOOL_HANDLERS = {
         }),
       },
     );
+    if (startsMotion || args.action === "stop") clearPendingDeckVision(args);
     const snapshot = await collectRunExecutionSnapshot({
       robotIp: args.robot_ip,
       runId: args.run_id,
@@ -7620,6 +7727,7 @@ const TOOL_HANDLERS = {
     const result = {
       data: {
         action: actionResult,
+        vision_gate: visionGate,
         run_history: snapshot.runHistoryResult.data,
         parsed_error: failureGuidance?.parsedError || null,
         recovery: failureGuidance?.recovery || null,
