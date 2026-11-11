@@ -25,6 +25,12 @@ def parse_preflight(done):
 
 
 class ExportOptions(unittest.TestCase):
+    def setUp(self):
+        # Sampling/CLI regressions do not depend on the host's GPU or drivers.
+        self.encoder_env = patch.dict(os.environ, {"FLEX3D_VIDEO_ENCODER": "libx264"})
+        self.encoder_env.start()
+        self.addCleanup(self.encoder_env.stop)
+
     @classmethod
     def setUpClass(cls):
         cls.tmp = tempfile.TemporaryDirectory()

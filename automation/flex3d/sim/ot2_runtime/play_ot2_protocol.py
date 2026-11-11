@@ -981,6 +981,7 @@ def main() -> None:
         frames = render_video(plan, renderer, video, args.fps)
         print(f"Video: {video} ({frames} frames, {time.monotonic() - started:.0f} s to render)")
         extra["video"] = video.name
+        extra["video_encoder"] = renderer.video_encoder
     trace = folder / f"{name}_trace.json"
     write_trace(plan, hits, liquid, trace, extra)
     print(f"Trace: {trace}")

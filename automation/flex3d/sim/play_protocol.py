@@ -49,6 +49,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 from sim import flex_shell
+from sim.video_encoding import encode_video
 from sim.flex_protocol import (
     CHANNELS,
     EIGHT_TOOLS,
@@ -885,33 +886,10 @@ def render_video(
             frames -= 1
         while start + frames / fps < end:
             frames += 1
-    cmd = [
-        "ffmpeg", "-y", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "rgb24",
-        "-s", f"{FRAME_W}x{FRAME_H}", "-r", str(fps), "-i", "-",
-        "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "20", "-preset", "medium", "-movflags", "+faststart", str(path),
-    ]
-    proc = subprocess.Popen(cmd, stdin=subprocess.PIPE)
-    try:
-        renderer.focus = None
-        for i in range(frames):
-            t = min(i / fps, plan.duration) if whole else start + i / fps
-            proc.stdin.write(renderer.frame(t).tobytes())
-        proc.stdin.close()
-        if proc.wait() != 0:
-            raise RuntimeError("ffmpeg failed")
-    finally:
-        if proc.stdin and not proc.stdin.closed:
-            try:
-                proc.stdin.close()
-            except OSError:
-                pass
-        if proc.poll() is None:
-            proc.terminate()
-            try:
-                proc.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                proc.kill()
-                proc.wait()
+    renderer.video_encoder = encode_video(
+        renderer, path, fps, FRAME_W, FRAME_H,
+        lambda: (min(i / fps, plan.duration) if whole else start + i / fps for i in range(frames)),
+    )
     return frames
 
 
@@ -1169,6 +1147,7 @@ def main() -> None:
         frames = render_video(plan, renderer, video, args.fps, t0 if ranged else None, t1 if ranged else None)
         print(f"Video: {video} ({frames} frames, {time.monotonic() - started:.0f} s to render)")
         extra["video"] = video.name
+        extra["video_encoder"] = renderer.video_encoder
         extra["video_range"] = {"from_s": t0, "to_s": t1, "fps": args.fps, "frames": frames}
     trace = folder / f"{name}_trace.json"
     write_trace(plan, hits, liquid, trace, extra)

@@ -41,6 +41,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 from sim.ot2_runtime import flex_shell
+from sim.video_encoding import encode_video
 from sim.ot2_runtime.flex_protocol import (
     CHANNELS,
     EIGHT_TOOLS,
@@ -822,19 +823,13 @@ class Renderer:
 
 
 def render_video(plan: Plan, renderer: Renderer, path: Path, fps: int) -> int:
+    if fps <= 0:
+        raise ValueError("fps must be greater than zero")
     frames = int(math.ceil(plan.duration * fps)) + 1
-    cmd = [
-        "ffmpeg", "-y", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "rgb24",
-        "-s", f"{FRAME_W}x{FRAME_H}", "-r", str(fps), "-i", "-",
-        "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "20", "-preset", "medium", "-movflags", "+faststart", str(path),
-    ]
-    proc = subprocess.Popen(cmd, stdin=subprocess.PIPE)
-    renderer.focus = None
-    for i in range(frames):
-        proc.stdin.write(renderer.frame(min(i / fps, plan.duration)).tobytes())
-    proc.stdin.close()
-    if proc.wait() != 0:
-        raise RuntimeError("ffmpeg failed")
+    renderer.video_encoder = encode_video(
+        renderer, path, fps, FRAME_W, FRAME_H,
+        lambda: (min(i / fps, plan.duration) for i in range(frames)),
+    )
     return frames
 
 
@@ -1055,6 +1050,7 @@ def main() -> None:
         frames = render_video(plan, renderer, video, args.fps)
         print(f"Video: {video} ({frames} frames, {time.monotonic() - started:.0f} s to render)")
         extra["video"] = video.name
+        extra["video_encoder"] = renderer.video_encoder
     trace = folder / f"{name}_trace.json"
     write_trace(plan, hits, liquid, trace, extra)
     print(f"Trace: {trace}")
