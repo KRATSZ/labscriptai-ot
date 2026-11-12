@@ -138,6 +138,13 @@ class Model:
             "title": self.title,
             "duration": round(self.duration, 3),
             "pipettes": self.pipettes,
+            "liquids": [
+                {**item, 'source_label': (
+                    f"{self.plan.run.labware[item['source']['labware_id']].slot} / "
+                    f"{self.plan.run.labware[item['source']['labware_id']].name} / {item['source']['well']}"
+                ) if item.get('source') else None}
+                for item in self.plan.run.annotations.liquids.values()
+            ],
             "camera": {
                 "main": {
                     "azimuth": self.main_default["azimuth"],

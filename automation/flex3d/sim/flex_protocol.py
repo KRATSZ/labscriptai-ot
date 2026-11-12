@@ -30,8 +30,12 @@ from __future__ import annotations
 import copy
 import json
 import math
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'figures'))
+from liquid_annotations import LiquidAnnotations
 
 from sim import flex_shell
 from sim.flex_scene import (
@@ -190,6 +194,7 @@ class ProtocolRun:
     # origin, or the centre of the eight-channel span) and the one drawn body.
     chutes: dict[str, TrashBin] = field(default_factory=dict)
     chute: WasteChute | None = None
+    annotations: LiquidAnnotations | None = None
 
     def by_key(self, key: str) -> LabwareRun:
         return next(lw for lw in self.labware.values() if lw.key == key)
@@ -314,10 +319,8 @@ def load_analysis(path: Path, deck: Deck) -> ProtocolRun:
 
     labware: dict[str, LabwareRun] = {}
     pipettes: dict[str, PipetteRun] = {}
-    liquids = {
-        item["id"]: LiquidRun(item["id"], item.get("displayName", item["id"]), _hex_rgb(item.get("displayColor", "#3C78D8")))
-        for item in raw.get("liquids", [])
-    }
+    annotations = LiquidAnnotations(raw)
+    liquids = {key: LiquidRun(key, item['name'], _hex_rgb(item['color'])) for key,item in annotations.liquids.items()}
     trash: dict[str, TrashBin] = {}
     chutes: dict[str, TrashBin] = {}
     moved: list[str] = []
@@ -404,7 +407,7 @@ def load_analysis(path: Path, deck: Deck) -> ProtocolRun:
     # The deck definition lists possible fixtures, not installed ones. Drawing
     # its optional chute unconditionally overlaps a trash bin or labware in D3.
     chute = next(iter(chute_bodies.values()), None) if chutes else None
-    run = ProtocolRun(path, title, labware, pipettes, liquids, raw["commands"], trash, moved, deck, modules=modules, chutes=chutes, chute=chute)
+    run = ProtocolRun(path, title, labware, pipettes, liquids, raw["commands"], trash, moved, deck, modules=modules, chutes=chutes, chute=chute, annotations=annotations)
     _settle(run)
     return run
 
@@ -462,6 +465,8 @@ class State:
     """What the scene shows at one keyframe. Volumes in uL, positions in deck mm."""
 
     wells: dict[tuple[str, str], dict[str, float]] = field(default_factory=dict)
+    # Source identity only: the initial quantity is deliberately absent.
+    unknown_sources: dict[tuple[str, str], str] = field(default_factory=dict)
     rack: dict[str, set[str]] = field(default_factory=dict)
     mounted: dict[str, list[bool]] = field(default_factory=dict)
     tip_liquid: dict[str, list[dict[str, float]]] = field(default_factory=dict)
@@ -611,6 +616,8 @@ class Planner:
         self.steps: list[Step] = []
         self.warnings: list[str] = []
         self.liquid_wells: set[tuple[str, str]] = set()
+        self.known_inventory: set[tuple[str, str]] = set()
+        self.assumed: set[tuple[str, str]] = set()
         self.context: dict[str, str | None] = {
             "pipette_1000": None,
             "pipette_8": None,
@@ -621,6 +628,9 @@ class Planner:
         self.cmd = -1
 
         state = State()
+        if run.annotations:
+            state.unknown_sources = {(run.labware[lw].key,well): lid for (lw,well),lid in run.annotations.sources.items()}
+            self.liquid_wells.update(state.unknown_sources)
         for mod in run.modules.values():
             if mod.model == 'thermocyclerModuleV2':
                 state.module_lid[mod.key] = 0.
@@ -859,10 +869,25 @@ class Planner:
                     self.warnings.append(f"command {self.cmd + 1}: nozzle {k + 1} aspirates over no well")
                     continue
                 mix = state.wells.setdefault(well, {})
+                info = self.run.by_key(well[0]).labware.wells[well[1]]
+                reach = self._pipette(tool).tip.reach_mm
+                if site[2] - reach > state.origin[well[0]][2] + info.z + info.depth + 1e-6:
+                    continue  # Above the opening is air, never an inferred liquid source.
                 if _vol(mix) + 1e-6 < volume:
-                    self.warnings.append(
-                        f"command {self.cmd + 1}: {well[0]} {well[1]} holds {_vol(mix):.1f} uL, asked for {volume:g} uL"
-                    )
+                    if well in self.known_inventory:
+                        self.warnings.append(
+                            f"command {self.cmd + 1}: {well[0]} {well[1]} holds {_vol(mix):.1f} uL, asked for {volume:g} uL"
+                        )
+                    else:
+                        lid = self.run.annotations.source(self.run.by_key(well[0]).id, well[1])
+                        item = self.run.annotations.liquids[lid]
+                        self.run.liquids[lid] = LiquidRun(lid,item['name'],_hex_rgb(item['color']))
+                        state.unknown_sources[well] = lid
+                        self.liquid_wells.add(well)
+                        if well not in self.assumed:
+                            self.assumed.add(well)
+                            self.warnings.append(f"{item['name']}: {self.run.by_key(well[0]).name} {well[1]} initial volume unspecified; liquid level is schematic, transfers use command volumes")
+                        _add(mix, {lid: volume-_vol(mix)})
                 _add(tip, _take(mix, volume))
             else:
                 part = _take(tip, volume if volume is not None else _vol(tip))
@@ -1007,6 +1032,8 @@ class Planner:
                 lw = self.run.labware[params["labwareId"]]
                 for well, volume in params["volumeByWell"].items():
                     state.wells[(lw.key, well)] = {params["liquidId"]: float(volume)}
+                    state.unknown_sources.pop((lw.key, well), None)
+                    self.known_inventory.add((lw.key, well))
                     self.liquid_wells.add((lw.key, well))
                 self._push(dict(self.q), state, "load liquid", 0.01)
             elif kind in NO_MOTION:

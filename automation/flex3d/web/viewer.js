@@ -9,6 +9,10 @@ const UI = {
     pause: "暂停",
     lang: "English",
     figure: "实验配置图",
+    liquids: "液体标注",
+    unknownLiquid: n => `未知液体${n}`,
+    unknownVolume: "起始体积未声明 · 液位示意",
+    liquidNote: "未知来源的液位为示意；吸排液按指令量显示，实际余量与混合比例未确定。",
     time: "时间",
     empty: "还没有命令。",
     fail: "打不开",
@@ -38,6 +42,10 @@ const UI = {
     pause: "Pause",
     lang: "中文",
     figure: "Experiment setup image",
+    liquids: "Liquid annotations",
+    unknownLiquid: n => `Unknown liquid ${n}`,
+    unknownVolume: "Initial volume unspecified · schematic level",
+    liquidNote: "Unknown source levels are schematic. Transfers use command volumes; actual remaining volumes and mixture ratios are undetermined.",
     time: "Time",
     empty: "No command yet.",
     fail: "Could not open",
@@ -105,6 +113,7 @@ function renderChrome() {
   document.getElementById("view").setAttribute("aria-label", text.viewLabel);
   document.getElementById("details-label").textContent = text.details;
   playBtn.textContent = playing ? text.pause : text.play;
+  paintLiquids();
   if (broken === "nokey") {
     titleEl.textContent = text.fail;
     commandEl.textContent = text.noKey;
@@ -120,6 +129,33 @@ function renderChrome() {
     paintSteps();
     writeCommand(selected, detailed);
   }
+}
+
+function paintLiquids() {
+  const liquids = info?.liquids || [];
+  document.getElementById("liquid-annotations").hidden = !liquids.length;
+  document.getElementById("liquid-label").textContent = ui().liquids;
+  const list = document.getElementById("liquid-list");
+  list.replaceChildren();
+  for (const liquid of liquids) {
+    const row = document.createElement("li");
+    const swatch = document.createElement("span");
+    swatch.className = "liquid-swatch";
+    if (/^#[0-9a-f]{6}$/i.test(liquid.color)) swatch.style.backgroundColor = liquid.color;
+    const name = document.createElement("span");
+    name.textContent = liquid.unknown_index ? ui().unknownLiquid(liquid.unknown_index) : liquid.name;
+    row.append(swatch, name);
+    if (liquid.source_label) {
+      const source = document.createElement("span");
+      source.className = "liquid-source";
+      source.textContent = `${liquid.source_label} · ${ui().unknownVolume}`;
+      row.append(source);
+    }
+    list.append(row);
+  }
+  const note = document.getElementById("liquid-note");
+  note.hidden = !liquids.some(item => item.origin === "operation_inferred");
+  note.textContent = ui().liquidNote;
 }
 
 function stepVerb(step) {

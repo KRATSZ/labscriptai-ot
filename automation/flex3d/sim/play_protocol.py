@@ -205,6 +205,14 @@ class Scene:
         for (key, well), (gid, info) in self.liquid.items():
             mix = state.wells.get((key, well), {})
             volume = sum(mix.values())
+            source = state.unknown_sources.get((key, well))
+            if source:
+                # A translucent fixed marker, not a fabricated starting volume.
+                pos, size = liquid_column(info, max(.3,info.depth*.12))
+                m.geom_pos[gid], m.geom_size[gid] = pos, size
+                m.geom_rgba[gid, :3] = self.colors[source]
+                m.geom_rgba[gid, 3] = .32
+                continue
             if volume <= 0.05:
                 m.geom_rgba[gid, 3] = 0.0
                 continue
@@ -543,6 +551,12 @@ def check_liquid(plan: Plan) -> dict:
             "uL": round(total, 2),
             "composition": {names.get(k, k): round(v / total, 4) for k, v in mix.items()},
         }
+        if run.annotations and (set(mix) & set(run.annotations.sources.values()) or (key,well) in final.unknown_sources):
+            report[run.by_key(key).name][well] = {
+                'command_derived_uL': round(total,2), 'actual_volume_uL': None,
+                'components': [names.get(k,k) for k in mix], 'composition': None,
+                'quantity_basis': 'schematic_command_accounting',
+            }
     return report
 
 
@@ -635,11 +649,14 @@ def draw_deck_map(plan: Plan, state: State, step, fonts: Fonts, size=(PANEL_W, M
             cx, cy = px(o[0] + well.x, o[1] + well.y)
             mix = state.wells.get((lw.key, name), {})
             vol = sum(mix.values())
+            source = state.unknown_sources.get((lw.key, name))
             if kind == "tiprack":
                 if name in present:
                     draw.ellipse((cx - r, cy - r, cx + r, cy + r), fill=(236, 238, 240))
                 continue
-            if vol > 0.05:
+            if source:
+                fill = tuple(int(c*255) for c in run.liquids[source].rgb)
+            elif vol > 0.05:
                 rgb = sum(v * np.array(run.liquids[k].rgb) for k, v in mix.items()) / vol
                 fill = tuple(int(c * 255) for c in rgb)
             else:

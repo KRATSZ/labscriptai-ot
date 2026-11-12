@@ -27,8 +27,12 @@ from __future__ import annotations
 
 import json
 import math
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / 'figures'))
+from liquid_annotations import LiquidAnnotations
 
 from sim.ot2_runtime.flex_protocol import (
     Arrival,
@@ -183,6 +187,7 @@ class ProtocolRun:
     deck: Deck
     modules: dict[str, ModuleRun] = field(default_factory=dict)
     layout_warnings: list[str] = field(default_factory=list)
+    annotations: LiquidAnnotations | None = None
 
     def by_key(self, key: str) -> LabwareRun:
         return next(lw for lw in self.labware.values() if lw.key == key)
@@ -210,6 +215,7 @@ class State(BaseState):
     release_mm: dict[str, float] = field(default_factory=dict)
     tip_capacity: dict[str, float] = field(default_factory=dict)
     waste: dict[str, dict[str, float]] = field(default_factory=dict)
+    unknown_sources: dict[tuple[str, str], str] = field(default_factory=dict)
 
 
 def blend(a: State, b: State, u: float) -> State:
@@ -302,13 +308,8 @@ def load_analysis(path: Path, deck: Deck) -> ProtocolRun:
     labware: dict[str, LabwareRun] = {}
     pipettes: dict[str, PipetteRun] = {}
     modules: dict[str, ModuleRun] = {}
-    liquids = {
-        item["id"]: LiquidRun(item["id"], item.get("displayName", item["id"]), _hex_rgb(item.get("displayColor", "#3C78D8")))
-        for item in raw.get("liquids", [])
-    }
-    # Older analyses may omit liquid loading; unknown sources have a separate
-    # colour and warning instead of being confused with explicit inventories.
-    liquids["assumed"] = LiquidRun("assumed", "未知源", (0.5, 0.5, 0.5))
+    annotations = LiquidAnnotations(raw)
+    liquids = {key: LiquidRun(key,item['name'],_hex_rgb(item['color'])) for key,item in annotations.liquids.items()}
     for cmd in raw["commands"]:
         kind, params, result = cmd["commandType"], cmd["params"], cmd.get("result") or {}
         if kind == "loadModule":
@@ -384,7 +385,7 @@ def load_analysis(path: Path, deck: Deck) -> ProtocolRun:
                 raise ProtocolError(f"{pip.name} uses tips of two lengths; the scene mounts one")
             pip.tip = dims
     title = raw.get("metadata", {}).get("protocolName") or path.stem
-    run = ProtocolRun(path, title, labware, pipettes, liquids, raw["commands"], trash, deck, modules)
+    run = ProtocolRun(path, title, labware, pipettes, liquids, raw["commands"], trash, deck, modules, annotations=annotations)
     run.layout_warnings = _check_static_layout(run)
     return run
 
@@ -511,6 +512,8 @@ class Planner:
             )
 
         state = State()
+        state.unknown_sources = {(run.labware[lw].key,well): lid for (lw,well),lid in run.annotations.sources.items()}
+        self.liquid_wells.update(state.unknown_sources)
         for lw in run.labware.values():
             if lw.module_id is not None:
                 state.origin[lw.key] = module_labware_origin(self.deck, run.modules[lw.module_id], lw.labware)
@@ -746,13 +749,17 @@ class Planner:
                             f"command {self.cmd + 1}: {self.run.by_key(well[0]).name} {well[1]} "
                             f"contains {_vol(mix):g} uL, cannot aspirate {volume:g} uL"
                         )
+                    lid = self.run.annotations.source(self.run.by_key(well[0]).id, well[1])
+                    item = self.run.annotations.liquids[lid]
+                    self.run.liquids[lid] = LiquidRun(lid,item['name'],_hex_rgb(item['color']))
+                    state.unknown_sources[where] = lid
                     if where not in self.assumed:
                         self.assumed.add(where)
                         self.warnings.append(
-                            f"command {self.cmd + 1}: {self.run.by_key(well[0]).name} {well[1]} content unknown "
-                            f"(no initial inventory supplied); treating it as an unknown source"
+                            f"command {self.cmd + 1}: {item['name']}, {self.run.by_key(well[0]).name} {well[1]} content unknown "
+                            f"(no initial inventory supplied); level is schematic, transfers use command volumes"
                         )
-                    _add(mix, {"assumed": max(0., volume - _vol(mix))})
+                    _add(mix, {lid: max(0., volume - _vol(mix))})
                     self.liquid_wells.add(well)
                 segments.append(TipSegment(liquid=_take(mix, amount)))
                 liquid_channels += 1
@@ -985,6 +992,7 @@ class Planner:
                     if not math.isfinite(volume) or volume < 0 or volume > capacity + 1e-6:
                         raise ProtocolError(f"command {index + 1}: invalid initial volume {volume} in {lw.name} {well}")
                     state.wells[(lw.key, well)] = {params["liquidId"]: float(volume)}
+                    state.unknown_sources.pop((lw.key, well), None)
                     self.liquid_wells.add((lw.key, well))
                     self.known_inventory.add((lw.key, well))
                 self._push(dict(self.q), state, "load liquid", 0.01)

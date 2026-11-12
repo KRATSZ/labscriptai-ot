@@ -107,6 +107,12 @@
   details summary { padding: 10px 12px; cursor: pointer; color: #536574; }
   .bar select { cursor: pointer; border-left: 1px solid #d5e6f4; }
   .bad { color: #8a1f11; }
+  #liquid-annotations { border-bottom: 1px solid #d5e6f4; }
+  #liquid-list { list-style: none; padding: 0 12px; margin: 0; }
+  #liquid-list li { margin-bottom: 8px; overflow-wrap: anywhere; }
+  .liquid-swatch { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 6px; border: 1px solid #536574; }
+  .liquid-source { display: block; margin-left: 20px; color: #536574; font-size: 12px; }
+  #liquid-note { margin: 8px 12px 12px; color: #536574; font-size: 12px; }
 </style>
 <script type="importmap">
 { "imports": { "three": "/vendor/three.module.js" } }
@@ -130,6 +136,7 @@
 <main>
   <div class="stage" id="stage"></div>
   <aside>
+    <details id="liquid-annotations" open hidden><summary id="liquid-label">液体标注</summary><ul id="liquid-list"></ul><p id="liquid-note" hidden></p></details>
     <ol id="steps"></ol>
     <details><summary id="details-label">查看步骤参数</summary><pre id="command">还没有命令。</pre></details>
   </aside>
