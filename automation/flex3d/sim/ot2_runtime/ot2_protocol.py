@@ -1156,6 +1156,8 @@ class Planner:
         )
         if kind == "home":
             text = "回原点 (home)"
+        elif kind == "waitForDuration":
+            text = f"等待 {params['seconds']:g} 秒"
         elif kind == "pickUpTip":
             text = f"取枪头  {self._well_text(tool, lw, params['wellName'])}"
         elif kind == "aspirate":

@@ -34,6 +34,8 @@ const UI = {
     moveGrip: "夹爪搬运",
     moveHand: "手动移动",
     loadLiquid: "加载液体",
+    waitForDuration: "等待",
+    waitDuration: seconds => `等待 ${seconds} 秒`,
   },
   en: {
     help: "Local preview; no robot connection. Drag to rotate, scroll to zoom, right-drag to pan; select a step to inspect it.",
@@ -67,6 +69,8 @@ const UI = {
     moveGrip: "Move with gripper",
     moveHand: "Move by hand",
     loadLiquid: "Load liquid",
+    waitForDuration: "Wait",
+    waitDuration: seconds => `Wait ${seconds} s`,
   },
 };
 
@@ -183,12 +187,18 @@ function stepTail(step) {
     dropTip: /^(?:Return tip to|Drop tip in|Drop tip|放回枪头|弃枪头)/,
     moveLabware: /^(?:Gripper carry|Manual move|夹爪搬运|手动移动)/,
     loadLiquid: /^(?:Load liquid|加载液体)/,
+    waitForDuration: /^(?:waitForDuration|Wait|等待)/,
   }[step.kind];
   // The captions double-space around arrows for the JPEG title card; the list shows single spaces.
   return (cut ? raw.replace(cut, "") : raw).replace(/\s+/g, " ").trim();
 }
 
 function stepLine(step) {
+  if (step.kind === "waitForDuration") {
+    // Protocol time, not the (potentially compressed) playback step length.
+    const seconds = commands[step.cmd]?.params?.seconds;
+    if (Number.isFinite(seconds) && seconds >= 0) return ui().waitDuration(seconds);
+  }
   const verb = stepVerb(step);
   const tail = stepTail(step);
   return tail && tail !== verb ? `${verb} ${tail}` : verb;
