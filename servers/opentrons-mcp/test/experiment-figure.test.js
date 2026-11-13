@@ -50,7 +50,7 @@ test("real simulate entry returns an inline setup PNG, and viewer serves that sa
   assert.equal(repeated.data.preview_3d.reused, true);
   const artifact = (await TOOL_HANDLERS.protocol_artifacts({ analysis_path: sim.data.analysis_path })).data;
   assert.equal(artifact.artifact_api, 1);
-  assert.equal(artifact.plugin_version, "0.1.3");
+  assert.equal(artifact.plugin_version, JSON.parse(fs.readFileSync(new URL("../package.json", import.meta.url), "utf8")).version);
   assert.equal(artifact.documents.animation.status, "ready", JSON.stringify(artifact));
   assert.equal(artifact.documents.setup.status, "ready", JSON.stringify(artifact));
   const portable = fs.readFileSync(artifact.documents.setup.path, "utf8");
@@ -136,4 +136,23 @@ test("unavailable or throwing viewers preserve the simulation verdict and setup 
     assert.equal(sim.data.experiment_figure.ok, true);
     assert.equal(sim.images[0].mimeType, "image/png");
   }
+});
+
+test("analysis-only simulation exports portable documents without starting the viewer or generating a companion figure", async t => {
+  const openViewer = TOOL_HANDLERS.flex3d_open_viewer;
+  let viewerCalls = 0;
+  TOOL_HANDLERS.flex3d_open_viewer = async () => { viewerCalls++; throw new Error("unexpected viewer"); };
+  t.after(() => { TOOL_HANDLERS.flex3d_open_viewer = openViewer; });
+  const sim = await TOOL_HANDLERS.simulate_protocol({
+    protocol_path: path.join(root, "examples/01-flex-serial-dilution/protocol.py"),
+    analysis_only: true,
+  });
+  assert.equal(sim.data.ok, true, JSON.stringify(sim.data));
+  assert.equal(sim.data.experiment_figure, undefined);
+  assert.equal(sim.data.preview_3d, undefined);
+  assert.equal(successResponse(sim).content.length, 1);
+  assert.equal(viewerCalls, 0);
+  const artifact = (await TOOL_HANDLERS.protocol_artifacts({ analysis_path: sim.data.analysis_path })).data;
+  assert.equal(artifact.documents.animation.status, "ready", JSON.stringify(artifact));
+  assert.equal(artifact.documents.setup.status, "ready", JSON.stringify(artifact));
 });

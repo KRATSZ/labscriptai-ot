@@ -26,7 +26,7 @@ python3 scripts/package_labscriptai_ot.py
 
 The output goes to `dist/`:
 
-- `labscriptai-ot-0.1.3.zip` — one runtime package for Cursor, Claude Code and Codex, including detailed Flex module meshes
+- `labscriptai-ot-0.1.4.zip` — one runtime package for Cursor, Claude Code and Codex, including detailed Flex module meshes
 - `release-manifest.json` — version, sizes, file counts and SHA-256 hashes; build-info.json inside the ZIP identifies the exact runtime content
 
 The runtime package excludes development tests, QA notes, local state, secrets, Python/Node environments, vision training weights and model authoring sources. Detailed models include only the OBJ meshes required at runtime and their manifest/provenance; Blender, GLB and STL duplicates stay out. Extract the ZIP and install from its `labscriptai-ot/` folder. The viewer uses detailed modules automatically.

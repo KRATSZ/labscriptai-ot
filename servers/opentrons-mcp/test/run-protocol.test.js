@@ -507,3 +507,60 @@ test("a ledger waiver does not waive simulation or a known preflight hardware bl
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("host can prepare and control only the confirmed OT-2 without waiting for run completion", async t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "host-run-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const file = path.join(dir, "protocol.py");
+  fs.writeFileSync(file, 'requirements = {"robotType": "OT-2", "apiLevel": "2.20"}\ndef run(ctx): ctx.comment("noop")\n');
+  const python = createFakeSimulationRunner(dir);
+  const originalFetch = global.fetch;
+  let runStatus = "idle";
+  let doorStatus = "closed";
+  let failDeck = false;
+  let failHealth = false;
+  const writes = [];
+  global.fetch = async (url, options) => {
+    const route = new URL(url).pathname;
+    if (options.method === "POST") {
+      writes.push(route);
+      if (route === "/protocols") return jsonResponse({ data: { id: "protocol-1" } });
+      if (route === "/runs") return jsonResponse({ data: { id: "run-1" } });
+      if (route === "/runs/run-1/actions") {
+        runStatus = { play: "running", pause: "paused", stop: "stopped" }[JSON.parse(options.body).data.actionType];
+        return jsonResponse({ data: { id: "action-1" } });
+      }
+    }
+    if (route === "/health") return failHealth ? jsonResponse({}, 503) : jsonResponse({ robot_model: "OT-2 Standard", robot_serial: "OT2-1" });
+    if (route === "/robot/door/status") return jsonResponse({ data: { status: doorStatus } });
+    if (route === "/deck_configuration" && failDeck) return jsonResponse({}, 500);
+    if (route === "/robot/control/estopStatus" || route === "/deck_configuration") return jsonResponse({}, 404);
+    if (route === "/runs/run-1") return jsonResponse({ data: { id: "run-1", status: runStatus, labware: [] } });
+    if (["/instruments", "/modules", "/labwareOffsets", "/runs/run-1/commands"].includes(route)) return jsonResponse({ data: [] });
+    throw new Error(`Unexpected request: ${options.method} ${route}`);
+  };
+  t.after(() => { global.fetch = originalFetch; });
+  const robot = { robot_ip: "127.0.0.1:31950", expected_robot_type: "OT-2", expected_robot_serial: "OT2-1" };
+  const args = { ...robot, file_path: file, python_executable: python, skip_logicpass_gate: true, auto_play: false, return_after_prepare: true };
+  await assert.rejects(TOOL_HANDLERS.run_protocol({ ...args, expected_robot_type: "Flex" }), /no longer matches/);
+  assert.deepEqual(writes, []);
+  const prepared = await TOOL_HANDLERS.run_protocol(args);
+  assert.equal(prepared.runId, "run-1");
+  assert.equal(prepared.data.preflight_gate.allowed_to_play, true);
+  assert.deepEqual(writes, ["/protocols", "/runs"]);
+  const control = { ...robot, run_id: "run-1", return_after_action: true };
+  doorStatus = "open";
+  await assert.rejects(TOOL_HANDLERS.control_run({ ...control, action: "play", expected_run_status: ["idle"] }), /blocker/);
+  doorStatus = "closed";
+  await assert.rejects(TOOL_HANDLERS.control_run({ ...control, action: "play", expected_run_status: ["paused"] }), /required state/);
+  assert.equal(writes.length, 2);
+  for (const [action, expected, actual] of [["play", "idle", "running"], ["pause", "running", "paused"], ["play", "paused", "running"]]) {
+    await TOOL_HANDLERS.control_run({ ...control, action, expected_run_status: [expected] });
+    const result = await TOOL_HANDLERS.query_history({ ...robot, scope: "run_commands", run_id: "run-1" });
+    assert.equal(result.data.status, actual);
+  }
+  failDeck = true;
+  failHealth = true;
+  await TOOL_HANDLERS.control_run({ ...control, action: "stop", expected_run_status: ["paused"] });
+  assert.equal(runStatus, "stopped");
+});

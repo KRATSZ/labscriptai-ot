@@ -51,7 +51,10 @@ try {
   child.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n');
   const list = await request('tools/list', {});
   report.tools = list.result.tools.length;
-  assert.equal(report.tools, 53);
+  const tools = new Map(list.result.tools.map(tool => [tool.name, tool.inputSchema]));
+  assert.equal(tools.get('simulate_protocol')?.properties.analysis_only?.type, 'boolean');
+  assert.equal(tools.get('run_protocol')?.properties.return_after_prepare?.type, 'boolean');
+  assert.equal(tools.get('control_run')?.properties.expected_run_status?.type, 'array');
   report.health = await call('health_check');
   assert.equal(report.health.mcp_server.version, version);
   assert.equal(report.health.mcp_server.consistent, true);
@@ -100,6 +103,13 @@ try {
   assert.equal(report.ot2.simulation.ok, true, JSON.stringify(report.ot2.simulation));
   assert.equal(report.ot2.simulation.robot_type, 'OT-2 Standard');
   assert.equal(report.ot2.simulation.experiment_figure.ok, true, JSON.stringify(report.ot2.simulation.experiment_figure));
+  const ot2Analysis = await call('simulate_protocol', { protocol_path: ot2_path, analysis_only: true });
+  assert.equal(ot2Analysis.ok, true, JSON.stringify(ot2Analysis));
+  assert.equal(ot2Analysis.experiment_figure, undefined);
+  assert.equal(ot2Analysis.preview_3d, undefined);
+  const ot2Documents = await call('protocol_artifacts', { analysis_path: ot2Analysis.analysis_path });
+  assert.equal(ot2Documents.documents.animation.status, 'ready', JSON.stringify(ot2Documents));
+  assert.equal(ot2Documents.documents.setup.status, 'ready', JSON.stringify(ot2Documents));
   report.ot2.logicpass = await call('logicpass_check', { protocol_path: ot2_path });
   assert.equal(report.ot2.logicpass.outcome, 'pass', JSON.stringify(report.ot2.logicpass));
   report.ot2.preflight = await call('flex3d_preflight_check', { source: ot2_path });

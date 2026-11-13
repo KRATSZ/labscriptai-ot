@@ -1,5 +1,8 @@
 import { rememberRobotAddress, requireRobotAddress } from "./robot-connection.js";
 
+const configuredAuthorization = process.env.OPENTRONS_AUTHORIZATION;
+// Keep tunnel credentials in the MCP process; authored protocol Python is a child process.
+delete process.env.OPENTRONS_AUTHORIZATION;
 const DEFAULT_VERSION_HEADER = process.env.OPENTRONS_VERSION || "4";
 
 function safeJsonParse(text) {
@@ -44,6 +47,7 @@ export async function requestJson(method, url, { headers = {}, body = null } = {
         ...headers,
       },
       body,
+      redirect: "error",
     });
 
     const contentType = response.headers.get("content-type") || "";
@@ -69,6 +73,7 @@ export async function requestJson(method, url, { headers = {}, body = null } = {
         ),
       );
       error.response = data;
+      error.status = response.status;
       throw error;
     }
 
@@ -95,6 +100,7 @@ export async function requestBytes(method, url, { headers = {}, body = null } = 
         ...headers,
       },
       body,
+      redirect: "error",
     });
 
     const contentType = response.headers.get("content-type") || "";
@@ -115,6 +121,7 @@ export async function requestBytes(method, url, { headers = {}, body = null } = 
         ),
       );
       error.response = data;
+      error.status = response.status;
       throw error;
     }
 
@@ -136,6 +143,11 @@ export async function requestBytes(method, url, { headers = {}, body = null } = 
   }
 }
 
+function authorizationHeaders(address, headers) {
+  if (!configuredAuthorization || !process.env.OPENTRONS_HOST || address !== normalizeBaseUrl(process.env.OPENTRONS_HOST)) return headers;
+  return { Authorization: configuredAuthorization, ...headers };
+}
+
 export async function requestRobotJson(
   method,
   robotIp,
@@ -144,7 +156,7 @@ export async function requestRobotJson(
 ) {
   const address = normalizeBaseUrl(robotIp);
   const result = await requestJson(method, buildRobotUrl(address, pathname, searchParams), {
-    headers,
+    headers: authorizationHeaders(address, headers),
     body,
   });
   rememberConnectedRobot(address);
@@ -159,7 +171,7 @@ export async function requestRobotBytes(
 ) {
   const address = normalizeBaseUrl(robotIp);
   const result = await requestBytes(method, buildRobotUrl(address, pathname, searchParams), {
-    headers,
+    headers: authorizationHeaders(address, headers),
     body,
   });
   rememberConnectedRobot(address);

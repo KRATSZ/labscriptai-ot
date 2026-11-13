@@ -1375,6 +1375,9 @@ const TOOL_DEFINITIONS = [
           description:
             "Optional explicit offsets. When omitted, fetches and dedupes stored robot offsets.",
         },
+        return_after_prepare: { type: "boolean", description: "With auto_play=false, return the created run and preflight result without collecting a second status snapshot." },
+        expected_robot_type: { type: "string", enum: ["Flex", "OT-2"], description: "Require this robot type before uploading." },
+        expected_robot_serial: { type: "string", description: "Require this serial before uploading." },
         auto_play: { type: "boolean", default: true },
         timeout_ms: { type: "integer", default: 1800000 },
         poll_interval_ms: { type: "integer", default: 1000 },
@@ -1497,6 +1500,10 @@ const TOOL_DEFINITIONS = [
           type: "string",
           enum: ["play", "pause", "stop", "resume-from-recovery"],
         },
+        expected_run_status: { type: "array", items: { type: "string" }, description: "Require the current run to have one of these statuses before play or pause. Stop ignores this condition." },
+        return_after_action: { type: "boolean", description: "Return the acknowledged action without collecting run history. Query history separately for actual state." },
+        expected_robot_type: { type: "string", enum: ["Flex", "OT-2"], description: "Require this robot type before play or pause." },
+        expected_robot_serial: { type: "string", description: "Require this serial before play or pause." },
         page_length: { type: "integer", default: 10 },
         session_id: { type: "string" },
         tiprack_slots: {
@@ -1708,6 +1715,8 @@ const TOOL_DEFINITIONS = [
           description: "robot_runs = list robot runs; run_commands = one run with command history; experiment_logs = persisted local result logs.",
         },
         robot_ip: { type: "string", description: "Robot IP or full base URL (robot_runs/run_commands)." },
+        expected_robot_type: { type: "string", enum: ["Flex", "OT-2"], description: "Require this robot type before reading the run." },
+        expected_robot_serial: { type: "string", description: "Require this serial before reading the run." },
         run_id: { type: "string", description: "run_commands/experiment_logs." },
         page_length: { type: "integer", default: 10, description: "run_commands." },
         session_id: { type: "string", description: "experiment_logs." },
@@ -1881,6 +1890,11 @@ const TOOL_DEFINITIONS = [
           items: { type: "string" },
         },
         max_log_chars: { type: "integer", default: 20000 },
+        analysis_only: {
+          type: "boolean",
+          default: false,
+          description: "Return analysis and repair information without creating a viewer, setup figure, or image. Hosts can export portable documents separately.",
+        },
         generate_3d_preview: {
           type: "boolean",
           default: true,
@@ -2122,12 +2136,16 @@ async function uploadProtocol(args) {
 }
 
 async function readRobotStatus(args) {
-  const [health, instruments, doorStatus, estopStatus, deckConfiguration] = await Promise.all([
-    requestRobotJson("GET", args.robot_ip, "/health"),
+  const health = await requestRobotJson("GET", args.robot_ip, "/health");
+  const healthType = buildAuthoringContext({ robotStatus: buildRobotStatusSnapshot({ health }), robotIp: args.robot_ip }).robot_type;
+  const [instruments, doorStatus, estopStatus, deckConfiguration] = await Promise.all([
     requestRobotJson("GET", args.robot_ip, "/instruments"),
     requestRobotJson("GET", args.robot_ip, "/robot/door/status").catch(error => ({ unavailable: true, error: error.message })),
     requestRobotJson("GET", args.robot_ip, "/robot/control/estopStatus").catch(error => ({ unavailable: true, error: error.message })),
-    requestRobotJson("GET", args.robot_ip, "/deck_configuration"),
+    requestRobotJson("GET", args.robot_ip, "/deck_configuration").catch(error => {
+      if (healthType === "OT-2" && error.status === 404) return null;
+      throw error;
+    }),
   ]);
 
   const snapshot = buildRobotStatusSnapshot({
@@ -2148,6 +2166,24 @@ async function readRobotStatus(args) {
       deck_configuration: deckConfiguration,
     },
   };
+}
+
+async function assertExpectedRobot(args, { requireReady = false } = {}) {
+  if (args.expected_robot_type === undefined && args.expected_robot_serial === undefined) return;
+  const { data: status } = await readRobotStatus(args);
+  const type = buildAuthoringContext({ robotStatus: status, robotIp: args.robot_ip }).robot_type;
+  const serial = status.health_summary.robot_serial;
+  if ((args.expected_robot_type !== undefined && type !== args.expected_robot_type) ||
+      (args.expected_robot_serial !== undefined && serial !== args.expected_robot_serial)) {
+    const error = new Error("Configured robot identity no longer matches the requested device.");
+    error.toolContext = { data: { blocked_real_execution: true, gate_stage: "robot_identity" } };
+    throw error;
+  }
+  if (requireReady && status.blockers.length) {
+    const error = new Error("The robot reports a blocker to physical motion.");
+    error.toolContext = { data: { blocked_real_execution: true, gate_stage: "robot_readiness" } };
+    throw error;
+  }
 }
 
 async function readModuleStatus(args) {
@@ -7232,8 +7268,10 @@ const TOOL_HANDLERS = {
   },
 
   async run_protocol(args) {
+    let preparedRunId = null;
     try {
       const simulationGate = await enforceSimulationGate(args);
+      await assertExpectedRobot(args, { requireReady: true });
       const uploaded = await uploadProtocol(args);
       const protocolId = readNested(unwrapData(uploaded) || {}, [["id"]], null);
       if (!protocolId) {
@@ -7256,6 +7294,7 @@ const TOOL_HANDLERS = {
         throw new Error("Run creation did not return a run id.");
       }
 
+      preparedRunId = runId;
       let preflightGate;
       if (args.skip_preflight === true) {
         preflightGate = {
@@ -7292,6 +7331,13 @@ const TOOL_HANDLERS = {
       }
 
       const autoPlay = args.auto_play ?? true;
+      if (!autoPlay && args.return_after_prepare === true) {
+        return {
+          data: buildRunProtocolResult({ protocol: uploaded, created_run: createdRun, simulation_gate: simulationGate, preflight_gate: preflightGate }),
+          sessionId: args.session_id || runId,
+          runId,
+        };
+      }
       let playAction = null;
       if (autoPlay) {
         playAction = await requestRobotJson("POST", args.robot_ip, `/runs/${runId}/actions`, {
@@ -7362,6 +7408,9 @@ const TOOL_HANDLERS = {
       });
       return result;
     } catch (error) {
+      if (preparedRunId && args.return_after_prepare === true && args.auto_play === false) {
+        error.toolContext = { ...error.toolContext, runId: preparedRunId };
+      }
       recordToolResultLog({
         toolName: "run_protocol",
         eventKind: "protocol_run",
@@ -7593,6 +7642,16 @@ const TOOL_HANDLERS = {
   },
 
   async control_run(args) {
+    // Stop targets the saved run ID directly, even when device checks are down.
+    if (args.action !== "stop") await assertExpectedRobot(args, { requireReady: args.action === "play" });
+    if (args.action !== "stop" && Array.isArray(args.expected_run_status)) {
+      const response = await requestRobotJson("GET", args.robot_ip, `/runs/${args.run_id}`);
+      if (!args.expected_run_status.includes(unwrapData(response)?.status)) {
+        const error = new Error("The robot run is no longer in the required state.");
+        error.toolContext = { data: { blocked_real_execution: true, gate_stage: "run_state" } };
+        throw error;
+      }
+    }
     const actionResult = await requestRobotJson(
       "POST",
       args.robot_ip,
@@ -7606,6 +7665,7 @@ const TOOL_HANDLERS = {
         }),
       },
     );
+    if (args.return_after_action === true) return { data: { action: actionResult }, runId: args.run_id };
     const snapshot = await collectRunExecutionSnapshot({
       robotIp: args.robot_ip,
       runId: args.run_id,
@@ -8057,6 +8117,7 @@ const TOOL_HANDLERS = {
       case "robot_runs":
         return TOOL_HANDLERS.get_runs(rest);
       case "run_commands":
+        await assertExpectedRobot(rest);
         return TOOL_HANDLERS.run_history(rest);
       case "experiment_logs":
         return TOOL_HANDLERS.experiment_history(rest);
@@ -8148,6 +8209,15 @@ const TOOL_HANDLERS = {
       return gate;
     }
     const simulationData = await runSimulationTool(args);
+    let parsedRepair = null;
+    try {
+      parsedRepair = parseSimulationLog({ simulation_output_json: JSON.stringify(simulationData) });
+    } catch {
+      // Simulation data remains usable without repair categorization.
+    }
+    const data = { ...simulationData, ...(parsedRepair ? { parsed_repair: parsedRepair } : {}) };
+    if (args.analysis_only === true) return { data };
+
     let preview = { ok: false, status: "not_available", message: simulationData.ok
       ? "本次模拟没有生成可用于三维预览的分析数据；模拟结果仍可使用。"
       : "本次分析未完成；修复协议后重试，三维预览会自动生成。" };
@@ -8171,21 +8241,7 @@ const TOOL_HANDLERS = {
       : { ok: false, status: "not_available", message: simulationData.ok
         ? "本次模拟没有生成可用于绘图的分析数据；模拟结果仍可使用。"
         : "本次分析未完成；修复协议后重试，配置图会自动生成。" });
-    let parsedRepair = null;
-    try {
-      parsedRepair = parseSimulationLog({ simulation_output_json: JSON.stringify(simulationData) });
-    } catch {
-      parsedRepair = null;
-    }
-    return {
-      data: {
-        ...simulationData,
-        preview_3d: preview,
-        experiment_figure: figure,
-        ...(parsedRepair ? { parsed_repair: parsedRepair } : {}),
-      },
-      images: figureImages(figure),
-    };
+    return { data: { ...data, preview_3d: preview, experiment_figure: figure }, images: figureImages(figure) };
   },
 
   async protocol_artifacts(args) {

@@ -48,7 +48,7 @@ Run no-motion recovery invariants inside the loaded MCP process, including liqui
 
 Judge a protocol with one opentrons analyze run and classify the result into structured repair categories (parsed_repair in the response, replacing the former parse_simulation_output call). The analyze JSON is cached and reused by logicpass_check. When virtual_lab_steps (or validate_virtual_lab_state=true) is provided, runs deterministic Virtual Lab State validation first and blocks analysis on any violation (Phase 1.5 gate). On success, automatically starts or reuses the local OT-2/Flex 3D viewer from this same analysis and returns preview_3d.url; show this link to the user without another preview request. Set generate_3d_preview=false only when the user declines preview. Also returns experiment_figure with setup PNG/page/CSV paths and inline MCP image content. Preview or figure failures do not change the simulation verdict. No robot access. extra_args still falls back to opentrons.simulate and may not supply preview or figure data.
 
-**Parameters:** `protocol_path`, `workspace_root` (optional), `api_root` (optional), `shared_data_root` (optional), `python_executable` (optional), `extra_args` (optional), `max_log_chars` (optional), `generate_3d_preview` (optional), `session_id` (optional), `initial_state` (optional), `virtual_lab_steps` (optional), `validate_virtual_lab_state` (optional), `skip_virtual_lab_state_validation` (optional)
+**Parameters:** `protocol_path`, `workspace_root` (optional), `api_root` (optional), `shared_data_root` (optional), `python_executable` (optional), `extra_args` (optional), `max_log_chars` (optional), `analysis_only` (optional), `generate_3d_preview` (optional), `session_id` (optional), `initial_state` (optional), `virtual_lab_steps` (optional), `validate_virtual_lab_state` (optional), `skip_virtual_lab_state_validation` (optional)
 
 ## L1 — Authoring helpers — labware, tips, preflight
 
@@ -130,7 +130,7 @@ Artifact API v1: export self-contained animation and experiment setup HTML docum
 
 Query run and experiment history. scope=robot_runs lists runs on the robot (requires robot_ip); scope=run_commands returns one run's state plus recent command history in an agent-friendly format (requires robot_ip and run_id); scope=experiment_logs queries persisted run, recovery, and reconciliation result logs (local, filterable by session/run/tool/event kind/status).
 
-**Parameters:** `scope`, `robot_ip` (optional), `run_id` (optional), `page_length` (optional), `session_id` (optional), `tool_name` (optional), `event_kind` (optional), `status` (optional), `limit` (optional)
+**Parameters:** `scope`, `robot_ip` (optional), `expected_robot_type` (optional), `expected_robot_serial` (optional), `run_id` (optional), `page_length` (optional), `session_id` (optional), `tool_name` (optional), `event_kind` (optional), `status` (optional), `limit` (optional)
 
 ### `reconcile_state` [L2]
 
@@ -204,7 +204,7 @@ Control an attached module in an active run or maintenance context. module_type=
 
 Play, pause, stop, or resume-from-recovery for a run.
 
-**Parameters:** `robot_ip` (optional), `run_id`, `action`, `page_length` (optional), `session_id` (optional), `tiprack_slots` (optional)
+**Parameters:** `robot_ip` (optional), `run_id`, `action`, `expected_run_status` (optional), `return_after_action` (optional), `expected_robot_type` (optional), `expected_robot_serial` (optional), `page_length` (optional), `session_id` (optional), `tiprack_slots` (optional)
 
 ### `create_run` [L3]
 
@@ -270,7 +270,7 @@ In protocol recovery state, enqueue a fixit pickUpTip on the next viable well an
 
 Upload, create and optionally play a protocol, then poll to a terminal or intervention state. Local simulation is required. LogicPass and software preflight gate by default; honor explicit operator waivers with the corresponding skip flags and record skipped checks. Liquid probing is optional and its enable flag is not required for this tool.
 
-**Parameters:** `robot_ip` (optional), `file_path`, `protocol_kind` (optional), `key` (optional), `run_time_parameters` (optional), `labware_offsets` (optional), `auto_play` (optional), `timeout_ms` (optional), `poll_interval_ms` (optional), `page_length` (optional), `session_id` (optional), `skip_logicpass_gate` (optional), `skip_preflight` (optional), `skip_preflight_deck_diff` (optional), `strict_preflight_labware_slots` (optional), `tiprack_slots` (optional)
+**Parameters:** `robot_ip` (optional), `file_path`, `protocol_kind` (optional), `key` (optional), `run_time_parameters` (optional), `labware_offsets` (optional), `return_after_prepare` (optional), `expected_robot_type` (optional), `expected_robot_serial` (optional), `auto_play` (optional), `timeout_ms` (optional), `poll_interval_ms` (optional), `page_length` (optional), `session_id` (optional), `skip_logicpass_gate` (optional), `skip_preflight` (optional), `skip_preflight_deck_diff` (optional), `strict_preflight_labware_slots` (optional), `tiprack_slots` (optional)
 
 ### `runtime_outbox` [L3]
 
