@@ -2168,6 +2168,12 @@ async function readRobotStatus(args) {
   };
 }
 
+function blockedRobotOperation(stage, message) {
+  const error = new Error(message);
+  error.toolContext = { data: { blocked_real_execution: true, gate_stage: stage } };
+  return error;
+}
+
 async function assertExpectedRobot(args, { requireReady = false } = {}) {
   if (args.expected_robot_type === undefined && args.expected_robot_serial === undefined) return;
   const { data: status } = await readRobotStatus(args);
@@ -2175,14 +2181,10 @@ async function assertExpectedRobot(args, { requireReady = false } = {}) {
   const serial = status.health_summary.robot_serial;
   if ((args.expected_robot_type !== undefined && type !== args.expected_robot_type) ||
       (args.expected_robot_serial !== undefined && serial !== args.expected_robot_serial)) {
-    const error = new Error("Configured robot identity no longer matches the requested device.");
-    error.toolContext = { data: { blocked_real_execution: true, gate_stage: "robot_identity" } };
-    throw error;
+    throw blockedRobotOperation("robot_identity", "Configured robot identity no longer matches the requested device.");
   }
   if (requireReady && status.blockers.length) {
-    const error = new Error("The robot reports a blocker to physical motion.");
-    error.toolContext = { data: { blocked_real_execution: true, gate_stage: "robot_readiness" } };
-    throw error;
+    throw blockedRobotOperation("robot_readiness", "The robot reports a blocker to physical motion.");
   }
 }
 
@@ -7268,6 +7270,8 @@ const TOOL_HANDLERS = {
   },
 
   async run_protocol(args) {
+    const autoPlay = args.auto_play ?? true;
+    const returnAfterPrepare = args.return_after_prepare === true;
     let preparedRunId = null;
     try {
       const simulationGate = await enforceSimulationGate(args);
@@ -7330,14 +7334,9 @@ const TOOL_HANDLERS = {
         }
       }
 
-      const autoPlay = args.auto_play ?? true;
-      if (!autoPlay && args.return_after_prepare === true) {
-        return {
-          data: buildRunProtocolResult({ protocol: uploaded, created_run: createdRun, simulation_gate: simulationGate, preflight_gate: preflightGate }),
-          sessionId: args.session_id || runId,
-          runId,
-        };
-      }
+      const prepared = { protocol: uploaded, created_run: createdRun, simulation_gate: simulationGate, preflight_gate: preflightGate };
+      if (!autoPlay && returnAfterPrepare) return { data: buildRunProtocolResult(prepared), sessionId: args.session_id || runId, runId };
+
       let playAction = null;
       if (autoPlay) {
         playAction = await requestRobotJson("POST", args.robot_ip, `/runs/${runId}/actions`, {
@@ -7369,14 +7368,11 @@ const TOOL_HANDLERS = {
 
       const result = {
         data: buildRunProtocolResult({
-          protocol: uploaded,
-          created_run: createdRun,
+          ...prepared,
           play_action: playAction,
           final_run_history: snapshot.runHistoryResult.data,
           parsed_error: failureGuidance?.parsedError || null,
           recovery: failureGuidance?.recovery || null,
-          simulation_gate: simulationGate,
-          preflight_gate: preflightGate,
         }),
         hardwareSnapshot:
           failureGuidance?.hardwareSnapshot && Object.keys(failureGuidance.hardwareSnapshot).length > 0
@@ -7408,7 +7404,7 @@ const TOOL_HANDLERS = {
       });
       return result;
     } catch (error) {
-      if (preparedRunId && args.return_after_prepare === true && args.auto_play === false) {
+      if (preparedRunId && returnAfterPrepare && args.auto_play === false) {
         error.toolContext = { ...error.toolContext, runId: preparedRunId };
       }
       recordToolResultLog({
@@ -7647,9 +7643,7 @@ const TOOL_HANDLERS = {
     if (args.action !== "stop" && Array.isArray(args.expected_run_status)) {
       const response = await requestRobotJson("GET", args.robot_ip, `/runs/${args.run_id}`);
       if (!args.expected_run_status.includes(unwrapData(response)?.status)) {
-        const error = new Error("The robot run is no longer in the required state.");
-        error.toolContext = { data: { blocked_real_execution: true, gate_stage: "run_state" } };
-        throw error;
+        throw blockedRobotOperation("run_state", "The robot run is no longer in the required state.");
       }
     }
     const actionResult = await requestRobotJson(
