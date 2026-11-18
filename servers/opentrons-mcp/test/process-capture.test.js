@@ -52,13 +52,21 @@ test("a POSIX helper ignoring termination is force-killed within a bounded deadl
 
 test("late descendant output remains available until its invocation owner cleans up", async t => {
   const {options} = environment(t);
-  const source = "const{spawn}=require('node:child_process');spawn(process.execPath,['-e',\"setTimeout(()=>process.stdout.write('late-output'),300)\"],{stdio:'inherit',detached:true}).unref()";
-  const result = await captureProcess(process.execPath, ["-e", source], options);
+  const pidFile = path.join(options.env.TEMP, "descendant.pid");
+  const source = "const{spawn}=require('node:child_process');const fs=require('node:fs');const child=spawn(process.execPath,['-e',\"setTimeout(()=>process.stdout.write('late-output'),300)\"],{stdio:'inherit',detached:true});fs.writeFileSync(process.argv[1],String(child.pid));child.unref()";
+  const result = await captureProcess(process.execPath, ["-e", source, pidFile], options);
   if (process.platform === "win32") {
     const output = path.join(result.captureDirectory, "stdout");
     const deadline = Date.now() + 5000;
     while (!fs.readFileSync(output, "utf8").includes("late-output") && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 50));
     assert.equal(fs.readFileSync(output, "utf8"), "late-output");
+    const pid = Number(fs.readFileSync(pidFile, "utf8"));
+    const running = () => {
+      try { process.kill(pid, 0); return true; }
+      catch (error) { if (error.code === "ESRCH") return false; throw error; }
+    };
+    while (running() && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 50));
+    assert.equal(running(), false, "The invocation owner must await its descendant before deleting capture files");
   } else assert.equal(result.stdout, "late-output");
 });
 
