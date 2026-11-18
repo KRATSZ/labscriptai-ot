@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { captureProcess, executeCaptured } from "../lib/process-capture.js";
+import { captureProcess, executeCaptured, readBoundedCapture } from "../lib/process-capture.js";
 
 function environment(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "OT 中文 spaces "));
@@ -58,4 +58,13 @@ test("late descendant output remains available until its invocation owner cleans
     while (!fs.readFileSync(output, "utf8").includes("late-output") && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 50));
     assert.equal(fs.readFileSync(output, "utf8"), "late-output");
   } else assert.equal(result.stdout, "late-output");
+});
+
+test("file snapshots enforce byte limits independently of an earlier size check", t => {
+  const {root} = environment(t);
+  const file = path.join(root, "capture");
+  fs.writeFileSync(file, "中文");
+  assert.equal(readBoundedCapture(file, 6), "中文");
+  fs.appendFileSync(file, "x".repeat(1024 * 1024));
+  assert.throws(() => readBoundedCapture(file, 6), {code: "ERR_CHILD_PROCESS_STDIO_MAXBUFFER"});
 });

@@ -6,6 +6,24 @@ import { spawn } from "node:child_process";
 
 const limitError = () => Object.assign(new Error("Helper output exceeds its capture limit"), {code: "ERR_CHILD_PROCESS_STDIO_MAXBUFFER"});
 
+/** Read a bounded output snapshot even if a descendant is still appending. */
+export function readBoundedCapture(file, maxBuffer) {
+  const descriptor = fs.openSync(file, "r");
+  const chunks = [];
+  const buffer = Buffer.alloc(Math.min(maxBuffer + 1, 65536));
+  let size = 0;
+  try {
+    while (size <= maxBuffer) {
+      const count = fs.readSync(descriptor, buffer, 0, Math.min(buffer.length, maxBuffer + 1 - size), null);
+      if (!count) break;
+      size += count;
+      if (size > maxBuffer) throw limitError();
+      chunks.push(Buffer.from(buffer.subarray(0, count)));
+    }
+    return Buffer.concat(chunks).toString("utf8");
+  } finally { fs.closeSync(descriptor); }
+}
+
 /**
  * Capture the direct helper's output. POSIX keeps pipe semantics. Windows inherits
  * ordinary files and the caller's console; all capture files remain available
@@ -74,8 +92,8 @@ export async function captureProcess(command, args, { cwd = process.cwd(), env =
     });
     if (failure) throw failure;
     if (fileMode && files.slice(1).some(file => fs.statSync(file).size > maxBuffer)) throw limitError();
-    const stdout = fileMode ? fs.readFileSync(files[1], "utf8") : Buffer.concat(output[0]).toString("utf8");
-    const stderr = fileMode ? fs.readFileSync(files[2], "utf8") : Buffer.concat(output[1]).toString("utf8");
+    const stdout = fileMode ? readBoundedCapture(files[1], maxBuffer) : Buffer.concat(output[0]).toString("utf8");
+    const stderr = fileMode ? readBoundedCapture(files[2], maxBuffer) : Buffer.concat(output[1]).toString("utf8");
     return { code, stdout, stderr, command, args, captureDirectory: directory };
   } finally {
     for (const timer of [monitor, force, deadline]) clearTimeout(timer);
