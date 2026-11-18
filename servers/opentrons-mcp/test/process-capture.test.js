@@ -101,6 +101,7 @@ test("a post-spawn termination error keeps escalation and reports an uncertain s
     assert.ok(signals >= 2, "Both termination and force-kill attempts must occur");
   } finally {
     if (helper) {
+      helper.ref();
       const closed = once(helper, "close");
       originalKill.call(helper, "SIGKILL");
       await closed;
