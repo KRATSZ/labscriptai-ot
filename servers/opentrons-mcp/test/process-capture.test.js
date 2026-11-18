@@ -1,4 +1,6 @@
 import { test } from "node:test";
+import { ChildProcess } from "node:child_process";
+import { once } from "node:events";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
@@ -50,7 +52,7 @@ test("a POSIX helper ignoring termination is force-killed within a bounded deadl
 
 test("late descendant output remains available until its invocation owner cleans up", async t => {
   const {options} = environment(t);
-  const source = "const{spawn}=require('node:child_process');spawn(process.execPath,['-e',\"setTimeout(()=>process.stdout.write('late-output'),300)\"],{stdio:'inherit'}).unref()";
+  const source = "const{spawn}=require('node:child_process');spawn(process.execPath,['-e',\"setTimeout(()=>process.stdout.write('late-output'),300)\"],{stdio:'inherit',detached:true}).unref()";
   const result = await captureProcess(process.execPath, ["-e", source], options);
   if (process.platform === "win32") {
     const output = path.join(result.captureDirectory, "stdout");
@@ -83,4 +85,25 @@ test("unsupported timer delays are rejected before creating or starting a helper
   const {root, options} = environment(t);
   await assert.rejects(captureProcess(process.execPath, ["-e", "process.exit(99)"], {...options, timeout: 2147483648}), /Invalid helper capture limits/);
   assert.deepEqual(fs.readdirSync(root), []);
+});
+
+test("a post-spawn termination error keeps escalation and reports an uncertain stop", async t => {
+  const {options} = environment(t);
+  const originalKill = ChildProcess.prototype.kill;
+  let helper, signals = 0;
+  t.mock.method(ChildProcess.prototype, "kill", function () {
+    helper = this; signals++;
+    this.emit("error", Object.assign(new Error("injected terminate denial"), {code: "EPERM"}));
+    return false;
+  });
+  try {
+    await assert.rejects(captureProcess(process.execPath, ["-e", "setInterval(()=>{},1000)"], {...options, timeout: 100}), {code: "PROCESS_STOP_UNCERTAIN"});
+    assert.ok(signals >= 2, "Both termination and force-kill attempts must occur");
+  } finally {
+    if (helper) {
+      const closed = once(helper, "close");
+      originalKill.call(helper, "SIGKILL");
+      await closed;
+    }
+  }
 });

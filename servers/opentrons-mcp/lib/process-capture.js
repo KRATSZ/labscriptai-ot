@@ -73,7 +73,10 @@ export async function captureProcess(command, args, { cwd = process.cwd(), env =
           reject(uncertain);
         }, 5000);
       };
-      child.once("error", error => { failure = error; reject(error); });
+      child.on("error", error => {
+        if (child.pid === undefined) { failure = error; reject(error); }
+        else stop(error);
+      });
       child.once("close", (code, signal) => {
         if (signal && !failure) failure = new Error(`Helper stopped by ${signal}`);
         resolve(code);
