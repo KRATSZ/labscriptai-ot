@@ -7,14 +7,15 @@ import { spawn } from "node:child_process";
 const limitError = () => Object.assign(new Error("Helper output exceeds its capture limit"), {code: "ERR_CHILD_PROCESS_STDIO_MAXBUFFER"});
 
 /** Read a bounded output snapshot even if a descendant is still appending. */
-export function readBoundedCapture(file, maxBuffer) {
+function readCaptureSnapshot(file, maxBuffer, truncate) {
   const descriptor = fs.openSync(file, "r");
   const chunks = [];
   const buffer = Buffer.alloc(Math.min(maxBuffer + 1, 65536));
   let size = 0;
   try {
-    while (size <= maxBuffer) {
-      const count = fs.readSync(descriptor, buffer, 0, Math.min(buffer.length, maxBuffer + 1 - size), null);
+    const readLimit = maxBuffer + (truncate ? 0 : 1);
+    while (size < readLimit) {
+      const count = fs.readSync(descriptor, buffer, 0, Math.min(buffer.length, readLimit - size), null);
       if (!count) break;
       size += count;
       if (size > maxBuffer) throw limitError();
@@ -22,6 +23,11 @@ export function readBoundedCapture(file, maxBuffer) {
     }
     return Buffer.concat(chunks).toString("utf8");
   } finally { fs.closeSync(descriptor); }
+}
+
+/** Read at most the configured bytes or reject excess output. */
+export function readBoundedCapture(file, maxBuffer) {
+  return readCaptureSnapshot(file, maxBuffer, false);
 }
 
 /**
@@ -32,7 +38,7 @@ export function readBoundedCapture(file, maxBuffer) {
  */
 export async function captureProcess(command, args, { cwd = process.cwd(), env = process.env,
   input, timeout = 0, maxBuffer = 16 * 1024 * 1024 } = {}) {
-  if (!Number.isSafeInteger(maxBuffer) || maxBuffer < 1 || !Number.isFinite(timeout) || timeout < 0) {
+  if (!Number.isSafeInteger(maxBuffer) || maxBuffer < 1 || !Number.isSafeInteger(timeout) || timeout < 0 || timeout > 2147483647) {
     throw new Error("Invalid helper capture limits");
   }
   const fileMode = process.platform === "win32";
@@ -95,6 +101,14 @@ export async function captureProcess(command, args, { cwd = process.cwd(), env =
     const stdout = fileMode ? readBoundedCapture(files[1], maxBuffer) : Buffer.concat(output[0]).toString("utf8");
     const stderr = fileMode ? readBoundedCapture(files[2], maxBuffer) : Buffer.concat(output[1]).toString("utf8");
     return { code, stdout, stderr, command, args, captureDirectory: directory };
+  } catch (error) {
+    const diagnostics = output.map((chunks, index) => {
+      if (!fileMode) return Buffer.concat(chunks).toString("utf8");
+      try { return readCaptureSnapshot(files[index + 1], maxBuffer, true); }
+      catch (readError) { error.captureReadError = readError.message; return ""; }
+    });
+    Object.assign(error, {stdout: diagnostics[0], stderr: diagnostics[1], captureDirectory: directory});
+    throw error;
   } finally {
     for (const timer of [monitor, force, deadline]) clearTimeout(timer);
     clearTimeout(timer);

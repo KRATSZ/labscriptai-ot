@@ -68,3 +68,19 @@ test("file snapshots enforce byte limits independently of an earlier size check"
   fs.appendFileSync(file, "x".repeat(1024 * 1024));
   assert.throws(() => readBoundedCapture(file, 6), {code: "ERR_CHILD_PROCESS_STDIO_MAXBUFFER"});
 });
+
+test("timeout failures preserve the emitted diagnostics and capture location", async t => {
+  const {options} = environment(t);
+  await assert.rejects(executeCaptured(process.execPath, ["-e", "console.error('diagnostic before timeout');setInterval(()=>{},1000)"], {...options, timeout: 1000}), error => {
+    assert.equal(error.code, "ETIMEDOUT");
+    assert.match(error.stderr, /diagnostic before timeout/);
+    if (process.platform === "win32") assert.ok(fs.existsSync(error.captureDirectory));
+    return true;
+  });
+});
+
+test("unsupported timer delays are rejected before creating or starting a helper", async t => {
+  const {root, options} = environment(t);
+  await assert.rejects(captureProcess(process.execPath, ["-e", "process.exit(99)"], {...options, timeout: 2147483648}), /Invalid helper capture limits/);
+  assert.deepEqual(fs.readdirSync(root), []);
+});
