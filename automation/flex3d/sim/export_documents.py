@@ -71,10 +71,10 @@ document.open();document.write(html);document.close();
         model.close()
 
 
-def setup_document(analysis, output):
+def setup_document(analysis, output, stage=None):
     sys.path.insert(0, str(ROOT.parent / 'figures'))
     from experiment_figure import generate
-    result = generate(analysis, output)
+    result = generate(analysis, output, stage)
     folder = Path(result['directory'])
     page = (folder / 'setup.html').read_text(encoding='utf-8')
     page = re.sub(r'<script>.*?</script>', '', page, flags=re.S)
@@ -89,7 +89,7 @@ def setup_document(analysis, output):
     return page, [folder / name for name in result['files'] if name != 'setup.html']
 
 
-def export(analysis, output):
+def export(analysis, output, document_stage=None, figure_stage=None):
     analysis = Path(analysis).resolve()
     raw = analysis.read_bytes()
     if not raw or len(raw) > 16 * 1024 * 1024:
@@ -99,11 +99,15 @@ def export(analysis, output):
         raise ValueError('A successful analysis is required')
     output = Path(output).resolve()
     output.mkdir(parents=True, exist_ok=True)
-    folder = Path(tempfile.mkdtemp(prefix='documents-', dir=output))
+    folder = Path(document_stage).absolute() if document_stage is not None else Path(tempfile.mkdtemp(prefix='documents-', dir=output))
+    information = folder.lstat()
+    if (folder.is_symlink() or getattr(information, 'st_file_attributes', 0) & 0x400
+            or not folder.is_dir() or folder.parent.resolve() != output or any(folder.iterdir())):
+        raise ValueError('Document staging must be an empty regular directory directly inside the output directory')
     documents = {}
     attachments = []
     for name, build in [('animation', lambda: animation_document(analysis, folder)),
-                        ('setup', lambda: setup_document(analysis, output / 'figures'))]:
+                        ('setup', lambda: setup_document(analysis, output / 'figures', figure_stage))]:
         try:
             value = build()
             if name == 'setup':
@@ -129,9 +133,11 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--analysis', required=True)
     parser.add_argument('--out', required=True)
+    parser.add_argument('--documents-stage', type=Path)
+    parser.add_argument('--figure-stage', type=Path)
     args = parser.parse_args()
     try:
-        print(json.dumps(export(args.analysis, args.out)))
+        print(json.dumps(export(args.analysis, args.out, args.documents_stage, args.figure_stage)))
     except Exception as error:
         print(json.dumps({'ok': False, 'artifact_api': 1, 'message': str(error)[:2000]}))
         sys.exit(1)

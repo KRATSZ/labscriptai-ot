@@ -28,7 +28,7 @@ jobs:
           python-version: '3.12'
       - uses: astral-sh/setup-uv@v6
       - run: node scripts/lint-manifests.mjs
-      - run: node --test servers/opentrons-mcp/test/process-capture.test.js
+      - run: node --test servers/opentrons-mcp/test/process-capture.test.js servers/opentrons-mcp/test/artifact-staging.test.js
       - name: Fresh install from the download
         shell: bash
         run: |
@@ -37,6 +37,11 @@ jobs:
           node .ci-extracted/labscriptai-ot/scripts/install-runtime.mjs
           node .ci-extracted/labscriptai-ot/scripts/verify-setup.mjs
           node scripts/release-smoke.mjs .ci-extracted/labscriptai-ot
+      - name: Verify inherited private staging on Windows
+        if: runner.os == 'Windows'
+        env:
+          LABSCRIPTAI_INHERIT_PRIVATE_ACL: '1'
+        run: node scripts/release-smoke.mjs .ci-extracted/labscriptai-ot
       - name: Locate isolated Flex and OT-2 analyzers
         shell: bash
         run: node --input-type=module -e 'import {cachedPython,cachedOt2Python} from "./scripts/runtime-paths.mjs"; import fs from "node:fs"; const flex=cachedPython(process.cwd()),ot2=cachedOt2Python(process.cwd()); if(!flex||!ot2) throw new Error("Both analyzers must be installed"); fs.appendFileSync(process.env.GITHUB_ENV, `OPENTRONS_PYTHON=${flex}\nOPENTRONS_OT2_PYTHON=${ot2}\nOT2_GEOMETRY=1\n`)'

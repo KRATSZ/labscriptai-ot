@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { executeCaptured as execute } from "./process-capture.js";
+import { createArtifactStage, cleanUnusedStages, inheritsPrivateAcl } from "./artifact-staging.js";
 import { ARTIFACTS_DIR, PLUGIN_ROOT, resolvePythonCandidates } from "./paths.js";
 
 const script = path.join(PLUGIN_ROOT, "automation/figures/experiment_figure.py");
@@ -9,27 +10,37 @@ const failure = message => ({ ok: false, error: "figure_generation_failed", mess
   next_action: "配置图未生成；模拟结果和动画仍可使用。重运行安装器后重试原操作。" });
 
 /** Non-blocking companion artifact: never changes simulation or readiness verdicts. */
-export async function generateExperimentFigure({ analysisPath, preferredPython } = {}) {
+export async function generateExperimentFigure(args = {}) {
+  try { return await generateFigure(args); }
+  catch (error) { return failure(`配置图生成失败：${error.message}`); }
+}
+
+async function generateFigure({ analysisPath, preferredPython } = {}) {
   if (!analysisPath) return { ok: false, status: "not_available", message: "本次没有可用于绘图的分析数据。" };
-  for (const python of resolvePythonCandidates(preferredPython)) {
-    try {
-      const { stdout } = await execute(python, [script, "--analysis", analysisPath, "--out", FIGURE_DIR], {
-        timeout: 45000, maxBuffer: 2 * 1024 * 1024,
-        env: { ...process.env, PYTHONIOENCODING: "utf-8" },
-      });
-      const result = JSON.parse(stdout.trim());
-      if (!result.ok) return failure(result.message || "配置图生成失败。");
-      return { ...result, png_path: path.join(result.directory, result.images[0]),
-        image_paths: result.images.map(name => path.join(result.directory, name)),
-        page_path: path.join(result.directory, "setup.html"),
-        data_path: path.join(result.directory, "setup.json"), csv_path: path.join(result.directory, "wells.csv"),
-        message: "实验配置图已生成，包含台面摆位与起始装液；逐孔表可在配置页面查看或下载。" };
-    } catch (error) {
-      if (error.code === "ENOENT") continue;
-      return failure(`配置图生成失败：${error.message}`);
+  const stage = inheritsPrivateAcl() ? createArtifactStage(FIGURE_DIR, ".figure-") : null;
+  let uncertain = false;
+  try {
+    for (const python of resolvePythonCandidates(preferredPython)) {
+      try {
+        const { stdout } = await execute(python, [script, "--analysis", analysisPath, "--out", FIGURE_DIR, ...(stage ? ["--stage", stage] : [])], {
+          timeout: 45000, maxBuffer: 2 * 1024 * 1024,
+          env: { ...process.env, PYTHONIOENCODING: "utf-8" },
+        });
+        const result = JSON.parse(stdout.trim());
+        if (!result.ok) return failure(result.message || "配置图生成失败。");
+        return { ...result, png_path: path.join(result.directory, result.images[0]),
+          image_paths: result.images.map(name => path.join(result.directory, name)),
+          page_path: path.join(result.directory, "setup.html"),
+          data_path: path.join(result.directory, "setup.json"), csv_path: path.join(result.directory, "wells.csv"),
+          message: "实验配置图已生成，包含台面摆位与起始装液；逐孔表可在配置页面查看或下载。" };
+      } catch (error) {
+        if (error.code === "ENOENT") continue;
+        uncertain = error.code === "PROCESS_STOP_UNCERTAIN";
+        return failure(`配置图生成失败：${error.message}`);
+      }
     }
-  }
-  return failure("未找到可用的 Python。请运行插件安装器。");
+    return failure("未找到可用的 Python。请运行插件安装器。");
+  } finally { if (!uncertain) cleanUnusedStages(stage ? [stage] : []); }
 }
 
 export function figureImages(figure) {

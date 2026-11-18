@@ -22,7 +22,7 @@ To recheck later: `node scripts/verify-setup.mjs`. Add `--verbose` for details. 
 
 Upgrading from 0.1.1: keep an existing `PLUGIN_DATA` setting. Updating the original folder copies its old `.plugin-data` records into the shared user directory when that directory has no records yet. If you move to a new folder, the installer cannot discover records left in the old folder: keep `PLUGIN_DATA` pointing there, or copy those records to the new data directory before removing the old folder.
 
-Windows sandbox integrations capture batch Python output in private temporary files instead of Node named pipes, which restricted tokens cannot open. Keep the invocation's `TEMP` / `TMPDIR` writable; captures are retained there until the invocation owner stops its process tree and cleans the directory. Standalone callers can remove capture files after stopping their helpers. This keeps the sandbox enabled for simulation, documents and preflight checks.
+Windows sandbox integrations capture batch Python output in private temporary files instead of Node named pipes, which restricted tokens cannot open. Keep the invocation's `TEMP` / `TMPDIR` writable; captures are retained there until the invocation owner stops its process tree and cleans the directory. Standalone callers can remove capture files after stopping their helpers. A Windows restricted-token host may set `LABSCRIPTAI_INHERIT_PRIVATE_ACL=1` only when `PLUGIN_DATA` is already private and capability-granted. MCP then allocates stages in Node to inherit those ACLs. Other MCP clients and standalone Python CLI use keep their secure temporary-directory defaults. This keeps the sandbox enabled for simulation, documents and preflight checks.
 
 ## 2. Connect your client
 

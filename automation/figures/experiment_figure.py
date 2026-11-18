@@ -323,22 +323,30 @@ def render_page(model, items, out, page, total):
     c.image.save(out)
 
 
-def generate(analysis_path, out_root):
+def generate(analysis_path, out_root, stage_dir=None):
     source=Path(analysis_path).read_bytes()
     digest=hashlib.sha256(source).hexdigest()
     # Include renderer and font identity: plugin updates cannot reuse old artwork.
     version=hashlib.sha256(Path(__file__).read_bytes()+(HERE/'liquid_annotations.py').read_bytes()+FONT.read_bytes()).hexdigest()[:12]
     root=Path(out_root); root.mkdir(parents=True,exist_ok=True)
+    stage=Path(stage_dir) if stage_dir is not None else None
+    if stage is not None:
+        information=stage.lstat()
+        if (stage.is_symlink() or getattr(information,'st_file_attributes',0)&0x400
+                or not stage.is_dir() or stage.parent.resolve()!=root.resolve() or any(stage.iterdir())):
+            raise ValueError('Figure staging must be an empty regular directory directly inside the output directory')
     target=root/f'{digest[:20]}-{version}'
     if (target/'manifest.json').is_file():
         manifest=json.loads((target/'manifest.json').read_text())
-        if all((target/name).is_file() for name in manifest['files']): return {**manifest,'directory':str(target.resolve())}
+        if all((target/name).is_file() for name in manifest['files']):
+            if stage is not None:stage.rmdir()
+            return {**manifest,'directory':str(target.resolve())}
         shutil.rmtree(target)
     model=build_model(json.loads(source))
     model['analysis_sha256']=digest
     plates=[v for v in model['labware'] if not v['adapter'] and not v['tiprack']]
     pages=[plates[n:n+2] for n in range(0,len(plates),2)] or [[]]
-    stage=Path(tempfile.mkdtemp(prefix='.figure-',dir=root))
+    stage=stage if stage is not None else Path(tempfile.mkdtemp(prefix='.figure-',dir=root))
     try:
         images=[]
         for i,items in enumerate(pages,1):
@@ -383,8 +391,9 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--analysis',required=True,type=Path)
     parser.add_argument('--out',required=True,type=Path)
+    parser.add_argument('--stage',type=Path)
     args=parser.parse_args()
-    try:result=generate(args.analysis,args.out)
+    try:result=generate(args.analysis,args.out,args.stage)
     except Exception as error:result={'ok':False,'error':'figure_generation_failed','message':str(error)}
     print(json.dumps(result,ensure_ascii=False))
 

@@ -64,6 +64,31 @@ class ExperimentFigure(unittest.TestCase):
         raw['commands'].insert(3,{'commandType':'aspirate','params':{'labwareId':'p','pipetteId':'pip'}})
         with self.assertRaisesRegex(ValueError,'after transfers'):figure.build_model(raw)
 
+    def test_host_allocated_staging_is_consumed_and_cache_hits_remove_only_empty_stages(self):
+        with tempfile.TemporaryDirectory() as td:
+            root=Path(td);source=root/'analysis.json';out=root/'out';out.mkdir()
+            source.write_text(json.dumps(fixture()),encoding='utf-8')
+            stage=out/'host-stage';stage.mkdir()
+            result=figure.generate(source,out,stage)
+            self.assertFalse(stage.exists())
+            self.assertTrue((Path(result['directory'])/'setup.png').is_file())
+            cached=out/'cache-stage';cached.mkdir()
+            again=figure.generate(source,out,cached)
+            self.assertEqual(again['directory'],result['directory'])
+            self.assertFalse(cached.exists())
+
+    def test_staging_refuses_existing_data_and_paths_outside_the_output(self):
+        with tempfile.TemporaryDirectory() as td:
+            root=Path(td);source=root/'analysis.json';out=root/'out';out.mkdir()
+            source.write_text(json.dumps(fixture()),encoding='utf-8')
+            outside=root/'outside';outside.mkdir()
+            occupied=out/'occupied';occupied.mkdir();(occupied/'keep.txt').write_text('keep')
+            for stage in (outside,occupied):
+                with self.assertRaisesRegex(ValueError,'empty regular directory'):
+                    figure.generate(source,out,stage)
+            self.assertEqual((occupied/'keep.txt').read_text(),'keep')
+            self.assertTrue(outside.is_dir())
+
     def test_export_all_wells_pagination_html_escaping_and_content_cache(self):
         from PIL import Image
         with tempfile.TemporaryDirectory() as td:
