@@ -1,6 +1,6 @@
 {
   "name": "labscriptai-ot",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Single-package LabscriptAI Opentrons plugin with MCP, skills, safety policy, and curated protocols.",
   "author": {
     "name": "gaoyuan",

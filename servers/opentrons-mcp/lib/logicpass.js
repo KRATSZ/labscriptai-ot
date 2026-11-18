@@ -1,36 +1,22 @@
 import path from "path";
-import { spawn } from "child_process";
+import { captureProcess } from "./process-capture.js";
 
 import { PLUGIN_ROOT, resolvePythonCandidates, SCRIPTS_DIR } from "./paths.js";
 
 const bridge = path.join(SCRIPTS_DIR, "logicpass_check.py");
 const vendor = path.join(PLUGIN_ROOT, "automation", "vendor");
 
-function runPython(python, args) {
-  return new Promise((resolve, reject) => {
-    const child = spawn(python, args, {
-      env: { ...process.env, PYTHONPATH: vendor },
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    let stdout = "";
-    let stderr = "";
-    child.stdout.on("data", (chunk) => {
-      stdout += chunk.toString();
-    });
-    child.stderr.on("data", (chunk) => {
-      stderr += chunk.toString();
-    });
-    child.on("error", reject);
-    child.on("close", (code) => resolve({ code, stdout, stderr }));
-  });
+async function runPython(preferred, args) {
+  let missing;
+  for (const python of resolvePythonCandidates(preferred)) {
+    try { return await captureProcess(python, args, {env: { ...process.env, PYTHONPATH: vendor }}); }
+    catch (error) { if (error.code !== "ENOENT") throw error; missing = error; }
+  }
+  throw missing || new Error("没有可用的 Python，跑不了 LogicPass");
 }
 
 export async function runLogicpassCheck({ analysisPath, simPass, python }) {
-  const executable = resolvePythonCandidates(python)[0];
-  if (!executable) {
-    throw new Error("没有可用的 Python，跑不了 LogicPass");
-  }
-  const result = await runPython(executable, [
+  const result = await runPython(python, [
     bridge,
     analysisPath || "",
     simPass ? "true" : "false",

@@ -9,7 +9,7 @@
     {
       "name": "labscriptai-ot",
       "description": "Opentrons simulation-first authoring and safe MCP runtime.",
-      "version": "0.1.4",
+      "version": "0.1.5",
       "author": {
         "name": "gaoyuan",
         "email": "gaoyuanbio@qq.com"

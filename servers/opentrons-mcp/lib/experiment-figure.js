@@ -1,10 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { executeCaptured as execute } from "./process-capture.js";
 import { ARTIFACTS_DIR, PLUGIN_ROOT, resolvePythonCandidates } from "./paths.js";
 
-const execute = promisify(execFile);
 const script = path.join(PLUGIN_ROOT, "automation/figures/experiment_figure.py");
 export const FIGURE_DIR = path.join(ARTIFACTS_DIR, "experiment-figures");
 const failure = message => ({ ok: false, error: "figure_generation_failed", message,
@@ -16,7 +14,7 @@ export async function generateExperimentFigure({ analysisPath, preferredPython }
   for (const python of resolvePythonCandidates(preferredPython)) {
     try {
       const { stdout } = await execute(python, [script, "--analysis", analysisPath, "--out", FIGURE_DIR], {
-        timeout: 45000, maxBuffer: 2 * 1024 * 1024, windowsHide: true,
+        timeout: 45000, maxBuffer: 2 * 1024 * 1024,
         env: { ...process.env, PYTHONIOENCODING: "utf-8" },
       });
       const result = JSON.parse(stdout.trim());

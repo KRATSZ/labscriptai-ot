@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import { spawn } from "child_process";
+import { captureProcess } from "./process-capture.js";
 
 import { analyzeProtocolOnce } from "./analyze-once.js";
 import { buildTaxonomyIssue, mapSimulationCategoryToLeaf } from "./error-taxonomy.js";
@@ -21,27 +21,7 @@ function truncateLog(text = "", maxChars = DEFAULT_MAX_LOG_CHARS) {
   return `${text.slice(0, headChars)}\n\n...[truncated ${text.length - maxChars} chars]...\n\n${text.slice(-tailChars)}`;
 }
 
-function runCommand(command, args) {
-  return new Promise((resolve, reject) => {
-    const child = spawn(command, args, {
-      cwd: process.cwd(),
-      env: process.env,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-
-    let stdout = "";
-    let stderr = "";
-
-    child.stdout.on("data", chunk => {
-      stdout += chunk.toString();
-    });
-    child.stderr.on("data", chunk => {
-      stderr += chunk.toString();
-    });
-    child.on("error", reject);
-    child.on("close", code => resolve({ code, stdout, stderr, command, args }));
-  });
-}
+const runCommand = captureProcess;
 
 export async function runHelper(args, preferredPython) {
   const candidates = resolvePythonCandidates(preferredPython);

@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { spawn } from "child_process";
+import { captureProcess } from "./process-capture.js";
 import { createHash, randomUUID } from "node:crypto";
 import { connect } from "node:net";
 import { analyzeProtocolOnce } from "./analyze-once.js";
@@ -17,31 +18,7 @@ const FLEX3D_DEFAULT_PORT = 8791;
 // to boot without ?key= — so the URL handed to the user must carry it.
 const FLEX3D_EXAMPLE_KEY = "example";
 
-function runCommand(command, args, { cwd, env } = {}) {
-  return new Promise((resolve, reject) => {
-    const child = spawn(command, args, {
-      cwd: cwd || process.cwd(),
-      env: env || process.env,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-
-    let stdout = "";
-    let stderr = "";
-
-    child.stdout.setEncoding("utf8");
-    child.stderr.setEncoding("utf8");
-    child.stdout.on("data", chunk => {
-      stdout += chunk;
-    });
-    child.stderr.on("data", chunk => {
-      stderr += chunk;
-    });
-    child.on("error", reject);
-    child.on("close", code => {
-      resolve({ code, stdout, stderr, command });
-    });
-  });
-}
+const runCommand = captureProcess;
 
 function parseLastJson(text) {
   const lines = String(text || "").split("\n").filter(line => line.trim());

@@ -1,6 +1,6 @@
 {
   "name": "labscriptai-ot",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "LabscriptAI Opentrons plugin bundle for Codex-style agents.",
   "author": {
     "name": "gaoyuan",
